@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Audition Form — Audition Portal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body style="visibility:hidden">
+
+    <!-- Update confirmation modal -->
+    <div class="modal fade" id="updateConfirmModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Submission Already on File</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            You already have a submission on file. Would you like to <strong>update it</strong> with the information you just entered?
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="confirm-update-btn">Yes, Update</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Success modal -->
+    <div class="modal fade" id="successModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header bg-success text-white">
+            <h5 class="modal-title" id="successModalLabel">Form Submitted!</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body text-center" id="successModalBody">
+            Your form has been successfully submitted!
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-success" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#">Audition Portal</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+          <ul class="navbar-nav">
+            <li class="nav-item">
+              <a class="nav-link active" href="auditionForm.html">Audition Form</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="search.html">Search Dancers</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="master.html">Master Schedule</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main content -->
+    <div class="container mt-4" style="max-width: 780px;">
+
+      <h4 class="mb-4">Dancer Registration</h4>
+
+      <form id="dancer-form">
+
+        <div class="row g-3 mb-3">
+          <div class="col-sm-6">
+            <label for="fname" class="form-label">First Name</label>
+            <input type="text" id="fname" class="form-control" required />
+          </div>
+          <div class="col-sm-6">
+            <label for="lname" class="form-label">Last Name</label>
+            <input type="text" id="lname" class="form-control" required />
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-sm-6">
+            <label for="email" class="form-label">Email</label>
+            <input type="email" id="email" class="form-control" required />
+          </div>
+          <div class="col-sm-6">
+            <label for="phonenumber" class="form-label">Phone Number</label>
+            <input type="text" id="phonenumber" class="form-control" />
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label for="address" class="form-label">Address</label>
+          <input type="text" id="address" class="form-control" />
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Grade</label>
+          <div class="d-flex gap-4 flex-wrap">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault1" />
+              <label class="form-check-label" for="flexRadioDefault1">Senior</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault2" />
+              <label class="form-check-label" for="flexRadioDefault2">Junior</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault3" />
+              <label class="form-check-label" for="flexRadioDefault3">Sophomore</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault4" />
+              <label class="form-check-label" for="flexRadioDefault4">Freshman</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-3">
+          <label for="techniqueclasses" class="form-label">Current Technique Classes</label>
+          <textarea id="techniqueclasses" class="form-control" rows="3"></textarea>
+        </div>
+
+        <div class="mb-3">
+          <label for="injuries" class="form-label">Recent Injuries</label>
+          <textarea id="injuries" class="form-control" rows="2"></textarea>
+        </div>
+
+        <div class="mb-3">
+          <label for="absences" class="form-label">Known Absences</label>
+          <textarea id="absences" class="form-control" rows="2" placeholder="Example: January 5"></textarea>
+        </div>
+
+        <div class="mb-4">
+          <label class="form-label">Availability — select all times you are free</label>
+          <div class="schedule-wrapper">
+            <div class="day-header-row" id="day-header-row"></div>
+            <div class="schedule-container">
+              <div class="time-column" id="time-column"></div>
+              <div class="grid" id="grid"></div>
+            </div>
+          </div>
+        </div>
+
+        <button type="button" class="btn btn-primary px-4" onclick="addDancer()">Submit</button>
+
+      </form>
+    </div>
+
+    <script src="schedule.js"></script>
+    <script src="app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+      // Auth check — auditionees only
+      (async () => {
+        try {
+          const res  = await fetch('/api/auth/me');
+          const user = await res.json();
+          if (!res.ok || user.role !== 'auditionee') {
+            window.location.href = 'login.html';
+            return;
+          }
+          // Hide master-only nav links
+          document.querySelectorAll('.nav-link[href="search.html"], .nav-link[href="master.html"]')
+            .forEach(el => el.parentElement.remove());
+          // Add email + logout
+          const nav = document.querySelector('.navbar-nav');
+          nav.insertAdjacentHTML('beforeend',
+            `<li class="nav-item"><span class="nav-link text-white-50">${user.email}</span></li>
+             <li class="nav-item"><button class="btn btn-link nav-link text-white" id="logout-btn">Log Out</button></li>`
+          );
+          document.getElementById('logout-btn').addEventListener('click', async () => {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = 'login.html';
+          });
+          document.body.style.visibility = 'visible';
+        } catch (err) {
+          window.location.href = 'login.html';
+        }
+      })();
+    </script>
+
+  </body>
+</html>

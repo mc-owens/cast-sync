@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cast Builder — Audition Portal</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .search-wrapper { position: relative; }
+
+    #search-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid #ccc;
+      border-top: none;
+      border-radius: 0 0 6px 6px;
+      z-index: 100;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .dropdown-item-dancer {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .dropdown-item-dancer:hover { background: #f0f0f0; }
+
+    .cast-chip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #e8f4fd;
+      border: 1px solid #b8d9f3;
+      border-radius: 20px;
+      padding: 4px 12px;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+    .cast-chip button {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 16px;
+      line-height: 1;
+      padding: 0 0 0 8px;
+      cursor: pointer;
+    }
+    .cast-chip button:hover { color: #dc3545; }
+
+    .common-day {
+      margin-bottom: 12px;
+    }
+    .common-day h6 {
+      font-size: 13px;
+      font-weight: bold;
+      color: #444;
+      margin-bottom: 4px;
+    }
+    .time-window {
+      display: inline-block;
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      border-radius: 4px;
+      padding: 2px 10px;
+      font-size: 13px;
+      margin: 2px 4px 2px 0;
+    }
+  </style>
+</head>
+<body style="visibility:hidden">
+
+  <!-- Dancer profile modal -->
+  <div class="modal fade" id="dancerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="dancer-modal-name"></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+
+          <!-- Mini schedule -->
+          <h6 class="mb-2" style="font-size:13px;font-weight:bold;color:#555;">Availability</h6>
+          <div id="mini-schedule-container"></div>
+          <div class="d-flex justify-content-between mt-1" style="font-size:10px;color:#aaa;padding:0 2px;">
+            <span>8 AM</span><span>12 PM</span><span>6 PM</span><span>11 PM</span>
+          </div>
+
+          <hr class="my-3">
+
+          <!-- Full profile toggle -->
+          <button
+            class="btn btn-sm btn-outline-secondary"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#dancer-full-profile"
+          >
+            See Full Profile
+          </button>
+
+          <div class="collapse mt-3" id="dancer-full-profile">
+            <table class="table table-sm table-bordered" style="font-size:13px;">
+              <tbody>
+                <tr><th style="width:160px;">Email</th><td id="detail-email"></td></tr>
+                <tr><th>Phone</th><td id="detail-phone"></td></tr>
+                <tr><th>Address</th><td id="detail-address"></td></tr>
+                <tr><th>Grade</th><td id="detail-grade"></td></tr>
+                <tr><th>Technique Classes</th><td id="detail-technique" style="white-space:pre-wrap;"></td></tr>
+                <tr><th>Recent Injuries</th><td id="detail-injuries" style="white-space:pre-wrap;"></td></tr>
+                <tr><th>Known Absences</th><td id="detail-absences" style="white-space:pre-wrap;"></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nav -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">Audition Portal</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav">
+          <li class="nav-item">
+            <a class="nav-link" href="search.html">Search Dancers</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="master.html">Master Schedule</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link active" href="cast.html">Cast Builder</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="dancers.html">Auditionees</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <div class="container-fluid mt-4 px-4">
+    <div class="row g-4">
+
+      <!-- Left panel: search + cast list -->
+      <div class="col-md-4">
+        <h5 class="mb-3">Build Your Cast</h5>
+
+        <!-- Search -->
+        <div class="search-wrapper mb-3">
+          <label for="dancer-search" class="form-label">Search dancers by name</label>
+          <input
+            type="text"
+            id="dancer-search"
+            class="form-control"
+            placeholder="Start typing a name..."
+            autocomplete="off"
+          />
+          <div id="search-dropdown" style="display:none;"></div>
+        </div>
+
+        <!-- Selected cast -->
+        <div>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-bold" style="font-size:14px;">Selected Dancers</span>
+            <span id="cast-count" class="text-muted" style="font-size:12px;">0 selected</span>
+          </div>
+          <div id="cast-list">
+            <p id="cast-empty-msg" class="text-muted" style="font-size:13px;">
+              Search for a dancer above to add them to the cast.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right panel: common availability -->
+      <div class="col-md-8">
+        <h5 class="mb-3">Common Availability</h5>
+
+        <div id="common-placeholder" class="text-muted" style="font-size:14px;">
+          Add at least 2 dancers to see their common availability.
+        </div>
+
+        <div id="common-results" style="display:none;">
+          <p class="text-muted mb-3" style="font-size:13px;">
+            These are the time windows when <strong>all</strong> selected dancers are available to rehearse.
+          </p>
+          <div id="common-list"></div>
+          <div id="no-common" class="alert alert-warning" style="display:none;">
+            No common availability found for all selected dancers.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="cast-builder.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // Auth check — masters only
+    (async () => {
+      try {
+        const res  = await fetch('/api/auth/me');
+        const user = await res.json();
+        if (!res.ok || user.role !== 'master') {
+          window.location.href = 'login.html';
+          return;
+        }
+        const nav = document.querySelector('.navbar-nav');
+        nav.insertAdjacentHTML('beforeend',
+          `<li class="nav-item"><span class="nav-link text-white-50">${user.email}</span></li>
+           <li class="nav-item"><button class="btn btn-link nav-link text-white" id="logout-btn">Log Out</button></li>`
+        );
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+        document.body.style.visibility = 'visible';
+      } catch (err) {
+        window.location.href = 'login.html';
+      }
+    })();
+  </script>
+
+</body>
+</html>
