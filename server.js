@@ -6,6 +6,9 @@ if (!process.env.SESSION_SECRET) {
   process.exit(1);
 }
 
+console.log('DATABASE_URL present:', !!process.env.DATABASE_URL);
+console.log('DATABASE_URL starts with:', process.env.DATABASE_URL ? process.env.DATABASE_URL.substring(0, 30) : 'NOT SET');
+
 const express        = require('express');
 const { Pool }       = require('pg');
 const cors           = require('cors');
