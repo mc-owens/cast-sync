@@ -1,5 +1,11 @@
 require('dotenv').config();
 
+// Fail fast with a clear error if required env vars are missing
+if (!process.env.SESSION_SECRET) {
+  console.error('FATAL: SESSION_SECRET environment variable is not set.');
+  process.exit(1);
+}
+
 const express        = require('express');
 const { Pool }       = require('pg');
 const cors           = require('cors');
