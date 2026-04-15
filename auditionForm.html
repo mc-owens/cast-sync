@@ -76,15 +76,20 @@
     <div class="container mt-4" style="max-width: 780px;">
 
       <h4 class="mb-1">Dancer Registration</h4>
-      <p class="text-muted mb-4" style="font-size:13px;">Fill out this form for each audition you are applying to. Your director will give you a join code.</p>
+      <p class="text-muted mb-2" style="font-size:13px;">Fill out this form for each audition you are applying to. Your director will give you a join code.</p>
+      <div id="profile-prefill-notice" class="alert alert-secondary py-2 px-3 mb-3 d-none" style="font-size:13px;">
+        Using your saved profile — review and update anything that has changed.
+      </div>
 
       <form id="dancer-form">
 
         <div class="mb-4 p-3 border rounded bg-light">
           <label for="join-code" class="form-label fw-semibold">Director Join Code</label>
           <input type="text" id="join-code" class="form-control" placeholder="e.g. A3F9C2" required
-                 style="text-transform:uppercase;letter-spacing:2px;font-weight:bold;max-width:200px;" />
-          <div class="form-text">Your director will share this code with you.</div>
+                 style="text-transform:uppercase;letter-spacing:2px;font-weight:bold;max-width:200px;"
+                 maxlength="6" autocomplete="off" />
+          <div id="join-code-hint" class="form-text">Your director will share this code with you.</div>
+          <div id="join-code-preview" class="mt-2" style="display:none;font-size:13px;"></div>
         </div>
 
         <div class="row g-3 mb-3">
@@ -195,6 +200,54 @@
             });
           }
           document.body.style.visibility = 'visible';
+
+          // ── Profile pre-fill ──────────────────────────────────────────────
+          try {
+            const profileRes = await fetch('/api/profile');
+            if (profileRes.ok) {
+              const p = await profileRes.json();
+              if (p.first_name) document.getElementById('fname').value        = p.first_name;
+              if (p.last_name)  document.getElementById('lname').value        = p.last_name;
+              if (p.phone)      document.getElementById('phonenumber').value   = p.phone;
+              if (p.address)    document.getElementById('address').value       = p.address;
+              if (p.technique_classes) document.getElementById('techniqueclasses').value = p.technique_classes;
+              if (p.grade) {
+                const gradeMap = { Senior: 'flexRadioDefault1', Junior: 'flexRadioDefault2', Sophomore: 'flexRadioDefault3', Freshman: 'flexRadioDefault4' };
+                const radioId = gradeMap[p.grade];
+                if (radioId) document.getElementById(radioId).checked = true;
+              }
+              if (p.first_name || p.last_name) {
+                document.getElementById('profile-prefill-notice').classList.remove('d-none');
+              }
+            }
+          } catch (e) { /* no profile yet, that's fine */ }
+
+          // ── Join code preview ─────────────────────────────────────────────
+          let previewTimer = null;
+          const codeInput   = document.getElementById('join-code');
+          const previewEl   = document.getElementById('join-code-preview');
+
+          codeInput.addEventListener('input', () => {
+            clearTimeout(previewTimer);
+            const code = codeInput.value.trim();
+            if (code.length < 6) { previewEl.style.display = 'none'; return; }
+            previewTimer = setTimeout(async () => {
+              try {
+                const r    = await fetch(`/api/orgs/preview?join_code=${encodeURIComponent(code)}`);
+                const data = await r.json();
+                if (data.found) {
+                  previewEl.style.display = 'block';
+                  previewEl.innerHTML =
+                    `<span style="color:#198754;">&#10003; Joining: <strong>${data.org_name}</strong> — ${data.season_name}</span>`;
+                } else {
+                  previewEl.style.display = 'block';
+                  previewEl.innerHTML =
+                    `<span style="color:#dc3545;">&#10007; That code doesn't match any active organization. Check with your director.</span>`;
+                }
+              } catch (e) { previewEl.style.display = 'none'; }
+            }, 400);
+          });
+
         } catch (err) {
           window.location.href = 'login.html';
         }

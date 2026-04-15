@@ -299,6 +299,26 @@ app.get('/api/orgs', requireAuth('master'), async (req, res) => {
   }
 });
 
+// GET /api/orgs/preview?join_code=XXX — public org lookup for join code preview
+app.get('/api/orgs/preview', async (req, res) => {
+  const { join_code } = req.query;
+  if (!join_code || join_code.trim().length < 6) return res.json({ found: false });
+  try {
+    const result = await pool.query(
+      `SELECT o.name AS org_name, s.name AS season_name
+       FROM orgs o
+       JOIN seasons s ON s.org_id = o.id AND s.is_active = TRUE
+       WHERE UPPER(o.join_code) = UPPER($1)
+       ORDER BY s.created_at DESC LIMIT 1`,
+      [join_code.trim()]
+    );
+    if (result.rows.length === 0) return res.json({ found: false });
+    res.json({ found: true, org_name: result.rows[0].org_name, season_name: result.rows[0].season_name });
+  } catch (err) {
+    res.json({ found: false });
+  }
+});
+
 // POST /api/orgs — director creates a new org
 app.post('/api/orgs', requireAuth('master'), async (req, res) => {
   const { name } = req.body;

@@ -1,12 +1,14 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const DAYS      = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const DAYS       = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const DAYS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const MINI_START = 8 * 60;   // 8 AM in minutes
-  const MINI_END   = 23 * 60;  // 11 PM in minutes
+  const MINI_START = 8 * 60;
+  const MINI_END   = 23 * 60;
   const MINI_RANGE = MINI_END - MINI_START;
 
   // ── State ─────────────────────────────────────────────────────────────────────
-  let selectedDancers = [];
+  let selectedDancers    = [];  // each dancer: { id (dp.id), user_id, first_name, last_name, availability }
+  let pieces             = [];
+  let currentCommonSlots = []; // [{ day, start (minutes), end (minutes) }]
 
   // ── DOM references ────────────────────────────────────────────────────────────
   const searchInput  = document.getElementById('dancer-search');
@@ -14,10 +16,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const castList     = document.getElementById('cast-list');
   const castEmptyMsg = document.getElementById('cast-empty-msg');
   const castCount    = document.getElementById('cast-count');
+  const summary      = document.getElementById('cast-summary');
   const placeholder  = document.getElementById('common-placeholder');
   const results      = document.getElementById('common-results');
   const commonList   = document.getElementById('common-list');
   const noCommon     = document.getElementById('no-common');
+  const actionPanel  = document.getElementById('action-panel');
+  const addSchedBtn  = document.getElementById('add-to-schedule-btn');
+  const castBtn      = document.getElementById('cast-to-piece-btn');
 
   // ── Time helpers ──────────────────────────────────────────────────────────────
 
@@ -36,6 +42,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const ampm = h >= 12 ? 'PM' : 'AM';
     const hr   = h % 12 === 0 ? 12 : h % 12;
     return `${hr}:${m.toString().padStart(2, '0')} ${ampm}`;
+  }
+
+  // ── Pieces ────────────────────────────────────────────────────────────────────
+
+  async function loadPieces() {
+    try {
+      const res = await fetch('/api/pieces');
+      pieces = res.ok ? await res.json() : [];
+    } catch (e) { pieces = []; }
+    populatePieceSelects();
+    updateActionPanel();
+  }
+
+  function populatePieceSelects() {
+    ['cast-piece-select', 'sched-piece-select'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.innerHTML = pieces.length === 0
+        ? '<option value="">No pieces yet — create them on Master Schedule</option>'
+        : pieces.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    });
   }
 
   // ── Search (debounced) ────────────────────────────────────────────────────────
@@ -122,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
       nameBtn.textContent   = `${dancer.first_name} ${dancer.last_name}`;
       nameBtn.style.cssText = 'cursor:pointer;text-decoration:underline;color:#0d6efd;flex:1;';
       nameBtn.title         = 'Click to view schedule';
-      nameBtn.addEventListener('click', () => openDancerModal(dancer.id));
+      nameBtn.addEventListener('click', () => openDancerModal(dancer.user_id));
 
       const removeBtn = document.createElement('button');
       removeBtn.textContent = '×';
@@ -137,9 +164,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Dancer profile modal ──────────────────────────────────────────────────────
 
-  async function openDancerModal(id) {
+  async function openDancerModal(userId) {
     try {
-      const res    = await fetch(`/api/dancers/${id}`);
+      const res    = await fetch(`/api/dancers/${userId}`);
       const dancer = await res.json();
 
       document.getElementById('dancer-modal-name').textContent =
@@ -147,10 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       renderMiniSchedule(dancer.availability || []);
       populateDancerDetails(dancer);
-
-      // Collapse the full profile section so it's hidden by default each time
       document.getElementById('dancer-full-profile').classList.remove('show');
-
       new bootstrap.Modal(document.getElementById('dancerModal')).show();
     } catch (err) {
       console.error(err);
@@ -169,39 +193,24 @@ document.addEventListener('DOMContentLoaded', () => {
       const col = document.createElement('div');
       col.style.cssText = 'flex:1;position:relative;border-right:1px solid #eee;';
 
-      // Day label
       const label = document.createElement('div');
       label.style.cssText = 'font-size:9px;text-align:center;background:#f0f0f0;color:#666;padding:2px 0;border-bottom:1px solid #ddd;position:absolute;top:0;left:0;right:0;';
       label.textContent = DAYS_SHORT[i];
       col.appendChild(label);
 
-      // Block area (below the label)
       const blockArea = document.createElement('div');
       blockArea.style.cssText = 'position:absolute;top:18px;left:0;right:0;bottom:0;';
 
-      // Render each availability block for this day
-      const blocks = availability.filter(b => b.day === day);
-      blocks.forEach(block => {
-        const startMin = timeToMinutes(block.startTime);
-        const endMin   = timeToMinutes(block.endTime);
-        // Clamp to 8AM–11PM range
-        const clampedStart = Math.max(startMin, MINI_START);
-        const clampedEnd   = Math.min(endMin, MINI_END);
-        if (clampedStart >= clampedEnd) return;
-
-        const topPct    = ((clampedStart - MINI_START) / MINI_RANGE) * 100;
-        const heightPct = ((clampedEnd - clampedStart) / MINI_RANGE) * 100;
-
-        const blockEl = document.createElement('div');
-        blockEl.style.cssText = `
-          position:absolute;
-          left:2px;right:2px;
-          top:${topPct}%;
-          height:${heightPct}%;
-          min-height:2px;
-          background:rgba(52,152,219,0.55);
-          border:1px solid #3498db;
-          border-radius:2px;`;
+      availability.filter(b => b.day === day).forEach(block => {
+        const startMin    = timeToMinutes(block.startTime);
+        const endMin      = timeToMinutes(block.endTime);
+        const clampStart  = Math.max(startMin, MINI_START);
+        const clampEnd    = Math.min(endMin, MINI_END);
+        if (clampStart >= clampEnd) return;
+        const topPct    = ((clampStart - MINI_START) / MINI_RANGE) * 100;
+        const heightPct = ((clampEnd - clampStart) / MINI_RANGE) * 100;
+        const blockEl   = document.createElement('div');
+        blockEl.style.cssText = `position:absolute;left:2px;right:2px;top:${topPct}%;height:${heightPct}%;min-height:2px;background:rgba(52,152,219,0.55);border:1px solid #3498db;border-radius:2px;`;
         blockEl.title = `${block.startTime} – ${block.endTime}`;
         blockArea.appendChild(blockEl);
       });
@@ -244,9 +253,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function computeCommonAvailability() {
+    currentCommonSlots = [];
+
     if (selectedDancers.length < 2) {
       placeholder.style.display = 'block';
       results.style.display     = 'none';
+      updateActionPanel();
       return;
     }
 
@@ -266,6 +278,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (common.length === 0) return;
       foundAny = true;
 
+      common.forEach(interval => {
+        currentCommonSlots.push({ day, start: interval.start, end: interval.end });
+      });
+
       const dayEl = document.createElement('div');
       dayEl.className = 'common-day';
       dayEl.innerHTML = `<h6>${day}</h6>`;
@@ -279,5 +295,159 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     if (!foundAny) noCommon.style.display = 'block';
+    updateActionPanel();
   }
+
+  // ── Action panel ──────────────────────────────────────────────────────────────
+
+  function updateActionPanel() {
+    if (selectedDancers.length === 0) {
+      actionPanel.style.display = 'none';
+      summary.textContent       = '';
+      return;
+    }
+
+    actionPanel.style.display = 'block';
+
+    const n = selectedDancers.length;
+    const s = currentCommonSlots.length;
+
+    let txt = `${n} dancer${n === 1 ? '' : 's'} selected`;
+    if (n >= 2) {
+      txt += s > 0
+        ? ` — ${s} shared window${s === 1 ? '' : 's'}`
+        : ' — no shared availability windows';
+    }
+    summary.textContent = txt;
+
+    castBtn.disabled    = pieces.length === 0;
+    addSchedBtn.disabled = s === 0 || pieces.length === 0;
+  }
+
+  // ── Cast to Piece ─────────────────────────────────────────────────────────────
+
+  castBtn.addEventListener('click', () => {
+    const errorEl   = document.getElementById('cast-error');
+    const successEl = document.getElementById('cast-success');
+    errorEl.classList.add('d-none');
+    successEl.classList.add('d-none');
+
+    const n = selectedDancers.length;
+    document.getElementById('cast-modal-desc').textContent =
+      `${n} dancer${n === 1 ? '' : 's'} will be added to the selected piece.`;
+
+    new bootstrap.Modal(document.getElementById('castToPieceModal')).show();
+  });
+
+  document.getElementById('confirm-cast-btn').addEventListener('click', async () => {
+    const pieceId   = document.getElementById('cast-piece-select').value;
+    const castRole  = document.querySelector('input[name="castRole"]:checked').value;
+    const errorEl   = document.getElementById('cast-error');
+    const successEl = document.getElementById('cast-success');
+    const btn       = document.getElementById('confirm-cast-btn');
+
+    errorEl.classList.add('d-none');
+    successEl.classList.add('d-none');
+
+    if (!pieceId) {
+      errorEl.textContent = 'Please select a piece.';
+      errorEl.classList.remove('d-none');
+      return;
+    }
+
+    btn.disabled    = true;
+    btn.textContent = 'Casting…';
+
+    const errors = [];
+    for (const dancer of selectedDancers) {
+      const res = await fetch('/api/piece-casts', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ piece_id: parseInt(pieceId), user_id: dancer.user_id, cast_role: castRole }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        errors.push(data.error || 'Unknown error');
+      }
+    }
+
+    btn.disabled    = false;
+    btn.textContent = 'Cast Dancers';
+
+    if (errors.length > 0) {
+      errorEl.textContent = errors.join(' · ');
+      errorEl.classList.remove('d-none');
+      return;
+    }
+
+    const pieceName = pieces.find(p => p.id == pieceId)?.name || 'the piece';
+    const roleLabel = castRole === 'member' ? 'cast member' : 'understudy';
+    successEl.textContent = `✓ ${selectedDancers.length} dancer${selectedDancers.length === 1 ? '' : 's'} added as ${roleLabel} in ${pieceName}`;
+    successEl.classList.remove('d-none');
+  });
+
+  // ── Add Rehearsal to Schedule ─────────────────────────────────────────────────
+
+  addSchedBtn.addEventListener('click', () => {
+    const errorEl   = document.getElementById('sched-error');
+    const successEl = document.getElementById('sched-success');
+    errorEl.classList.add('d-none');
+    successEl.classList.add('d-none');
+
+    // Populate slot dropdown
+    const slotEl = document.getElementById('slot-select');
+    slotEl.innerHTML = currentCommonSlots.map(s =>
+      `<option value="${s.day}|||${s.start}|||${s.end}">${s.day} · ${minutesToTimeString(s.start)} – ${minutesToTimeString(s.end)}</option>`
+    ).join('');
+
+    new bootstrap.Modal(document.getElementById('addToScheduleModal')).show();
+  });
+
+  document.getElementById('confirm-sched-btn').addEventListener('click', async () => {
+    const slotVal   = document.getElementById('slot-select').value;
+    const pieceId   = document.getElementById('sched-piece-select').value;
+    const errorEl   = document.getElementById('sched-error');
+    const successEl = document.getElementById('sched-success');
+    const btn       = document.getElementById('confirm-sched-btn');
+
+    errorEl.classList.add('d-none');
+    successEl.classList.add('d-none');
+
+    if (!slotVal || !pieceId) {
+      errorEl.textContent = 'Please select a time slot and a piece.';
+      errorEl.classList.remove('d-none');
+      return;
+    }
+
+    const [day, startMin, endMin] = slotVal.split('|||');
+    const startTime = minutesToTimeString(parseInt(startMin));
+    const endTime   = minutesToTimeString(parseInt(endMin));
+
+    btn.disabled    = true;
+    btn.textContent = 'Adding…';
+
+    const res = await fetch('/api/master-blocks', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ piece_id: parseInt(pieceId), day, start_time: startTime, end_time: endTime }),
+    });
+
+    btn.disabled    = false;
+    btn.textContent = 'Add to Schedule';
+
+    if (!res.ok) {
+      const data = await res.json();
+      errorEl.textContent = data.error || 'Failed to add block.';
+      errorEl.classList.remove('d-none');
+      return;
+    }
+
+    const pieceName = pieces.find(p => p.id == pieceId)?.name || 'schedule';
+    successEl.textContent = `✓ ${day} ${startTime} – ${endTime} added to ${pieceName}`;
+    successEl.classList.remove('d-none');
+  });
+
+  // ── Initialize ────────────────────────────────────────────────────────────────
+
+  loadPieces();
 });
