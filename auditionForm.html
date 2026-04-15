@@ -18,7 +18,7 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
-            You already have a submission on file. Would you like to <strong>update it</strong> with the information you just entered?
+            You already have a submission for <strong id="existing-org-name"></strong>. Would you like to <strong>update it</strong> with the information you just entered?
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -33,7 +33,7 @@
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
           <div class="modal-header bg-success text-white">
-            <h5 class="modal-title" id="successModalLabel">Form Submitted!</h5>
+            <h5 class="modal-title" id="successModalLabel">Submitted!</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body text-center" id="successModalBody">
@@ -59,10 +59,7 @@
               <a class="nav-link active" href="auditionForm.html">Audition Form</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link" href="search.html">Search Dancers</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="master.html">Master Schedule</a>
+              <a class="nav-link" href="upgrade.html">Director Access</a>
             </li>
           </ul>
         </div>
@@ -72,9 +69,17 @@
     <!-- Main content -->
     <div class="container mt-4" style="max-width: 780px;">
 
-      <h4 class="mb-4">Dancer Registration</h4>
+      <h4 class="mb-1">Dancer Registration</h4>
+      <p class="text-muted mb-4" style="font-size:13px;">Fill out this form for each audition you are applying to. Your director will give you a join code.</p>
 
       <form id="dancer-form">
+
+        <div class="mb-4 p-3 border rounded bg-light">
+          <label for="join-code" class="form-label fw-semibold">Director Join Code</label>
+          <input type="text" id="join-code" class="form-control" placeholder="e.g. A3F9C2" required
+                 style="text-transform:uppercase;letter-spacing:2px;font-weight:bold;max-width:200px;" />
+          <div class="form-text">Your director will share this code with you.</div>
+        </div>
 
         <div class="row g-3 mb-3">
           <div class="col-sm-6">
@@ -89,18 +94,13 @@
 
         <div class="row g-3 mb-3">
           <div class="col-sm-6">
-            <label for="email" class="form-label">Email</label>
-            <input type="email" id="email" class="form-control" required />
-          </div>
-          <div class="col-sm-6">
             <label for="phonenumber" class="form-label">Phone Number</label>
             <input type="text" id="phonenumber" class="form-control" />
           </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="address" class="form-label">Address</label>
-          <input type="text" id="address" class="form-control" />
+          <div class="col-sm-6">
+            <label for="address" class="form-label">Address</label>
+            <input type="text" id="address" class="form-control" />
+          </div>
         </div>
 
         <div class="mb-3">
@@ -170,10 +170,6 @@
             window.location.href = 'login.html';
             return;
           }
-          // Hide master-only nav links
-          document.querySelectorAll('.nav-link[href="search.html"], .nav-link[href="master.html"]')
-            .forEach(el => el.parentElement.remove());
-          // Add email + logout
           const nav = document.querySelector('.navbar-nav');
           nav.insertAdjacentHTML('beforeend',
             `<li class="nav-item"><span class="nav-link text-white-50">${user.email}</span></li>

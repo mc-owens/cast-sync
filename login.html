@@ -51,7 +51,7 @@
     fetch('/api/auth/me')
       .then(r => r.json())
       .then(user => {
-        if (user.role === 'master')     window.location.href = 'master.html';
+        if (user.role === 'master')     window.location.href = 'org-select.html';
         if (user.role === 'auditionee') window.location.href = 'auditionForm.html';
       })
       .catch(() => {}); // not logged in — stay on this page
@@ -79,7 +79,7 @@
         }
 
         // Redirect based on role
-        if (data.role === 'master')     window.location.href = 'master.html';
+        if (data.role === 'master')     window.location.href = 'org-select.html';
         if (data.role === 'auditionee') window.location.href = 'auditionForm.html';
 
       } catch (err) {

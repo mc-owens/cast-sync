@@ -252,18 +252,16 @@
   </script>
 
   <script>
-    // Auth check — masters only
     (async () => {
       try {
         const res  = await fetch('/api/auth/me');
         const user = await res.json();
-        if (!res.ok || user.role !== 'master') {
-          window.location.href = 'login.html';
-          return;
-        }
+        if (!res.ok || user.role !== 'master') { window.location.href = 'login.html'; return; }
+        if (!user.orgId) { window.location.href = 'org-select.html'; return; }
         const nav = document.querySelector('.navbar-nav');
         nav.insertAdjacentHTML('beforeend',
-          `<li class="nav-item"><span class="nav-link text-white-50">${user.email}</span></li>
+          `<li class="nav-item"><span class="nav-link text-white-50" style="font-size:12px;">${user.orgName} · ${user.seasonName}</span></li>
+           <li class="nav-item"><span class="nav-link text-white-50">${user.email}</span></li>
            <li class="nav-item"><button class="btn btn-link nav-link text-white" id="logout-btn">Log Out</button></li>`
         );
         document.getElementById('logout-btn').addEventListener('click', async () => {

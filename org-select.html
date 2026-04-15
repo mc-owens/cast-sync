@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Select Organization — CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- New org modal -->
+  <div class="modal fade" id="newOrgModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Create New Organization</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="new-org-error" class="alert alert-danger d-none"></div>
+          <div class="mb-3">
+            <label class="form-label">Organization Name</label>
+            <input type="text" class="form-control" id="new-org-name" placeholder="e.g. UCLA Fall Showcase 2026" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-dark" id="create-org-btn">Create</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- New season modal -->
+  <div class="modal fade" id="newSeasonModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">New Season</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="new-season-error" class="alert alert-danger d-none"></div>
+          <div class="mb-3">
+            <label class="form-label">Season Name</label>
+            <input type="text" class="form-control" id="new-season-name" placeholder="e.g. Spring 2027" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-dark" id="create-season-btn">Create Season</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nav -->
+  <nav class="navbar navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">CastSync</a>
+    </div>
+  </nav>
+
+  <div class="container mt-5" style="max-width:600px;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h4 class="mb-0 fw-semibold">Your Organizations</h4>
+        <p class="text-muted mb-0" style="font-size:13px;">Select an org and season to continue.</p>
+      </div>
+      <button class="btn btn-dark btn-sm" data-bs-toggle="modal" data-bs-target="#newOrgModal">+ New Org</button>
+    </div>
+
+    <div id="loading" class="text-muted">Loading...</div>
+    <div id="empty-msg" class="alert alert-info d-none">
+      You don't have any organizations yet. Create one to get started.
+    </div>
+
+    <div id="orgs-list"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let selectedOrgId = null;
+
+    async function loadOrgs() {
+      try {
+        const res  = await fetch('/api/orgs');
+        const orgs = await res.json();
+        document.getElementById('loading').style.display = 'none';
+
+        if (orgs.length === 0) {
+          document.getElementById('empty-msg').classList.remove('d-none');
+          return;
+        }
+
+        const container = document.getElementById('orgs-list');
+        for (const org of orgs) {
+          const seasonsRes = await fetch(`/api/orgs/${org.id}/seasons`);
+          const seasons    = await seasonsRes.json();
+
+          const card = document.createElement('div');
+          card.className = 'card mb-3';
+          card.innerHTML = `
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                  <h6 class="mb-0 fw-bold">${org.name}</h6>
+                  <span class="text-muted" style="font-size:12px;">Join code: <strong>${org.join_code}</strong> &nbsp;·&nbsp; ${org.role}</span>
+                </div>
+                <button class="btn btn-outline-secondary btn-sm new-season-btn" data-org-id="${org.id}">+ Season</button>
+              </div>
+              <div class="list-group list-group-flush" id="seasons-${org.id}">
+                ${seasons.map(s => `
+                  <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center season-btn"
+                    data-org-id="${org.id}" data-season-id="${s.id}">
+                    <span>${s.name}</span>
+                    <span class="badge bg-secondary">${s.submission_count} submission${s.submission_count == 1 ? '' : 's'}</span>
+                  </button>`).join('')}
+                ${seasons.length === 0 ? '<div class="list-group-item text-muted" style="font-size:13px;">No seasons yet.</div>' : ''}
+              </div>
+            </div>`;
+          container.appendChild(card);
+        }
+
+        // Season select
+        document.querySelectorAll('.season-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const orgId    = btn.dataset.orgId;
+            const seasonId = btn.dataset.seasonId;
+            const res = await fetch('/api/session/org', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ orgId, seasonId }),
+            });
+            if (res.ok) window.location.href = 'master.html';
+          });
+        });
+
+        // New season buttons
+        document.querySelectorAll('.new-season-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            selectedOrgId = btn.dataset.orgId;
+            document.getElementById('new-season-name').value = '';
+            document.getElementById('new-season-error').classList.add('d-none');
+            new bootstrap.Modal(document.getElementById('newSeasonModal')).show();
+          });
+        });
+
+      } catch (err) {
+        document.getElementById('loading').textContent = 'Could not load organizations.';
+      }
+    }
+
+    document.getElementById('create-org-btn').addEventListener('click', async () => {
+      const name    = document.getElementById('new-org-name').value.trim();
+      const errorEl = document.getElementById('new-org-error');
+      errorEl.classList.add('d-none');
+      if (!name) { errorEl.textContent = 'Name is required.'; errorEl.classList.remove('d-none'); return; }
+
+      const res  = await fetch('/api/orgs', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) { errorEl.textContent = data.error; errorEl.classList.remove('d-none'); return; }
+
+      // Auto-select the new org + its first season
+      await fetch('/api/session/org', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: data.org.id, seasonId: data.season.id }),
+      });
+      window.location.href = 'master.html';
+    });
+
+    document.getElementById('create-season-btn').addEventListener('click', async () => {
+      const name    = document.getElementById('new-season-name').value.trim();
+      const errorEl = document.getElementById('new-season-error');
+      errorEl.classList.add('d-none');
+      if (!name) { errorEl.textContent = 'Name is required.'; errorEl.classList.remove('d-none'); return; }
+
+      const res  = await fetch(`/api/orgs/${selectedOrgId}/seasons`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) { errorEl.textContent = data.error; errorEl.classList.remove('d-none'); return; }
+
+      await fetch('/api/session/org', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: selectedOrgId, seasonId: data.id }),
+      });
+      window.location.href = 'master.html';
+    });
+
+    loadOrgs();
+  </script>
+
+  <script>
+    // Auth check — masters only
+    (async () => {
+      try {
+        const res  = await fetch('/api/auth/me');
+        const user = await res.json();
+        if (!res.ok || user.role !== 'master') { window.location.href = 'login.html'; return; }
+        const nav = document.querySelector('.navbar-nav') || document.querySelector('.navbar .container-fluid');
+        document.querySelector('.navbar .container-fluid').insertAdjacentHTML('beforeend',
+          `<div class="d-flex align-items-center gap-2">
+             <span class="text-white-50" style="font-size:13px;">${user.email}</span>
+             <button class="btn btn-sm btn-outline-light" id="logout-btn">Log Out</button>
+           </div>`
+        );
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+      } catch (err) { window.location.href = 'login.html'; }
+    })();
+  </script>
+
+</body>
+</html>
