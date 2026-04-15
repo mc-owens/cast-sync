@@ -171,27 +171,27 @@
           // Dual-role user in director mode → go to director side
           if (user.mode === 'director') { window.location.href = 'org-select.html'; return; }
 
-          const nav = document.querySelector('.navbar-nav');
-          // Show mode toggle if they have director access
+          // Build right-side nav items
+          const navbarCollapse = document.getElementById('navbarNav');
+          const rightItems = `
+            <div class="ms-auto d-flex align-items-center gap-2">
+              ${user.isDirector ? `<button class="btn btn-outline-light btn-sm" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>` : ''}
+              <span class="text-white-50" style="font-size:13px;">${user.email}</span>
+              <button class="btn btn-link nav-link text-white p-0" id="logout-btn">Log Out</button>
+            </div>`;
+          navbarCollapse.insertAdjacentHTML('beforeend', rightItems);
+
           if (user.isDirector) {
-            nav.insertAdjacentHTML('beforeend',
-              `<li class="nav-item">
-                 <button class="btn btn-outline-light btn-sm ms-2 my-auto" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>
-               </li>`
-            );
             document.getElementById('switch-mode-btn').addEventListener('click', async () => {
               await fetch('/api/auth/switch-mode', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'director' }) });
               window.location.href = 'org-select.html';
             });
           }
-          nav.insertAdjacentHTML('beforeend',
-            `<li class="nav-item"><span class="nav-link text-white-50">${user.email}</span></li>
-             <li class="nav-item"><button class="btn btn-link nav-link text-white" id="logout-btn">Log Out</button></li>`
-          );
           document.getElementById('logout-btn').addEventListener('click', async () => {
             await fetch('/api/auth/logout', { method: 'POST' });
             window.location.href = 'login.html';
           });
+
           document.body.style.visibility = 'visible';
         } catch (err) {
           window.location.href = 'login.html';
