@@ -743,11 +743,100 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
   }
 });
 
+// ── Auto-migration ────────────────────────────────────────────────────────────
+
+async function runMigrations() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id            SERIAL PRIMARY KEY,
+        email         VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255),
+        google_id     VARCHAR(255) UNIQUE,
+        role          VARCHAR(50) NOT NULL DEFAULT 'auditionee',
+        created_at    TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS orgs (
+        id         SERIAL PRIMARY KEY,
+        name       VARCHAR(255) NOT NULL,
+        join_code  VARCHAR(20)  NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS org_members (
+        id         SERIAL PRIMARY KEY,
+        org_id     INTEGER REFERENCES orgs(id) ON DELETE CASCADE,
+        user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        role       VARCHAR(20) NOT NULL DEFAULT 'owner',
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (org_id, user_id)
+      );
+      CREATE TABLE IF NOT EXISTS seasons (
+        id         SERIAL PRIMARY KEY,
+        org_id     INTEGER REFERENCES orgs(id) ON DELETE CASCADE,
+        name       VARCHAR(255) NOT NULL,
+        is_active  BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS dancer_profiles (
+        id                SERIAL PRIMARY KEY,
+        user_id           INTEGER REFERENCES users(id) ON DELETE CASCADE UNIQUE,
+        first_name        VARCHAR(100),
+        last_name         VARCHAR(100),
+        phone             VARCHAR(50),
+        address           TEXT,
+        grade             VARCHAR(50),
+        technique_classes TEXT,
+        updated_at        TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS submissions (
+        id           SERIAL PRIMARY KEY,
+        user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        org_id       INTEGER REFERENCES orgs(id) ON DELETE CASCADE,
+        season_id    INTEGER REFERENCES seasons(id) ON DELETE CASCADE,
+        injuries     TEXT,
+        absences     TEXT,
+        availability JSONB,
+        created_at   TIMESTAMP DEFAULT NOW(),
+        UNIQUE (user_id, season_id)
+      );
+      CREATE TABLE IF NOT EXISTS pieces (
+        id         SERIAL PRIMARY KEY,
+        name       VARCHAR(255) NOT NULL,
+        color      VARCHAR(50),
+        master_id  INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        season_id  INTEGER REFERENCES seasons(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS master_blocks (
+        id         SERIAL PRIMARY KEY,
+        piece_id   INTEGER REFERENCES pieces(id) ON DELETE CASCADE,
+        day        VARCHAR(20),
+        start_time VARCHAR(20),
+        end_time   VARCHAR(20),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    // Safe column additions (ALTER TABLE IF NOT EXISTS column doesn't exist in older PG, use DO block)
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN google_id VARCHAR(255) UNIQUE;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE pieces ADD COLUMN season_id INTEGER REFERENCES seasons(id) ON DELETE CASCADE;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migrations complete.');
+  } catch (err) {
+    console.error('Migration error:', err.message);
+  }
+}
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server running at http://localhost:${PORT}`);
   if (!process.env.GOOGLE_CLIENT_ID) console.log('  → Google OAuth not configured');
   if (!emailEnabled)                  console.log('  → Email not configured');
+  await runMigrations();
 });
