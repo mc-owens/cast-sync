@@ -32,6 +32,31 @@
     </div>
   </div>
 
+  <!-- Invite co-director modal -->
+  <div class="modal fade" id="inviteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Invite Co-Director</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="invite-error" class="alert alert-danger d-none"></div>
+          <div id="invite-success" class="alert alert-success d-none"></div>
+          <p class="text-muted" style="font-size:13px;">The person must already have a CastSync director account. They will see this org on their org-select page next time they log in.</p>
+          <div class="mb-3">
+            <label class="form-label">Co-Director Email</label>
+            <input type="email" class="form-control" id="invite-email" placeholder="colleague@email.com" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-dark" id="send-invite-btn">Send Invite</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- New season modal -->
   <div class="modal fade" id="newSeasonModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -108,7 +133,10 @@
                   <h6 class="mb-0 fw-bold">${org.name}</h6>
                   <span class="text-muted" style="font-size:12px;">Join code: <strong>${org.join_code}</strong> &nbsp;·&nbsp; ${org.role}</span>
                 </div>
-                <button class="btn btn-outline-secondary btn-sm new-season-btn" data-org-id="${org.id}">+ Season</button>
+                <div class="d-flex gap-2">
+                  ${org.role === 'owner' ? `<button class="btn btn-outline-dark btn-sm invite-btn" data-org-id="${org.id}">+ Co-Director</button>` : ''}
+                  <button class="btn btn-outline-secondary btn-sm new-season-btn" data-org-id="${org.id}">+ Season</button>
+                </div>
               </div>
               <div class="list-group list-group-flush" id="seasons-${org.id}">
                 ${seasons.map(s => `
@@ -137,6 +165,17 @@
           });
         });
 
+        // Invite co-director buttons (owners only)
+        document.querySelectorAll('.invite-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            selectedOrgId = btn.dataset.orgId;
+            document.getElementById('invite-email').value = '';
+            document.getElementById('invite-error').classList.add('d-none');
+            document.getElementById('invite-success').classList.add('d-none');
+            new bootstrap.Modal(document.getElementById('inviteModal')).show();
+          });
+        });
+
         // New season buttons
         document.querySelectorAll('.new-season-btn').forEach(btn => {
           btn.addEventListener('click', () => {
@@ -151,6 +190,25 @@
         document.getElementById('loading').textContent = 'Could not load organizations.';
       }
     }
+
+    document.getElementById('send-invite-btn').addEventListener('click', async () => {
+      const email     = document.getElementById('invite-email').value.trim();
+      const errorEl   = document.getElementById('invite-error');
+      const successEl = document.getElementById('invite-success');
+      errorEl.classList.add('d-none');
+      successEl.classList.add('d-none');
+      if (!email) { errorEl.textContent = 'Email is required.'; errorEl.classList.remove('d-none'); return; }
+
+      const res  = await fetch(`/api/orgs/${selectedOrgId}/invite`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) { errorEl.textContent = data.error; errorEl.classList.remove('d-none'); return; }
+      successEl.textContent = `${email} has been added as a co-director.`;
+      successEl.classList.remove('d-none');
+      document.getElementById('invite-email').value = '';
+    });
 
     document.getElementById('create-org-btn').addEventListener('click', async () => {
       const name    = document.getElementById('new-org-name').value.trim();
