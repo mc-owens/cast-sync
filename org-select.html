@@ -263,13 +263,6 @@
         const res  = await fetch('/api/auth/me');
         const user = await res.json();
         if (!res.ok || (!user.isDirector && user.role !== 'master')) { window.location.href = 'login.html'; return; }
-        const nav = document.querySelector('.navbar-nav') || document.querySelector('.navbar .container-fluid');
-        document.querySelector('.navbar .container-fluid').insertAdjacentHTML('beforeend',
-          `<div class="d-flex align-items-center gap-2">
-             <span class="text-white-50" style="font-size:13px;">${user.email}</span>
-             <button class="btn btn-sm btn-outline-light" id="logout-btn">Log Out</button>
-           </div>`
-        );
         // Right side: email + logout
         document.getElementById('right-nav').innerHTML =
           `<span class="text-white-50" style="font-size:13px;">${user.email}</span>

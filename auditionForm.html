@@ -61,8 +61,8 @@
             <li class="nav-item">
               <a class="nav-link" href="upgrade.html">Director Access</a>
             </li>
-            <li class="nav-item" id="switch-director-item" style="display:none;">
-              <button class="btn btn-outline-light btn-sm my-auto ms-1" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>
+            <li class="nav-item d-flex align-items-center d-none" id="switch-director-item">
+              <button class="btn btn-outline-light btn-sm ms-1" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>
             </li>
           </ul>
           <div class="d-flex align-items-center gap-3" id="right-nav">
@@ -188,7 +188,7 @@
 
           // Show Switch to Director inline with tabs if dual-role
           if (user.isDirector) {
-            document.getElementById('switch-director-item').style.display = '';
+            document.getElementById('switch-director-item').classList.remove('d-none');
             document.getElementById('switch-mode-btn').addEventListener('click', async () => {
               await fetch('/api/auth/switch-mode', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'director' }) });
               window.location.href = 'org-select.html';
