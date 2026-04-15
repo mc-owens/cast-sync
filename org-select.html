@@ -81,9 +81,11 @@
   </div>
 
   <!-- Nav -->
-  <nav class="navbar navbar-dark bg-dark">
+  <nav class="navbar navbar-expand navbar-dark bg-dark">
     <div class="container-fluid">
       <a class="navbar-brand" href="#">CastSync</a>
+      <button class="btn btn-outline-light btn-sm ms-2" id="switch-auditionee-btn" style="display:none;font-size:12px;">Switch to Auditionee</button>
+      <div class="ms-auto d-flex align-items-center gap-3" id="right-nav"></div>
     </div>
   </nav>
 
@@ -268,16 +270,20 @@
              <button class="btn btn-sm btn-outline-light" id="logout-btn">Log Out</button>
            </div>`
         );
+        // Right side: email + logout
+        document.getElementById('right-nav').innerHTML =
+          `<span class="text-white-50" style="font-size:13px;">${user.email}</span>
+           <button class="btn btn-link nav-link text-white p-0" id="logout-btn">Log Out</button>`;
         document.getElementById('logout-btn').addEventListener('click', async () => {
           await fetch('/api/auth/logout', { method: 'POST' });
           window.location.href = 'login.html';
         });
-        // Show "Switch to Auditionee" if they also have an auditionee side
-        if (user.role === 'auditionee' || user.role === 'master') {
-          document.querySelector('.navbar .container-fluid').insertAdjacentHTML('beforeend',
-            `<button class="btn btn-sm btn-outline-light ms-2" id="switch-auditionee-btn" style="font-size:12px;">Switch to Auditionee</button>`
-          );
-          document.getElementById('switch-auditionee-btn').addEventListener('click', async () => {
+
+        // Show "Switch to Auditionee" next to brand for dual-role users
+        if (user.role === 'auditionee') {
+          const btn = document.getElementById('switch-auditionee-btn');
+          btn.style.display = '';
+          btn.addEventListener('click', async () => {
             await fetch('/api/auth/switch-mode', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'auditionee' }) });
             window.location.href = 'auditionForm.html';
           });

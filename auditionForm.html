@@ -54,14 +54,20 @@
           <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
-          <ul class="navbar-nav">
+          <ul class="navbar-nav me-auto">
             <li class="nav-item">
               <a class="nav-link active" href="auditionForm.html">Audition Form</a>
             </li>
             <li class="nav-item">
               <a class="nav-link" href="upgrade.html">Director Access</a>
             </li>
+            <li class="nav-item" id="switch-director-item" style="display:none;">
+              <button class="btn btn-outline-light btn-sm my-auto ms-1" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>
+            </li>
           </ul>
+          <div class="d-flex align-items-center gap-3" id="right-nav">
+            <!-- email + logout injected here by JS -->
+          </div>
         </div>
       </div>
     </nav>
@@ -171,27 +177,23 @@
           // Dual-role user in director mode → go to director side
           if (user.mode === 'director') { window.location.href = 'org-select.html'; return; }
 
-          // Build right-side nav items
-          const navbarCollapse = document.getElementById('navbarNav');
-          const rightItems = `
-            <div class="ms-auto d-flex align-items-center gap-2">
-              ${user.isDirector ? `<button class="btn btn-outline-light btn-sm" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>` : ''}
-              <span class="text-white-50" style="font-size:13px;">${user.email}</span>
-              <button class="btn btn-link nav-link text-white p-0" id="logout-btn">Log Out</button>
-            </div>`;
-          navbarCollapse.insertAdjacentHTML('beforeend', rightItems);
-
-          if (user.isDirector) {
-            document.getElementById('switch-mode-btn').addEventListener('click', async () => {
-              await fetch('/api/auth/switch-mode', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'director' }) });
-              window.location.href = 'org-select.html';
-            });
-          }
+          // Right side: email + logout
+          document.getElementById('right-nav').innerHTML =
+            `<span class="text-white-50" style="font-size:13px;">${user.email}</span>
+             <button class="btn btn-link nav-link text-white p-0" id="logout-btn">Log Out</button>`;
           document.getElementById('logout-btn').addEventListener('click', async () => {
             await fetch('/api/auth/logout', { method: 'POST' });
             window.location.href = 'login.html';
           });
 
+          // Show Switch to Director inline with tabs if dual-role
+          if (user.isDirector) {
+            document.getElementById('switch-director-item').style.display = '';
+            document.getElementById('switch-mode-btn').addEventListener('click', async () => {
+              await fetch('/api/auth/switch-mode', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'director' }) });
+              window.location.href = 'org-select.html';
+            });
+          }
           document.body.style.visibility = 'visible';
         } catch (err) {
           window.location.href = 'login.html';
