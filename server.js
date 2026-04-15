@@ -139,7 +139,17 @@ app.get('/', (req, res) => res.redirect('/login.html'));
 function requireAuth(role) {
   return (req, res, next) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
-    if (role && req.session.role !== role) return res.status(403).json({ error: 'Access denied.' });
+    if (role === 'master') {
+      // Allow if their base role is master OR they are in director mode
+      if (req.session.mode !== 'director' && req.session.role !== 'master') {
+        return res.status(403).json({ error: 'Access denied.' });
+      }
+    } else if (role === 'auditionee') {
+      // Allow if their base role is auditionee OR they are in auditionee mode
+      if (req.session.mode === 'director' && req.session.role !== 'auditionee') {
+        return res.status(403).json({ error: 'Access denied.' });
+      }
+    }
     next();
   };
 }
@@ -204,15 +214,17 @@ app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
   try {
-    const result = await pool.query('SELECT id, email, password_hash, role FROM users WHERE email = $1', [email.toLowerCase().trim()]);
+    const result = await pool.query('SELECT id, email, password_hash, role, is_director FROM users WHERE email = $1', [email.toLowerCase().trim()]);
     const user   = result.rows[0];
     if (!user || !user.password_hash) return res.status(401).json({ error: 'Incorrect email or password.' });
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) return res.status(401).json({ error: 'Incorrect email or password.' });
-    req.session.userId = user.id;
-    req.session.role   = user.role;
-    req.session.email  = user.email;
-    res.json({ id: user.id, email: user.email, role: user.role });
+    req.session.userId     = user.id;
+    req.session.role       = user.role;
+    req.session.email      = user.email;
+    req.session.isDirector = user.is_director || user.role === 'master';
+    req.session.mode       = (user.role === 'master' || user.is_director) ? 'director' : 'auditionee';
+    res.json({ id: user.id, email: user.email, role: user.role, isDirector: req.session.isDirector });
   } catch (err) {
     console.error('Login error:', err.message);
     res.status(500).json({ error: 'Login failed.' });
@@ -226,30 +238,44 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/me', (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
   res.json({
-    id:       req.session.userId,
-    email:    req.session.email,
-    role:     req.session.role,
-    orgId:    req.session.orgId    || null,
-    seasonId: req.session.seasonId || null,
-    orgName:  req.session.orgName  || null,
+    id:         req.session.userId,
+    email:      req.session.email,
+    role:       req.session.role,
+    isDirector: req.session.isDirector || req.session.role === 'master',
+    mode:       req.session.mode || (req.session.role === 'master' ? 'director' : 'auditionee'),
+    orgId:      req.session.orgId    || null,
+    seasonId:   req.session.seasonId || null,
+    orgName:    req.session.orgName  || null,
     seasonName: req.session.seasonName || null,
   });
 });
 
 app.post('/api/auth/upgrade', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
-  if (req.session.role === 'master') return res.json({ message: 'Already a director.' });
   const { masterCode } = req.body;
   if (!masterCode || masterCode !== process.env.MASTER_CODE)
     return res.status(403).json({ error: 'Incorrect access code.' });
   try {
-    await pool.query('UPDATE users SET role = $1 WHERE id = $2', ['master', req.session.userId]);
-    req.session.role = 'master';
-    res.json({ message: 'Account upgraded to director.' });
+    await pool.query('UPDATE users SET is_director = TRUE WHERE id = $1', [req.session.userId]);
+    req.session.isDirector = true;
+    req.session.mode = 'director';
+    res.json({ message: 'Director access granted.', mode: 'director' });
   } catch (err) {
     console.error('Upgrade error:', err.message);
     res.status(500).json({ error: 'Could not upgrade account.' });
   }
+});
+
+// Switch between auditionee and director mode
+app.post('/api/auth/switch-mode', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
+  const { mode } = req.body;
+  if (!['auditionee', 'director'].includes(mode))
+    return res.status(400).json({ error: 'Invalid mode.' });
+  if (mode === 'director' && !req.session.isDirector && req.session.role !== 'master')
+    return res.status(403).json({ error: 'No director access.' });
+  req.session.mode = mode;
+  res.json({ mode });
 });
 
 // ── Org routes ────────────────────────────────────────────────────────────────
@@ -823,6 +849,9 @@ async function runMigrations() {
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
       DO $$ BEGIN
         ALTER TABLE pieces ADD COLUMN season_id INTEGER REFERENCES seasons(id) ON DELETE CASCADE;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN is_director BOOLEAN NOT NULL DEFAULT FALSE;
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
     `);
     console.log('Migrations complete.');

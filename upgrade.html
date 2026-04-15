@@ -42,7 +42,12 @@
       const res  = await fetch('/api/auth/me').catch(() => null);
       if (!res || !res.ok) { window.location.href = 'login.html'; return; }
       const user = await res.json();
-      if (user.role === 'master') { window.location.href = 'master.html'; return; }
+      // Already a director — just switch mode and go
+      if (user.isDirector) {
+        await fetch('/api/auth/switch-mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'director' }) });
+        window.location.href = 'org-select.html';
+        return;
+      }
     })();
 
     document.getElementById('upgrade-form').addEventListener('submit', async (e) => {
@@ -68,9 +73,9 @@
           return;
         }
 
-        successEl.textContent = 'Access granted! Redirecting to director dashboard...';
+        successEl.textContent = 'Director access granted! Redirecting...';
         successEl.classList.remove('d-none');
-        setTimeout(() => { window.location.href = 'master.html'; }, 1500);
+        setTimeout(() => { window.location.href = 'org-select.html'; }, 1500);
 
       } catch (err) {
         errorEl.textContent = 'Could not connect to server.';
