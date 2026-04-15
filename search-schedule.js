@@ -165,13 +165,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (data.fully_available.length === 0) {
         noFull.style.display = 'block';
       } else {
-        data.fully_available.forEach(d => appendDancerItem(fullList, d));
+        data.fully_available.forEach(d => appendDancerItem(fullList, d, pieceId));
       }
 
       if (data.partially_available.length === 0) {
         noPartial.style.display = 'block';
       } else {
-        data.partially_available.forEach(d => appendDancerItem(partialList, d));
+        data.partially_available.forEach(d => appendDancerItem(partialList, d, pieceId));
       }
     } catch (err) {
       fullList.innerHTML = '<li class="text-danger" style="font-size:13px;">Could not load availability.</li>';
@@ -179,15 +179,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Renders a clickable dancer name in the availability list
-  function appendDancerItem(listEl, dancer) {
-    const li   = document.createElement('li');
+  // Renders a clickable dancer name + cast buttons in the availability list
+  function appendDancerItem(listEl, dancer, pieceId) {
+    const li = document.createElement('li');
+    li.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;';
+
     const link = document.createElement('span');
     link.textContent   = `${dancer.first_name} ${dancer.last_name}`;
-    link.style.cssText = 'cursor:pointer;text-decoration:underline;color:#0d6efd;font-size:13px;';
+    link.style.cssText = 'cursor:pointer;text-decoration:underline;color:#0d6efd;font-size:13px;flex:1;';
     link.title         = 'Click to view schedule';
     link.addEventListener('click', () => {
-      // Close availability modal, then open dancer profile
       bootstrap.Modal.getInstance(document.getElementById('availabilityModal')).hide();
       document.getElementById('availabilityModal').addEventListener(
         'hidden.bs.modal',
@@ -195,8 +196,54 @@ document.addEventListener('DOMContentLoaded', async () => {
         { once: true }
       );
     });
+
+    const btnGroup = document.createElement('div');
+    btnGroup.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
+
+    const castBtn = document.createElement('button');
+    castBtn.textContent   = '+ Cast';
+    castBtn.className     = 'btn btn-outline-primary';
+    castBtn.style.cssText = 'font-size:11px;padding:1px 7px;line-height:1.5;';
+    castBtn.addEventListener('click', () => addToCast(pieceId, dancer.id, 'member', castBtn, understudyBtn));
+
+    const understudyBtn = document.createElement('button');
+    understudyBtn.textContent   = '+ Understudy';
+    understudyBtn.className     = 'btn btn-outline-secondary';
+    understudyBtn.style.cssText = 'font-size:11px;padding:1px 7px;line-height:1.5;';
+    understudyBtn.addEventListener('click', () => addToCast(pieceId, dancer.id, 'understudy', understudyBtn, castBtn));
+
+    btnGroup.appendChild(castBtn);
+    btnGroup.appendChild(understudyBtn);
     li.appendChild(link);
+    li.appendChild(btnGroup);
     listEl.appendChild(li);
+  }
+
+  async function addToCast(pieceId, userId, castRole, clickedBtn, otherBtn) {
+    clickedBtn.disabled = true;
+    otherBtn.disabled   = true;
+    try {
+      const res = await fetch('/api/piece-casts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ piece_id: pieceId, user_id: userId, cast_role: castRole }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || 'Failed to add to cast.');
+        clickedBtn.disabled = false;
+        otherBtn.disabled   = false;
+        return;
+      }
+      clickedBtn.textContent = castRole === 'member' ? '✓ Cast' : '✓ Understudy';
+      clickedBtn.className   = 'btn btn-success';
+      clickedBtn.style.cssText = 'font-size:11px;padding:1px 7px;line-height:1.5;';
+      otherBtn.style.display = 'none';
+    } catch (err) {
+      console.error(err);
+      clickedBtn.disabled = false;
+      otherBtn.disabled   = false;
+    }
   }
 
   // ── Dancer profile modal ──────────────────────────────────────────────────────

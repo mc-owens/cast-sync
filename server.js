@@ -769,6 +769,68 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
   }
 });
 
+// ── Piece casts routes ────────────────────────────────────────────────────────
+
+// GET /api/piece-casts — all casts for pieces in the current season
+app.get('/api/piece-casts', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      `SELECT pc.id, pc.piece_id, pc.user_id, pc.cast_role,
+              p.name AS piece_name, p.color AS piece_color,
+              dp.first_name, dp.last_name
+       FROM piece_casts pc
+       JOIN pieces p ON p.id = pc.piece_id
+       JOIN dancer_profiles dp ON dp.user_id = pc.user_id
+       WHERE p.season_id = $1
+       ORDER BY p.created_at ASC, pc.cast_role ASC, dp.last_name ASC, dp.first_name ASC`,
+      [seasonId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to fetch casts.' });
+  }
+});
+
+// POST /api/piece-casts — add (or update role of) a dancer in a piece's cast
+app.post('/api/piece-casts', requireAuth('master'), async (req, res) => {
+  const { piece_id, user_id, cast_role } = req.body;
+  if (!piece_id || !user_id || !cast_role) return res.status(400).json({ error: 'piece_id, user_id, and cast_role required.' });
+  if (!['member', 'understudy'].includes(cast_role)) return res.status(400).json({ error: 'cast_role must be member or understudy.' });
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    // Verify piece belongs to this season
+    const pieceCheck = await pool.query('SELECT id FROM pieces WHERE id = $1 AND season_id = $2', [piece_id, seasonId]);
+    if (pieceCheck.rows.length === 0) return res.status(403).json({ error: 'Piece not in active season.' });
+
+    const result = await pool.query(
+      `INSERT INTO piece_casts (piece_id, user_id, cast_role)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (piece_id, user_id) DO UPDATE SET cast_role = EXCLUDED.cast_role
+       RETURNING id, cast_role`,
+      [piece_id, user_id, cast_role]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to add to cast.' });
+  }
+});
+
+// DELETE /api/piece-casts/:id — remove a dancer from a piece's cast
+app.delete('/api/piece-casts/:id', requireAuth('master'), async (req, res) => {
+  try {
+    await pool.query('DELETE FROM piece_casts WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Removed from cast.' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to remove from cast.' });
+  }
+});
+
 // ── Auto-migration ────────────────────────────────────────────────────────────
 
 async function runMigrations() {
@@ -840,6 +902,14 @@ async function runMigrations() {
         start_time VARCHAR(20),
         end_time   VARCHAR(20),
         created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS piece_casts (
+        id         SERIAL PRIMARY KEY,
+        piece_id   INTEGER REFERENCES pieces(id) ON DELETE CASCADE,
+        user_id    INTEGER REFERENCES users(id)  ON DELETE CASCADE,
+        cast_role  VARCHAR(20) NOT NULL DEFAULT 'member',
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (piece_id, user_id)
       );
     `);
     // Safe column additions (ALTER TABLE IF NOT EXISTS column doesn't exist in older PG, use DO block)
