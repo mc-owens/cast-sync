@@ -260,7 +260,7 @@
       try {
         const res  = await fetch('/api/auth/me');
         const user = await res.json();
-        if (!res.ok || user.role !== 'master') { window.location.href = 'login.html'; return; }
+        if (!res.ok || (!user.isDirector && user.role !== 'master')) { window.location.href = 'login.html'; return; }
         const nav = document.querySelector('.navbar-nav') || document.querySelector('.navbar .container-fluid');
         document.querySelector('.navbar .container-fluid').insertAdjacentHTML('beforeend',
           `<div class="d-flex align-items-center gap-2">

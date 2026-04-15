@@ -166,9 +166,9 @@
           const res  = await fetch('/api/auth/me');
           const user = await res.json();
           if (!res.ok) { window.location.href = 'login.html'; return; }
-          // Pure directors with no auditionee need → send to director side
-          if (user.role === 'master' && !user.isDirector) { window.location.href = 'org-select.html'; return; }
-          // If in director mode, redirect there
+          // Pure master account (not dual-role) → always go to director side
+          if (user.role === 'master') { window.location.href = 'org-select.html'; return; }
+          // Dual-role user in director mode → go to director side
           if (user.mode === 'director') { window.location.href = 'org-select.html'; return; }
 
           const nav = document.querySelector('.navbar-nav');
