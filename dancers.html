@@ -112,7 +112,7 @@
     </div>
 
     <!-- Filter + sort controls -->
-    <div class="d-flex flex-wrap gap-3 align-items-center mb-3" id="filter-row" style="display:none!important;">
+    <div class="d-flex flex-wrap gap-3 align-items-center mb-3 d-none" id="filter-row">
       <div class="d-flex align-items-center gap-2">
         <label class="form-label mb-0 fw-semibold" style="font-size:13px;white-space:nowrap;">Grade</label>
         <select id="filter-grade" class="form-select form-select-sm" style="width:auto;">
@@ -289,7 +289,7 @@
         document.getElementById('submission-count').textContent = `all ${allDancers.length}`;
 
         // Show filter controls
-        document.getElementById('filter-row').style.removeProperty('display');
+        document.getElementById('filter-row').classList.remove('d-none');
 
         document.getElementById('filter-grade').addEventListener('change', applyFilterSort);
         document.getElementById('sort-by').addEventListener('change', applyFilterSort);
