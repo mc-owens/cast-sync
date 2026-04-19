@@ -87,9 +87,12 @@
           <div id="sched-success" class="alert alert-success d-none"></div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Piece / Choreographer Name</label>
-            <input type="text" id="piece-name-input" class="form-control" placeholder="e.g. Stefan's Piece" autocomplete="off" />
-            <div class="form-text">A new piece will be created with this name.</div>
+            <label class="form-label fw-semibold">Piece</label>
+            <select id="piece-select" class="form-select mb-2"></select>
+            <div id="new-piece-wrapper" class="d-none">
+              <input type="text" id="piece-name-input" class="form-control" placeholder="e.g. Nancy's Piece" autocomplete="off" />
+              <div class="form-text">A new piece will be created.</div>
+            </div>
           </div>
 
           <div class="mb-3">
@@ -267,7 +270,7 @@
       try {
         const res  = await fetch('/api/auth/me');
         const user = await res.json();
-        if (!res.ok || user.role !== 'master') { window.location.href = 'login.html'; return; }
+        if (!res.ok || (user.role !== 'master' && user.mode !== 'director')) { window.location.href = 'login.html'; return; }
         if (!user.orgId) { window.location.href = 'org-select.html'; return; }
         const nav = document.querySelector('.navbar-nav');
         nav.insertAdjacentHTML('beforeend',

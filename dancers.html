@@ -111,11 +111,36 @@
       </button>
     </div>
 
+    <!-- Filter + sort controls -->
+    <div class="d-flex flex-wrap gap-3 align-items-center mb-3" id="filter-row" style="display:none!important;">
+      <div class="d-flex align-items-center gap-2">
+        <label class="form-label mb-0 fw-semibold" style="font-size:13px;white-space:nowrap;">Grade</label>
+        <select id="filter-grade" class="form-select form-select-sm" style="width:auto;">
+          <option value="">All grades</option>
+          <option value="Senior">Senior</option>
+          <option value="Junior">Junior</option>
+          <option value="Sophomore">Sophomore</option>
+          <option value="Freshman">Freshman</option>
+        </select>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <label class="form-label mb-0 fw-semibold" style="font-size:13px;white-space:nowrap;">Sort by</label>
+        <select id="sort-by" class="form-select form-select-sm" style="width:auto;">
+          <option value="name">Name (A–Z)</option>
+          <option value="grade">Grade</option>
+          <option value="pieces">Pieces cast (most)</option>
+          <option value="date">Submission date</option>
+        </select>
+      </div>
+    </div>
+
     <div id="loading-msg" class="text-muted" style="font-size:14px;">Loading...</div>
 
     <div id="empty-msg" class="alert alert-info d-none">
       No submissions yet. Auditionees will appear here after submitting their forms.
     </div>
+
+    <div id="no-match-msg" class="text-muted d-none" style="font-size:14px;">No dancers match the selected filter.</div>
 
     <table class="table table-hover align-middle d-none" id="dancers-table" style="font-size:14px;">
       <thead class="table-light">
@@ -123,6 +148,7 @@
           <th>Name</th>
           <th>Email</th>
           <th>Grade</th>
+          <th>Pieces Cast</th>
           <th>Submitted</th>
         </tr>
       </thead>
@@ -200,39 +226,75 @@
       }
     }
 
+    const GRADE_ORDER = { Senior: 0, Junior: 1, Sophomore: 2, Freshman: 3 };
+    let allDancers = [];
+
     function formatDate(isoStr) {
       return new Date(isoStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function applyFilterSort() {
+      const grade  = document.getElementById('filter-grade').value;
+      const sortBy = document.getElementById('sort-by').value;
+
+      let list = allDancers.filter(d => !grade || d.grade === grade);
+
+      list.sort((a, b) => {
+        if (sortBy === 'name')   return a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name);
+        if (sortBy === 'grade')  return (GRADE_ORDER[a.grade] ?? 99) - (GRADE_ORDER[b.grade] ?? 99);
+        if (sortBy === 'pieces') return (b.piece_count || 0) - (a.piece_count || 0);
+        if (sortBy === 'date')   return new Date(b.created_at) - new Date(a.created_at);
+        return 0;
+      });
+
+      const tbody    = document.getElementById('dancers-tbody');
+      const noMatch  = document.getElementById('no-match-msg');
+      tbody.innerHTML = '';
+
+      if (list.length === 0) {
+        noMatch.classList.remove('d-none');
+        document.getElementById('dancers-table').classList.add('d-none');
+        return;
+      }
+      noMatch.classList.add('d-none');
+      document.getElementById('dancers-table').classList.remove('d-none');
+
+      list.forEach(d => {
+        const tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.innerHTML = `
+          <td><span style="color:#0d6efd;text-decoration:underline;">${d.last_name}, ${d.first_name}</span></td>
+          <td style="color:#555;">${d.email || '—'}</td>
+          <td>${d.grade || '—'}</td>
+          <td>${d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>'}</td>
+          <td style="color:#888;">${formatDate(d.created_at)}</td>`;
+        tr.addEventListener('click', () => openDancerModal(d.id));
+        tbody.appendChild(tr);
+      });
     }
 
     async function loadDancers() {
       try {
         const res     = await fetch('/api/dancers');
-        const dancers = await res.json();
+        allDancers    = await res.json();
 
         document.getElementById('loading-msg').style.display = 'none';
 
-        if (dancers.length === 0) {
+        if (allDancers.length === 0) {
           document.getElementById('empty-msg').classList.remove('d-none');
           return;
         }
 
-        document.getElementById('dancer-count-label').textContent = `${dancers.length} submission${dancers.length === 1 ? '' : 's'}`;
-        document.getElementById('submission-count').textContent = `all ${dancers.length}`;
+        document.getElementById('dancer-count-label').textContent = `${allDancers.length} submission${allDancers.length === 1 ? '' : 's'}`;
+        document.getElementById('submission-count').textContent = `all ${allDancers.length}`;
 
-        const tbody = document.getElementById('dancers-tbody');
-        dancers.forEach(d => {
-          const tr = document.createElement('tr');
-          tr.style.cursor = 'pointer';
-          tr.innerHTML = `
-            <td><span style="color:#0d6efd;text-decoration:underline;">${d.last_name}, ${d.first_name}</span></td>
-            <td style="color:#555;">${d.email || '—'}</td>
-            <td>${d.grade || '—'}</td>
-            <td style="color:#888;">${formatDate(d.created_at)}</td>`;
-          tr.addEventListener('click', () => openDancerModal(d.id));
-          tbody.appendChild(tr);
-        });
+        // Show filter controls
+        document.getElementById('filter-row').style.removeProperty('display');
 
-        document.getElementById('dancers-table').classList.remove('d-none');
+        document.getElementById('filter-grade').addEventListener('change', applyFilterSort);
+        document.getElementById('sort-by').addEventListener('change', applyFilterSort);
+
+        applyFilterSort();
       } catch (err) {
         console.error(err);
         document.getElementById('loading-msg').textContent = 'Could not load submissions.';
@@ -259,7 +321,7 @@
       try {
         const res  = await fetch('/api/auth/me');
         const user = await res.json();
-        if (!res.ok || user.role !== 'master') { window.location.href = 'login.html'; return; }
+        if (!res.ok || (user.role !== 'master' && user.mode !== 'director')) { window.location.href = 'login.html'; return; }
         if (!user.orgId) { window.location.href = 'org-select.html'; return; }
         const nav = document.querySelector('.navbar-nav');
         nav.insertAdjacentHTML('beforeend',

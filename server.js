@@ -565,7 +565,10 @@ app.get('/api/dancers', requireAuth('master'), async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT dp.id AS profile_id, u.id AS user_id,
-              dp.first_name, dp.last_name, u.email, dp.grade, sub.created_at
+              dp.first_name, dp.last_name, u.email, dp.grade, sub.created_at,
+              (SELECT COUNT(*) FROM piece_casts pc
+               JOIN pieces p ON p.id = pc.piece_id
+               WHERE pc.user_id = u.id AND p.season_id = $2) AS piece_count
        FROM submissions sub
        JOIN dancer_profiles dp ON dp.user_id = sub.user_id
        JOIN users u ON u.id = sub.user_id

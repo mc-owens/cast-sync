@@ -150,18 +150,18 @@
               <div class="collapse mt-3" id="piece-body-${piece.id}">
                 <div class="mb-3">
                   <h6 class="mb-2" style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555;">
-                    Cast Members <span class="cast-badge member ms-1">${members.length}</span>
+                    Cast Members <span id="member-badge-${piece.id}" class="cast-badge member ms-1">${members.length}</span>
                   </h6>
                   <div id="member-list-${piece.id}">
-                    ${membersHTML || '<p class="text-muted mb-0" style="font-size:13px;">None added yet.</p>'}
+                    ${membersHTML || '<p class="text-muted mb-0 cast-empty" style="font-size:13px;">None added yet.</p>'}
                   </div>
                 </div>
                 <div>
                   <h6 class="mb-2" style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555;">
-                    Understudies <span class="cast-badge understudy ms-1">${understudies.length}</span>
+                    Understudies <span id="understudy-badge-${piece.id}" class="cast-badge understudy ms-1">${understudies.length}</span>
                   </h6>
                   <div id="understudy-list-${piece.id}">
-                    ${understudyHTML || '<p class="text-muted mb-0" style="font-size:13px;">None added yet.</p>'}
+                    ${understudyHTML || '<p class="text-muted mb-0 cast-empty" style="font-size:13px;">None added yet.</p>'}
                   </div>
                 </div>
               </div>
@@ -186,13 +186,14 @@
       return casts.map(c => `
         <div class="dancer-row" id="cast-row-${c.id}">
           <span>${c.last_name}, ${c.first_name}</span>
-          <button class="remove-btn" data-remove-id="${c.id}" data-piece-id="${pieceId}" title="Remove">&#x2715;</button>
+          <button class="remove-btn" data-remove-id="${c.id}" data-piece-id="${pieceId}" data-role="${role}" title="Remove">&#x2715;</button>
         </div>`).join('');
     }
 
     async function removeCast(btn) {
       const castId  = btn.dataset.removeId;
       const pieceId = btn.dataset.pieceId;
+      const role    = btn.dataset.role;
       try {
         const res = await fetch(`/api/piece-casts/${castId}`, { method: 'DELETE' });
         if (!res.ok) { alert('Could not remove dancer.'); return; }
@@ -201,21 +202,27 @@
         const row = document.getElementById(`cast-row-${castId}`);
         if (row) row.remove();
 
-        // Refresh the summary count by re-querying casts for this piece
-        await refreshPieceSummary(pieceId);
+        // If the list is now empty, show placeholder
+        const listEl = document.getElementById(`${role}-list-${pieceId}`);
+        if (listEl && listEl.querySelectorAll('.dancer-row').length === 0) {
+          listEl.innerHTML = '<p class="text-muted mb-0 cast-empty" style="font-size:13px;">None added yet.</p>';
+        }
+
+        refreshPieceSummary(pieceId);
       } catch (err) {
         console.error(err);
       }
     }
 
-    async function refreshPieceSummary(pieceId) {
-      const res    = await fetch('/api/piece-casts');
-      const casts  = await res.json();
-      const mine   = casts.filter(c => c.piece_id === parseInt(pieceId));
-      const mCount = mine.filter(c => c.cast_role === 'member').length;
-      const uCount = mine.filter(c => c.cast_role === 'understudy').length;
+    function refreshPieceSummary(pieceId) {
+      const mCount = document.querySelectorAll(`#member-list-${pieceId} .dancer-row`).length;
+      const uCount = document.querySelectorAll(`#understudy-list-${pieceId} .dancer-row`).length;
       const label  = document.getElementById(`toggle-label-${pieceId}`);
       if (label) label.textContent = `${mCount} cast · ${uCount} understudy`;
+      const mBadge = document.getElementById(`member-badge-${pieceId}`);
+      if (mBadge) mBadge.textContent = mCount;
+      const uBadge = document.getElementById(`understudy-badge-${pieceId}`);
+      if (uBadge) uBadge.textContent = uCount;
     }
 
     loadCasting();
@@ -226,7 +233,7 @@
       try {
         const res  = await fetch('/api/auth/me');
         const user = await res.json();
-        if (!res.ok || user.role !== 'master') { window.location.href = 'login.html'; return; }
+        if (!res.ok || (user.role !== 'master' && user.mode !== 'director')) { window.location.href = 'login.html'; return; }
         if (!user.orgId) { window.location.href = 'org-select.html'; return; }
         const nav = document.querySelector('.navbar-nav');
         nav.insertAdjacentHTML('beforeend',

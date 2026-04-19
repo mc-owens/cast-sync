@@ -66,6 +66,39 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) { pieces = []; }
   }
 
+  function populatePieceSelect() {
+    const sel = document.getElementById('piece-select');
+    sel.innerHTML = '';
+    pieces.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value       = p.id;
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+    // Always add "Create new piece..." at the bottom
+    const newOpt = document.createElement('option');
+    newOpt.value       = '__new__';
+    newOpt.textContent = '+ Create new piece…';
+    sel.appendChild(newOpt);
+    // Default: first piece if any, else __new__
+    sel.value = pieces.length > 0 ? pieces[0].id : '__new__';
+    toggleNewPieceInput(sel.value);
+  }
+
+  function toggleNewPieceInput(val) {
+    const wrapper = document.getElementById('new-piece-wrapper');
+    if (val === '__new__') {
+      wrapper.classList.remove('d-none');
+    } else {
+      wrapper.classList.add('d-none');
+      document.getElementById('piece-name-input').value = '';
+    }
+  }
+
+  document.getElementById('piece-select').addEventListener('change', function () {
+    toggleNewPieceInput(this.value);
+  });
+
   // ── Search ────────────────────────────────────────────────────────────────────
 
   let debounceTimer = null;
@@ -289,10 +322,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Add Rehearsal to Schedule ─────────────────────────────────────────────────
 
-  addSchedBtn.addEventListener('click', () => {
+  addSchedBtn.addEventListener('click', async () => {
     document.getElementById('sched-error').classList.add('d-none');
     document.getElementById('sched-success').classList.add('d-none');
-    document.getElementById('piece-name-input').value = '';
+
+    // Refresh pieces list then rebuild the piece dropdown
+    await loadPieces();
+    populatePieceSelect();
 
     // Populate slot dropdown — one option per shared interval
     const slotEl = document.getElementById('slot-select');
@@ -322,22 +358,27 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   document.getElementById('confirm-sched-btn').addEventListener('click', async () => {
-    const pieceName = document.getElementById('piece-name-input').value.trim();
-    const slotVal   = document.getElementById('slot-select').value;
-    const startVal  = document.getElementById('sched-start-time').value;
-    const endVal    = document.getElementById('sched-end-time').value;
-    const errorEl   = document.getElementById('sched-error');
-    const successEl = document.getElementById('sched-success');
-    const btn       = document.getElementById('confirm-sched-btn');
+    const pieceSelectVal = document.getElementById('piece-select').value;
+    const slotVal        = document.getElementById('slot-select').value;
+    const startVal       = document.getElementById('sched-start-time').value;
+    const endVal         = document.getElementById('sched-end-time').value;
+    const errorEl        = document.getElementById('sched-error');
+    const successEl      = document.getElementById('sched-success');
+    const btn            = document.getElementById('confirm-sched-btn');
 
     errorEl.classList.add('d-none');
     successEl.classList.add('d-none');
 
-    if (!pieceName) {
-      errorEl.textContent = 'Please enter a piece or choreographer name.';
-      errorEl.classList.remove('d-none');
-      return;
+    // Validate new piece name if creating
+    if (pieceSelectVal === '__new__') {
+      const newName = document.getElementById('piece-name-input').value.trim();
+      if (!newName) {
+        errorEl.textContent = 'Please enter a name for the new piece.';
+        errorEl.classList.remove('d-none');
+        return;
+      }
     }
+
     if (!startVal || !endVal) {
       errorEl.textContent = 'Please enter a rehearsal start and end time.';
       errorEl.classList.remove('d-none');
@@ -359,27 +400,35 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.textContent = 'Saving…';
 
     try {
-      // 1. Create a new piece
-      const color    = PALETTE[pieces.length % PALETTE.length];
-      const pieceRes = await fetch('/api/pieces', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ name: pieceName, color }),
-      });
+      let pieceId, pieceName;
 
-      if (!pieceRes.ok) {
-        const data = await pieceRes.json();
-        throw new Error(data.error || 'Failed to create piece.');
+      if (pieceSelectVal === '__new__') {
+        // Create a new piece
+        pieceName       = document.getElementById('piece-name-input').value.trim();
+        const color     = PALETTE[pieces.length % PALETTE.length];
+        const pieceRes  = await fetch('/api/pieces', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ name: pieceName, color }),
+        });
+        if (!pieceRes.ok) {
+          const data = await pieceRes.json();
+          throw new Error(data.error || 'Failed to create piece.');
+        }
+        const piece = await pieceRes.json();
+        pieces.push(piece);
+        pieceId = piece.id;
+      } else {
+        // Use existing piece
+        pieceId   = parseInt(pieceSelectVal);
+        pieceName = pieces.find(p => p.id === pieceId)?.name || 'Piece';
       }
 
-      const piece = await pieceRes.json();
-      pieces.push(piece);
-
-      // 2. Add the rehearsal block
+      // Add the rehearsal block
       const blockRes = await fetch('/api/master-blocks', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ piece_id: piece.id, day, start_time: startTime, end_time: endTime }),
+        body:    JSON.stringify({ piece_id: pieceId, day, start_time: startTime, end_time: endTime }),
       });
 
       if (!blockRes.ok) {

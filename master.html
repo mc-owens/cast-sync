@@ -141,7 +141,7 @@
       try {
         const res  = await fetch('/api/auth/me');
         const user = await res.json();
-        if (!res.ok || user.role !== 'master') { window.location.href = 'login.html'; return; }
+        if (!res.ok || (user.role !== 'master' && user.mode !== 'director')) { window.location.href = 'login.html'; return; }
         if (!user.orgId) { window.location.href = 'org-select.html'; return; }
 
         // Org/season banner
