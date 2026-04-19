@@ -5,12 +5,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const MINI_END   = 23 * 60;
   const MINI_RANGE = MINI_END - MINI_START;
 
+  // Auto-assigned colors for new pieces
+  const PALETTE = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1','#ff9da7'];
+
   // ── State ─────────────────────────────────────────────────────────────────────
-  let selectedDancers    = [];  // each dancer: { id (dp.id), user_id, first_name, last_name, availability }
-  let pieces             = [];
+  let selectedDancers    = []; // { id (profile id), user_id, first_name, last_name, availability }
+  let pieces             = []; // pieces in this season (kept in sync as new ones are created)
   let currentCommonSlots = []; // [{ day, start (minutes), end (minutes) }]
 
-  // ── DOM references ────────────────────────────────────────────────────────────
+  // ── DOM ───────────────────────────────────────────────────────────────────────
   const searchInput  = document.getElementById('dancer-search');
   const dropdown     = document.getElementById('search-dropdown');
   const castList     = document.getElementById('cast-list');
@@ -23,7 +26,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const noCommon     = document.getElementById('no-common');
   const actionPanel  = document.getElementById('action-panel');
   const addSchedBtn  = document.getElementById('add-to-schedule-btn');
-  const castBtn      = document.getElementById('cast-to-piece-btn');
 
   // ── Time helpers ──────────────────────────────────────────────────────────────
 
@@ -36,12 +38,23 @@ document.addEventListener('DOMContentLoaded', () => {
     return hour * 60 + m;
   }
 
-  function minutesToTimeString(totalMinutes) {
-    const h    = Math.floor(totalMinutes / 60);
-    const m    = totalMinutes % 60;
+  function minutesToTimeString(min) {
+    const h    = Math.floor(min / 60);
+    const m    = min % 60;
     const ampm = h >= 12 ? 'PM' : 'AM';
     const hr   = h % 12 === 0 ? 12 : h % 12;
     return `${hr}:${m.toString().padStart(2, '0')} ${ampm}`;
+  }
+
+  // minutes → "HH:MM" for <input type="time">
+  function minutesToHH24(min) {
+    return `${Math.floor(min / 60).toString().padStart(2, '0')}:${(min % 60).toString().padStart(2, '0')}`;
+  }
+
+  // "HH:MM" → app time string "H:MM AM/PM"
+  function hh24ToTimeString(val) {
+    const [h, m] = val.split(':').map(Number);
+    return minutesToTimeString(h * 60 + m);
   }
 
   // ── Pieces ────────────────────────────────────────────────────────────────────
@@ -51,21 +64,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/pieces');
       pieces = res.ok ? await res.json() : [];
     } catch (e) { pieces = []; }
-    populatePieceSelects();
-    updateActionPanel();
   }
 
-  function populatePieceSelects() {
-    ['cast-piece-select', 'sched-piece-select'].forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.innerHTML = pieces.length === 0
-        ? '<option value="">No pieces yet — create them on Master Schedule</option>'
-        : pieces.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-    });
-  }
-
-  // ── Search (debounced) ────────────────────────────────────────────────────────
+  // ── Search ────────────────────────────────────────────────────────────────────
 
   let debounceTimer = null;
 
@@ -76,24 +77,19 @@ document.addEventListener('DOMContentLoaded', () => {
     debounceTimer = setTimeout(() => fetchDancers(q), 300);
   });
 
-  searchInput.addEventListener('keydown', e => {
-    if (e.key === 'Escape') hideDropdown();
-  });
-
-  document.addEventListener('click', e => {
-    if (!e.target.closest('.search-wrapper')) hideDropdown();
-  });
+  searchInput.addEventListener('keydown', e => { if (e.key === 'Escape') hideDropdown(); });
+  document.addEventListener('click', e => { if (!e.target.closest('.search-wrapper')) hideDropdown(); });
 
   async function fetchDancers(q) {
     try {
-      const res     = await fetch(`/api/dancers/search?q=${encodeURIComponent(q)}`);
-      const dancers = await res.json();
+      const res      = await fetch(`/api/dancers/search?q=${encodeURIComponent(q)}`);
+      const dancers  = await res.json();
       const filtered = dancers.filter(d => !selectedDancers.find(s => s.id === d.id));
 
+      dropdown.innerHTML = '';
       if (filtered.length === 0) {
         dropdown.innerHTML = '<div class="dropdown-item-dancer text-muted">No results found.</div>';
       } else {
-        dropdown.innerHTML = '';
         filtered.forEach(dancer => {
           const item       = document.createElement('div');
           item.className   = 'dropdown-item-dancer';
@@ -111,7 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
     dropdown.innerHTML     = '';
   }
 
-  // ── Cast management ───────────────────────────────────────────────────────────
+  // ── Cast list ─────────────────────────────────────────────────────────────────
 
   function addDancer(dancer) {
     if (selectedDancers.find(d => d.id === dancer.id)) return;
@@ -129,16 +125,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderCast() {
-    Array.from(castList.children).forEach(child => {
-      if (child !== castEmptyMsg) child.remove();
-    });
-
+    Array.from(castList.children).forEach(c => { if (c !== castEmptyMsg) c.remove(); });
     castCount.textContent = `${selectedDancers.length} selected`;
 
-    if (selectedDancers.length === 0) {
-      castEmptyMsg.style.display = 'block';
-      return;
-    }
+    if (selectedDancers.length === 0) { castEmptyMsg.style.display = 'block'; return; }
     castEmptyMsg.style.display = 'none';
 
     selectedDancers.forEach(dancer => {
@@ -153,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const removeBtn = document.createElement('button');
       removeBtn.textContent = '×';
-      removeBtn.title       = 'Remove from cast';
+      removeBtn.title       = 'Remove';
       removeBtn.addEventListener('click', () => removeDancer(dancer.id));
 
       chip.appendChild(nameBtn);
@@ -168,71 +158,54 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res    = await fetch(`/api/dancers/${userId}`);
       const dancer = await res.json();
-
-      document.getElementById('dancer-modal-name').textContent =
-        `${dancer.first_name} ${dancer.last_name}`;
-
+      document.getElementById('dancer-modal-name').textContent = `${dancer.first_name} ${dancer.last_name}`;
       renderMiniSchedule(dancer.availability || []);
       populateDancerDetails(dancer);
       document.getElementById('dancer-full-profile').classList.remove('show');
       new bootstrap.Modal(document.getElementById('dancerModal')).show();
-    } catch (err) {
-      console.error(err);
-      alert('Could not load dancer profile.');
-    }
+    } catch (err) { console.error(err); alert('Could not load dancer profile.'); }
   }
 
   function renderMiniSchedule(availability) {
     const container = document.getElementById('mini-schedule-container');
     container.innerHTML = '';
-
     const wrapper = document.createElement('div');
     wrapper.style.cssText = 'display:flex;height:180px;border:1px solid #ddd;border-radius:4px;overflow:hidden;background:#fafafa;';
-
     DAYS.forEach((day, i) => {
       const col = document.createElement('div');
       col.style.cssText = 'flex:1;position:relative;border-right:1px solid #eee;';
-
       const label = document.createElement('div');
       label.style.cssText = 'font-size:9px;text-align:center;background:#f0f0f0;color:#666;padding:2px 0;border-bottom:1px solid #ddd;position:absolute;top:0;left:0;right:0;';
       label.textContent = DAYS_SHORT[i];
       col.appendChild(label);
-
-      const blockArea = document.createElement('div');
-      blockArea.style.cssText = 'position:absolute;top:18px;left:0;right:0;bottom:0;';
-
+      const area = document.createElement('div');
+      area.style.cssText = 'position:absolute;top:18px;left:0;right:0;bottom:0;';
       availability.filter(b => b.day === day).forEach(block => {
-        const startMin    = timeToMinutes(block.startTime);
-        const endMin      = timeToMinutes(block.endTime);
-        const clampStart  = Math.max(startMin, MINI_START);
-        const clampEnd    = Math.min(endMin, MINI_END);
-        if (clampStart >= clampEnd) return;
-        const topPct    = ((clampStart - MINI_START) / MINI_RANGE) * 100;
-        const heightPct = ((clampEnd - clampStart) / MINI_RANGE) * 100;
-        const blockEl   = document.createElement('div');
-        blockEl.style.cssText = `position:absolute;left:2px;right:2px;top:${topPct}%;height:${heightPct}%;min-height:2px;background:rgba(52,152,219,0.55);border:1px solid #3498db;border-radius:2px;`;
-        blockEl.title = `${block.startTime} – ${block.endTime}`;
-        blockArea.appendChild(blockEl);
+        const s = timeToMinutes(block.startTime), e = timeToMinutes(block.endTime);
+        const cs = Math.max(s, MINI_START), ce = Math.min(e, MINI_END);
+        if (cs >= ce) return;
+        const el = document.createElement('div');
+        el.style.cssText = `position:absolute;left:2px;right:2px;top:${((cs-MINI_START)/MINI_RANGE)*100}%;height:${((ce-cs)/MINI_RANGE)*100}%;min-height:2px;background:rgba(52,152,219,0.55);border:1px solid #3498db;border-radius:2px;`;
+        el.title = `${block.startTime} – ${block.endTime}`;
+        area.appendChild(el);
       });
-
-      col.appendChild(blockArea);
+      col.appendChild(area);
       wrapper.appendChild(col);
     });
-
     container.appendChild(wrapper);
   }
 
-  function populateDancerDetails(dancer) {
-    document.getElementById('detail-email').textContent     = dancer.email             || '—';
-    document.getElementById('detail-phone').textContent     = dancer.phone             || '—';
-    document.getElementById('detail-address').textContent   = dancer.address           || '—';
-    document.getElementById('detail-grade').textContent     = dancer.grade             || '—';
-    document.getElementById('detail-technique').textContent = dancer.technique_classes || '—';
-    document.getElementById('detail-injuries').textContent  = dancer.injuries          || '—';
-    document.getElementById('detail-absences').textContent  = dancer.absences          || '—';
+  function populateDancerDetails(d) {
+    document.getElementById('detail-email').textContent     = d.email             || '—';
+    document.getElementById('detail-phone').textContent     = d.phone             || '—';
+    document.getElementById('detail-address').textContent   = d.address           || '—';
+    document.getElementById('detail-grade').textContent     = d.grade             || '—';
+    document.getElementById('detail-technique').textContent = d.technique_classes || '—';
+    document.getElementById('detail-injuries').textContent  = d.injuries          || '—';
+    document.getElementById('detail-absences').textContent  = d.absences          || '—';
   }
 
-  // ── Common availability computation ───────────────────────────────────────────
+  // ── Common availability ───────────────────────────────────────────────────────
 
   function getDayIntervals(dancer, day) {
     return (dancer.availability || [])
@@ -244,9 +217,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const result = [];
     for (const a of listA) {
       for (const b of listB) {
-        const start = Math.max(a.start, b.start);
-        const end   = Math.min(a.end, b.end);
-        if (start < end) result.push({ start, end });
+        const s = Math.max(a.start, b.start), e = Math.min(a.end, b.end);
+        if (s < e) result.push({ start: s, end: e });
       }
     }
     return result;
@@ -264,11 +236,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     placeholder.style.display = 'none';
     results.style.display     = 'block';
-    commonList.innerHTML       = '';
-    noCommon.style.display     = 'none';
+    commonList.innerHTML      = '';
+    noCommon.style.display    = 'none';
 
     let foundAny = false;
-
     DAYS.forEach(day => {
       let common = getDayIntervals(selectedDancers[0], day);
       for (let i = 1; i < selectedDancers.length; i++) {
@@ -278,17 +249,15 @@ document.addEventListener('DOMContentLoaded', () => {
       if (common.length === 0) return;
       foundAny = true;
 
-      common.forEach(interval => {
-        currentCommonSlots.push({ day, start: interval.start, end: interval.end });
-      });
+      common.forEach(iv => currentCommonSlots.push({ day, start: iv.start, end: iv.end }));
 
       const dayEl = document.createElement('div');
       dayEl.className = 'common-day';
       dayEl.innerHTML = `<h6>${day}</h6>`;
-      common.forEach(interval => {
+      common.forEach(iv => {
         const badge       = document.createElement('span');
         badge.className   = 'time-window';
-        badge.textContent = `${minutesToTimeString(interval.start)} – ${minutesToTimeString(interval.end)}`;
+        badge.textContent = `${minutesToTimeString(iv.start)} – ${minutesToTimeString(iv.end)}`;
         dayEl.appendChild(badge);
       });
       commonList.appendChild(dayEl);
@@ -298,114 +267,65 @@ document.addEventListener('DOMContentLoaded', () => {
     updateActionPanel();
   }
 
-  // ── Action panel ──────────────────────────────────────────────────────────────
+  // ── Action panel + summary sentence ──────────────────────────────────────────
 
   function updateActionPanel() {
-    if (selectedDancers.length === 0) {
-      actionPanel.style.display = 'none';
-      summary.textContent       = '';
-      return;
-    }
-
-    actionPanel.style.display = 'block';
-
     const n = selectedDancers.length;
     const s = currentCommonSlots.length;
 
-    let txt = `${n} dancer${n === 1 ? '' : 's'} selected`;
-    if (n >= 2) {
-      txt += s > 0
-        ? ` — ${s} shared window${s === 1 ? '' : 's'}`
-        : ' — no shared availability windows';
+    if (n === 0) {
+      summary.textContent       = '';
+      actionPanel.style.display = 'none';
+    } else if (n === 1) {
+      summary.textContent       = '1 dancer selected — add a second to see shared availability';
+      actionPanel.style.display = 'none';
+    } else {
+      summary.textContent = s > 0
+        ? `${n} dancers selected — ${s} shared window${s === 1 ? '' : 's'}`
+        : `${n} dancers selected — no shared availability`;
+      actionPanel.style.display = s > 0 ? 'block' : 'none';
     }
-    summary.textContent = txt;
-
-    castBtn.disabled    = pieces.length === 0;
-    addSchedBtn.disabled = s === 0 || pieces.length === 0;
   }
-
-  // ── Cast to Piece ─────────────────────────────────────────────────────────────
-
-  castBtn.addEventListener('click', () => {
-    const errorEl   = document.getElementById('cast-error');
-    const successEl = document.getElementById('cast-success');
-    errorEl.classList.add('d-none');
-    successEl.classList.add('d-none');
-
-    const n = selectedDancers.length;
-    document.getElementById('cast-modal-desc').textContent =
-      `${n} dancer${n === 1 ? '' : 's'} will be added to the selected piece.`;
-
-    new bootstrap.Modal(document.getElementById('castToPieceModal')).show();
-  });
-
-  document.getElementById('confirm-cast-btn').addEventListener('click', async () => {
-    const pieceId   = document.getElementById('cast-piece-select').value;
-    const castRole  = document.querySelector('input[name="castRole"]:checked').value;
-    const errorEl   = document.getElementById('cast-error');
-    const successEl = document.getElementById('cast-success');
-    const btn       = document.getElementById('confirm-cast-btn');
-
-    errorEl.classList.add('d-none');
-    successEl.classList.add('d-none');
-
-    if (!pieceId) {
-      errorEl.textContent = 'Please select a piece.';
-      errorEl.classList.remove('d-none');
-      return;
-    }
-
-    btn.disabled    = true;
-    btn.textContent = 'Casting…';
-
-    const errors = [];
-    for (const dancer of selectedDancers) {
-      const res = await fetch('/api/piece-casts', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ piece_id: parseInt(pieceId), user_id: dancer.user_id, cast_role: castRole }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        errors.push(data.error || 'Unknown error');
-      }
-    }
-
-    btn.disabled    = false;
-    btn.textContent = 'Cast Dancers';
-
-    if (errors.length > 0) {
-      errorEl.textContent = errors.join(' · ');
-      errorEl.classList.remove('d-none');
-      return;
-    }
-
-    const pieceName = pieces.find(p => p.id == pieceId)?.name || 'the piece';
-    const roleLabel = castRole === 'member' ? 'cast member' : 'understudy';
-    successEl.textContent = `✓ ${selectedDancers.length} dancer${selectedDancers.length === 1 ? '' : 's'} added as ${roleLabel} in ${pieceName}`;
-    successEl.classList.remove('d-none');
-  });
 
   // ── Add Rehearsal to Schedule ─────────────────────────────────────────────────
 
   addSchedBtn.addEventListener('click', () => {
-    const errorEl   = document.getElementById('sched-error');
-    const successEl = document.getElementById('sched-success');
-    errorEl.classList.add('d-none');
-    successEl.classList.add('d-none');
+    document.getElementById('sched-error').classList.add('d-none');
+    document.getElementById('sched-success').classList.add('d-none');
+    document.getElementById('piece-name-input').value = '';
 
-    // Populate slot dropdown
+    // Populate slot dropdown — one option per shared interval
     const slotEl = document.getElementById('slot-select');
     slotEl.innerHTML = currentCommonSlots.map(s =>
-      `<option value="${s.day}|||${s.start}|||${s.end}">${s.day} · ${minutesToTimeString(s.start)} – ${minutesToTimeString(s.end)}</option>`
+      `<option value="${s.day}|||${s.start}|||${s.end}">` +
+      `${s.day} — available ${minutesToTimeString(s.start)} – ${minutesToTimeString(s.end)}` +
+      `</option>`
     ).join('');
+
+    // Pre-fill time inputs from the first slot
+    if (currentCommonSlots.length > 0) applySlot(currentCommonSlots[0]);
 
     new bootstrap.Modal(document.getElementById('addToScheduleModal')).show();
   });
 
+  // When the day dropdown changes, update hint + pre-fill times
+  document.getElementById('slot-select').addEventListener('change', function () {
+    const [day, startStr, endStr] = this.value.split('|||');
+    applySlot({ day, start: parseInt(startStr), end: parseInt(endStr) });
+  });
+
+  function applySlot(slot) {
+    document.getElementById('sched-start-time').value = minutesToHH24(slot.start);
+    document.getElementById('sched-end-time').value   = minutesToHH24(slot.end);
+    document.getElementById('day-window-hint').textContent =
+      `Available window: ${minutesToTimeString(slot.start)} – ${minutesToTimeString(slot.end)}`;
+  }
+
   document.getElementById('confirm-sched-btn').addEventListener('click', async () => {
+    const pieceName = document.getElementById('piece-name-input').value.trim();
     const slotVal   = document.getElementById('slot-select').value;
-    const pieceId   = document.getElementById('sched-piece-select').value;
+    const startVal  = document.getElementById('sched-start-time').value;
+    const endVal    = document.getElementById('sched-end-time').value;
     const errorEl   = document.getElementById('sched-error');
     const successEl = document.getElementById('sched-success');
     const btn       = document.getElementById('confirm-sched-btn');
@@ -413,41 +333,73 @@ document.addEventListener('DOMContentLoaded', () => {
     errorEl.classList.add('d-none');
     successEl.classList.add('d-none');
 
-    if (!slotVal || !pieceId) {
-      errorEl.textContent = 'Please select a time slot and a piece.';
+    if (!pieceName) {
+      errorEl.textContent = 'Please enter a piece or choreographer name.';
+      errorEl.classList.remove('d-none');
+      return;
+    }
+    if (!startVal || !endVal) {
+      errorEl.textContent = 'Please enter a rehearsal start and end time.';
+      errorEl.classList.remove('d-none');
+      return;
+    }
+    const [sh, sm] = startVal.split(':').map(Number);
+    const [eh, em] = endVal.split(':').map(Number);
+    if (sh * 60 + sm >= eh * 60 + em) {
+      errorEl.textContent = 'Start time must be before end time.';
       errorEl.classList.remove('d-none');
       return;
     }
 
-    const [day, startMin, endMin] = slotVal.split('|||');
-    const startTime = minutesToTimeString(parseInt(startMin));
-    const endTime   = minutesToTimeString(parseInt(endMin));
+    const [day]     = slotVal.split('|||');
+    const startTime = hh24ToTimeString(startVal);
+    const endTime   = hh24ToTimeString(endVal);
 
     btn.disabled    = true;
-    btn.textContent = 'Adding…';
+    btn.textContent = 'Saving…';
 
-    const res = await fetch('/api/master-blocks', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ piece_id: parseInt(pieceId), day, start_time: startTime, end_time: endTime }),
-    });
+    try {
+      // 1. Create a new piece
+      const color    = PALETTE[pieces.length % PALETTE.length];
+      const pieceRes = await fetch('/api/pieces', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ name: pieceName, color }),
+      });
 
-    btn.disabled    = false;
-    btn.textContent = 'Add to Schedule';
+      if (!pieceRes.ok) {
+        const data = await pieceRes.json();
+        throw new Error(data.error || 'Failed to create piece.');
+      }
 
-    if (!res.ok) {
-      const data = await res.json();
-      errorEl.textContent = data.error || 'Failed to add block.';
+      const piece = await pieceRes.json();
+      pieces.push(piece);
+
+      // 2. Add the rehearsal block
+      const blockRes = await fetch('/api/master-blocks', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ piece_id: piece.id, day, start_time: startTime, end_time: endTime }),
+      });
+
+      if (!blockRes.ok) {
+        const data = await blockRes.json();
+        throw new Error(data.error || 'Failed to add block.');
+      }
+
+      successEl.textContent = `✓ "${pieceName}" — ${day} ${startTime} – ${endTime} added to the Master Schedule`;
+      successEl.classList.remove('d-none');
+      document.getElementById('piece-name-input').value = '';
+    } catch (err) {
+      errorEl.textContent = err.message;
       errorEl.classList.remove('d-none');
-      return;
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = 'Add to Schedule';
     }
-
-    const pieceName = pieces.find(p => p.id == pieceId)?.name || 'schedule';
-    successEl.textContent = `✓ ${day} ${startTime} – ${endTime} added to ${pieceName}`;
-    successEl.classList.remove('d-none');
   });
 
-  // ── Initialize ────────────────────────────────────────────────────────────────
+  // ── Init ──────────────────────────────────────────────────────────────────────
 
   loadPieces();
 });
