@@ -148,6 +148,21 @@
               </div>
 
               <div class="collapse mt-3" id="piece-body-${piece.id}">
+                <div class="mb-3 pb-2 border-bottom">
+                  <div class="row g-2">
+                    <div class="col-sm-6">
+                      <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">Choreographer</label>
+                      <input type="text" class="form-control form-control-sm choreo-name" data-piece-id="${piece.id}"
+                        value="${piece.choreographer_name || ''}" placeholder="Full name" />
+                    </div>
+                    <div class="col-sm-6">
+                      <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">Choreographer Email</label>
+                      <input type="email" class="form-control form-control-sm choreo-email" data-piece-id="${piece.id}"
+                        value="${piece.choreographer_email || ''}" placeholder="email@example.com" />
+                    </div>
+                  </div>
+                  <div class="choreo-saved text-success mt-1" id="choreo-saved-${piece.id}" style="font-size:12px;display:none;">Saved.</div>
+                </div>
                 <div class="mb-3">
                   <h6 class="mb-2" style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555;">
                     Cast Members <span id="member-badge-${piece.id}" class="cast-badge member ms-1">${members.length}</span>
@@ -224,6 +239,28 @@
       const uBadge = document.getElementById(`understudy-badge-${pieceId}`);
       if (uBadge) uBadge.textContent = uCount;
     }
+
+    // Auto-save choreographer fields on blur
+    document.addEventListener('blur', async (e) => {
+      const el = e.target;
+      if (!el.classList.contains('choreo-name') && !el.classList.contains('choreo-email')) return;
+      const pieceId = el.dataset.pieceId;
+      const card    = document.getElementById(`piece-card-${pieceId}`);
+      const name    = card.querySelector('.choreo-name').value.trim();
+      const email   = card.querySelector('.choreo-email').value.trim();
+      try {
+        const res = await fetch(`/api/pieces/${pieceId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ choreographer_name: name, choreographer_email: email }),
+        });
+        if (res.ok) {
+          const saved = document.getElementById(`choreo-saved-${pieceId}`);
+          saved.style.display = 'block';
+          setTimeout(() => { saved.style.display = 'none'; }, 2000);
+        }
+      } catch (err) { console.error(err); }
+    }, true); // use capture so blur fires on inputs
 
     loadCasting();
   </script>

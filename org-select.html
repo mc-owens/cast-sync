@@ -9,6 +9,26 @@
 </head>
 <body>
 
+  <!-- Delete org confirmation modal -->
+  <div class="modal fade" id="deleteOrgModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title">Delete Organization?</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p>This will permanently delete <strong id="delete-org-name"></strong> and all of its submissions, pieces, and schedule data.</p>
+          <p class="mb-0 text-muted" style="font-size:13px;">This cannot be undone.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirm-delete-org-btn">Yes, Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- New org modal -->
   <div class="modal fade" id="newOrgModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -108,7 +128,9 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
-    let selectedOrgId = null;
+    let selectedOrgId   = null;
+    let deleteTargetId  = null;
+    let deleteTargetName = null;
 
     async function loadOrgs() {
       try {
@@ -138,6 +160,7 @@
                 <div class="d-flex gap-2">
                   ${org.role === 'owner' ? `<button class="btn btn-outline-dark btn-sm invite-btn" data-org-id="${org.id}">+ Co-Director</button>` : ''}
                   <button class="btn btn-outline-secondary btn-sm new-season-btn" data-org-id="${org.id}">+ Season</button>
+                  ${org.role === 'owner' ? `<button class="btn btn-outline-danger btn-sm delete-org-btn" data-org-id="${org.id}" data-org-name="${org.name}">Delete</button>` : ''}
                 </div>
               </div>
               <div class="list-group list-group-flush" id="seasons-${org.id}">
@@ -185,6 +208,16 @@
             document.getElementById('new-season-name').value = '';
             document.getElementById('new-season-error').classList.add('d-none');
             new bootstrap.Modal(document.getElementById('newSeasonModal')).show();
+          });
+        });
+
+        // Delete org buttons (owners only)
+        document.querySelectorAll('.delete-org-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            deleteTargetId   = btn.dataset.orgId;
+            deleteTargetName = btn.dataset.orgName;
+            document.getElementById('delete-org-name').textContent = deleteTargetName;
+            new bootstrap.Modal(document.getElementById('deleteOrgModal')).show();
           });
         });
 
@@ -251,6 +284,21 @@
         body: JSON.stringify({ orgId: selectedOrgId, seasonId: data.id }),
       });
       window.location.href = 'master.html';
+    });
+
+    document.getElementById('confirm-delete-org-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('confirm-delete-org-btn');
+      btn.disabled = true; btn.textContent = 'Deleting…';
+      try {
+        const res = await fetch(`/api/orgs/${deleteTargetId}`, { method: 'DELETE' });
+        if (!res.ok) { const d = await res.json(); alert(d.error); return; }
+        bootstrap.Modal.getInstance(document.getElementById('deleteOrgModal')).hide();
+        window.location.reload();
+      } catch (err) {
+        alert('Failed to delete organization.');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Yes, Delete';
+      }
     });
 
     loadOrgs();

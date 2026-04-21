@@ -150,6 +150,7 @@
           <th>Grade</th>
           <th>Pieces Cast</th>
           <th>Submitted</th>
+          <th></th>
         </tr>
       </thead>
       <tbody id="dancers-tbody"></tbody>
@@ -261,14 +262,18 @@
 
       list.forEach(d => {
         const tr = document.createElement('tr');
-        tr.style.cursor = 'pointer';
+        tr.id = `row-${d.user_id}`;
         tr.innerHTML = `
-          <td><span style="color:#0d6efd;text-decoration:underline;">${d.last_name}, ${d.first_name}</span></td>
+          <td style="cursor:pointer;"><span class="open-modal" style="color:#0d6efd;text-decoration:underline;">${d.last_name}, ${d.first_name}</span></td>
           <td style="color:#555;">${d.email || '—'}</td>
           <td>${d.grade || '—'}</td>
           <td>${d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>'}</td>
-          <td style="color:#888;">${formatDate(d.created_at)}</td>`;
-        tr.addEventListener('click', () => openDancerModal(d.user_id));
+          <td style="color:#888;">${formatDate(d.created_at)}</td>
+          <td>
+            <button class="btn btn-link p-0 text-danger remove-sub-btn" style="font-size:13px;" data-user-id="${d.user_id}" data-name="${d.first_name} ${d.last_name}" title="Remove submission">Remove</button>
+          </td>`;
+        tr.querySelector('.open-modal').addEventListener('click', () => openDancerModal(d.user_id));
+        tr.querySelector('.remove-sub-btn').addEventListener('click', e => { e.stopPropagation(); confirmRemove(d.user_id, `${d.first_name} ${d.last_name}`); });
         tbody.appendChild(tr);
       });
     }
@@ -299,6 +304,24 @@
         console.error(err);
         document.getElementById('loading-msg').textContent = 'Could not load submissions.';
       }
+    }
+
+    async function confirmRemove(userId, name) {
+      if (!confirm(`Remove ${name}'s submission from this season? Their account won't be deleted.`)) return;
+      try {
+        const res = await fetch(`/api/dancers/${userId}/submission`, { method: 'DELETE' });
+        if (!res.ok) { alert('Could not remove submission.'); return; }
+        const row = document.getElementById(`row-${userId}`);
+        if (row) row.remove();
+        allDancers = allDancers.filter(d => d.user_id !== userId);
+        document.getElementById('dancer-count-label').textContent =
+          `${allDancers.length} submission${allDancers.length === 1 ? '' : 's'}`;
+        document.getElementById('submission-count').textContent = `all ${allDancers.length}`;
+        if (allDancers.length === 0) {
+          document.getElementById('dancers-table').classList.add('d-none');
+          document.getElementById('empty-msg').classList.remove('d-none');
+        }
+      } catch (err) { alert('Failed to remove submission.'); }
     }
 
     document.getElementById('confirm-clear-btn').addEventListener('click', async () => {

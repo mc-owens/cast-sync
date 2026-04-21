@@ -324,12 +324,37 @@ app.get('/api/orgs/preview', async (req, res) => {
   }
 });
 
+// DELETE /api/orgs/:id — owner deletes an org and all its data
+app.delete('/api/orgs/:id', requireAuth('master'), async (req, res) => {
+  try {
+    const check = await pool.query(
+      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2 AND role = $3',
+      [req.params.id, req.session.userId, 'owner']
+    );
+    if (check.rows.length === 0)
+      return res.status(403).json({ error: 'Only the org owner can delete it.' });
+    await pool.query('DELETE FROM orgs WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Organization deleted.' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to delete organization.' });
+  }
+});
+
 // POST /api/orgs — director creates a new org
 app.post('/api/orgs', requireAuth('master'), async (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'Org name is required.' });
   const joinCode = generateJoinCode();
   try {
+    // Enforce 20-org limit
+    const countResult = await pool.query(
+      'SELECT COUNT(*) FROM org_members WHERE user_id = $1 AND role = $2',
+      [req.session.userId, 'owner']
+    );
+    if (parseInt(countResult.rows[0].count) >= 20)
+      return res.status(400).json({ error: 'You have reached the 20-organization limit. Delete an existing organization before creating a new one.' });
+
     const orgResult = await pool.query(
       'INSERT INTO orgs (name, join_code) VALUES ($1, $2) RETURNING id, name, join_code',
       [name.trim(), joinCode]
@@ -586,6 +611,22 @@ app.get('/api/dancers', requireAuth('master'), async (req, res) => {
   }
 });
 
+// DELETE /api/dancers/:userId/submission — remove one auditionee from current season
+app.delete('/api/dancers/:userId/submission', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const result = await pool.query(
+      'DELETE FROM submissions WHERE user_id = $1 AND org_id = $2 AND season_id = $3 RETURNING id',
+      [req.params.userId, orgId, seasonId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Submission not found.' });
+    res.json({ message: 'Submission removed.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to remove submission.' });
+  }
+});
+
 // DELETE /api/dancers — wipe all submissions for current season only
 app.delete('/api/dancers', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.session;
@@ -654,7 +695,7 @@ app.get('/api/pieces', requireAuth('master'), async (req, res) => {
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
     const result = await pool.query(
-      'SELECT id, name, color FROM pieces WHERE season_id = $1 ORDER BY created_at ASC',
+      'SELECT id, name, color, choreographer_name, choreographer_email FROM pieces WHERE season_id = $1 ORDER BY created_at ASC',
       [seasonId]
     );
     res.json(result.rows);
@@ -676,6 +717,19 @@ app.post('/api/pieces', requireAuth('master'), async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Failed to create piece.' });
+  }
+});
+
+app.patch('/api/pieces/:id', requireAuth('master'), async (req, res) => {
+  const { choreographer_name, choreographer_email } = req.body;
+  try {
+    await pool.query(
+      'UPDATE pieces SET choreographer_name=$1, choreographer_email=$2 WHERE id=$3 AND master_id=$4',
+      [choreographer_name || null, choreographer_email || null, req.params.id, req.session.userId]
+    );
+    res.json({ message: 'Updated.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update piece.' });
   }
 });
 
@@ -948,6 +1002,12 @@ async function runMigrations() {
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
       DO $$ BEGIN
         ALTER TABLE users ADD COLUMN is_director BOOLEAN NOT NULL DEFAULT FALSE;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE pieces ADD COLUMN choreographer_name VARCHAR(255);
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE pieces ADD COLUMN choreographer_email VARCHAR(255);
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
     `);
     console.log('Migrations complete.');
