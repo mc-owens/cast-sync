@@ -40,6 +40,26 @@
 </head>
 <body style="visibility:hidden">
 
+  <!-- Publish confirmation modal -->
+  <div class="modal fade" id="publishConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Make Casting Public?</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p>Once published, <strong>all auditionees</strong> who submitted to this organization will be able to see the full cast list — including who was cast in every piece.</p>
+          <p class="mb-0 text-muted" style="font-size:13px;">You can return it to Draft at any time to hide it again.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-success" id="confirm-publish-btn">Yes, Publish</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Nav -->
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container-fluid">
@@ -80,9 +100,14 @@
           Add dancers from the <a href="search.html">Availability</a> tab.
         </p>
       </div>
-      <div class="d-flex align-items-center gap-2">
-        <span id="publish-status-label" class="text-muted" style="font-size:12px;"></span>
-        <button id="publish-toggle-btn" class="btn btn-sm btn-outline-secondary" style="min-width:130px;">Loading…</button>
+      <div class="d-flex align-items-center gap-3">
+        <div class="d-flex align-items-center gap-2">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="publish-toggle" role="switch"
+              style="width:2.5em;height:1.25em;cursor:pointer;" disabled>
+          </div>
+          <span id="publish-status-label" style="font-size:13px;font-weight:500;min-width:200px;">Loading…</span>
+        </div>
         <a href="publish.html" class="btn btn-dark btn-sm">Email / Export →</a>
       </div>
     </div>
@@ -247,44 +272,61 @@
 
     // ── Publish toggle ────────────────────────────────────────────────────────
     let isPublished = false;
+    const toggleEl  = document.getElementById('publish-toggle');
+    const labelEl   = document.getElementById('publish-status-label');
 
     async function loadPublishStatus() {
       try {
-        const res = await fetch('/api/publish/status');
+        const res  = await fetch('/api/publish/status');
         const data = await res.json();
         setPublishUI(data.published);
-      } catch (e) { /* ignore */ }
+        toggleEl.disabled = false;
+      } catch (e) { labelEl.textContent = 'Could not load status.'; }
     }
 
     function setPublishUI(published) {
-      isPublished = published;
-      const btn   = document.getElementById('publish-toggle-btn');
-      const label = document.getElementById('publish-status-label');
+      isPublished          = published;
+      toggleEl.checked     = published;
       if (published) {
-        btn.textContent  = 'Unpublish Casting';
-        btn.className    = 'btn btn-sm btn-success';
-        label.textContent = 'Visible to auditionees';
-        label.style.color = '#198754';
+        labelEl.textContent  = 'Live — visible to auditionees';
+        labelEl.style.color  = '#198754';
       } else {
-        btn.textContent  = 'Publish Casting';
-        btn.className    = 'btn btn-sm btn-outline-secondary';
-        label.textContent = 'Draft — not visible';
-        label.style.color = '#888';
+        labelEl.textContent  = 'Draft — hidden from auditionees';
+        labelEl.style.color  = '#888';
       }
     }
 
-    document.getElementById('publish-toggle-btn').addEventListener('click', async () => {
-      const btn = document.getElementById('publish-toggle-btn');
-      btn.disabled = true;
+    async function applyPublish(published) {
+      toggleEl.disabled = true;
       try {
         const res  = await fetch('/api/publish/toggle', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ published: !isPublished }),
+          body: JSON.stringify({ published }),
         });
         const data = await res.json();
         setPublishUI(data.published);
-      } catch (e) { alert('Could not update publish state.'); }
-      finally { btn.disabled = false; }
+      } catch (e) {
+        alert('Could not update publish state.');
+        setPublishUI(isPublished); // revert UI
+      } finally {
+        toggleEl.disabled = false;
+      }
+    }
+
+    // Toggling ON → show confirmation modal first
+    // Toggling OFF → unpublish immediately
+    toggleEl.addEventListener('change', () => {
+      if (toggleEl.checked) {
+        toggleEl.checked = false; // revert visually until confirmed
+        new bootstrap.Modal(document.getElementById('publishConfirmModal')).show();
+      } else {
+        applyPublish(false);
+      }
+    });
+
+    document.getElementById('confirm-publish-btn').addEventListener('click', () => {
+      bootstrap.Modal.getInstance(document.getElementById('publishConfirmModal')).hide();
+      applyPublish(true);
     });
 
     loadPublishStatus();
