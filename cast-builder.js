@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let selectedDancers    = []; // { id (profile id), user_id, first_name, last_name, availability }
   let pieces             = []; // pieces in this season (kept in sync as new ones are created)
   let currentCommonSlots = []; // [{ day, start (minutes), end (minutes) }]
+  let masterBlocks       = []; // [{ id, piece_id, day, start_time, end_time }]
 
   // ── DOM ───────────────────────────────────────────────────────────────────────
   const searchInput  = document.getElementById('dancer-search');
@@ -64,6 +65,46 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/pieces');
       pieces = res.ok ? await res.json() : [];
     } catch (e) { pieces = []; }
+  }
+
+  async function loadMasterBlocks() {
+    try {
+      const res = await fetch('/api/master-blocks');
+      masterBlocks = res.ok ? await res.json() : [];
+    } catch (e) { masterBlocks = []; }
+  }
+
+  function checkOverlap() {
+    const slotVal   = document.getElementById('slot-select').value;
+    const startVal  = document.getElementById('sched-start-time').value;
+    const endVal    = document.getElementById('sched-end-time').value;
+    const warningEl = document.getElementById('overlap-warning');
+
+    warningEl.classList.add('d-none');
+    if (!slotVal || !startVal || !endVal) return;
+
+    const [day]    = slotVal.split('|||');
+    const [sh, sm] = startVal.split(':').map(Number);
+    const [eh, em] = endVal.split(':').map(Number);
+    const newStart = sh * 60 + sm;
+    const newEnd   = eh * 60 + em;
+    if (newStart >= newEnd) return;
+
+    const conflicts = masterBlocks.filter(b => {
+      if (b.day !== day) return false;
+      const bs = timeToMinutes(b.start_time);
+      const be = timeToMinutes(b.end_time);
+      return newStart < be && newEnd > bs;
+    });
+
+    if (conflicts.length > 0) {
+      const names = conflicts.map(b => {
+        const piece = pieces.find(p => p.id === b.piece_id);
+        return `${piece ? piece.name : 'another piece'} (${b.start_time} – ${b.end_time})`;
+      }).join(', ');
+      warningEl.textContent = `Heads up: this overlaps with ${names} on the master schedule.`;
+      warningEl.classList.remove('d-none');
+    }
   }
 
   function populatePieceSelect() {
@@ -325,9 +366,10 @@ document.addEventListener('DOMContentLoaded', () => {
   addSchedBtn.addEventListener('click', async () => {
     document.getElementById('sched-error').classList.add('d-none');
     document.getElementById('sched-success').classList.add('d-none');
+    document.getElementById('overlap-warning').classList.add('d-none');
 
-    // Refresh pieces list then rebuild the piece dropdown
-    await loadPieces();
+    // Refresh pieces + master blocks, then rebuild the piece dropdown
+    await Promise.all([loadPieces(), loadMasterBlocks()]);
     populatePieceSelect();
 
     // Populate slot dropdown — one option per shared interval
@@ -340,15 +382,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Pre-fill time inputs from the first slot
     if (currentCommonSlots.length > 0) applySlot(currentCommonSlots[0]);
+    checkOverlap();
 
     new bootstrap.Modal(document.getElementById('addToScheduleModal')).show();
   });
 
-  // When the day dropdown changes, update hint + pre-fill times
+  // When the day dropdown changes, update hint + pre-fill times + check overlap
   document.getElementById('slot-select').addEventListener('change', function () {
     const [day, startStr, endStr] = this.value.split('|||');
     applySlot({ day, start: parseInt(startStr), end: parseInt(endStr) });
+    checkOverlap();
   });
+
+  document.getElementById('sched-start-time').addEventListener('input', checkOverlap);
+  document.getElementById('sched-end-time').addEventListener('input', checkOverlap);
 
   function applySlot(slot) {
     document.getElementById('sched-start-time').value = minutesToHH24(slot.start);

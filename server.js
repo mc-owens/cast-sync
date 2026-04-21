@@ -35,21 +35,26 @@ const transporter  = emailEnabled
   ? nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } })
   : null;
 
-async function sendConfirmationEmail(toEmail, data, orgName, seasonName) {
+async function sendConfirmationEmail(toEmail, data, orgName, seasonName, isUpdate = false) {
   if (!emailEnabled) return;
   const { first_name, last_name, phone, address, grade, technique_classes, injuries, absences, availability } = data;
   const availLines = (availability || []).map(a => `${a.day}: ${a.startTime} – ${a.endTime}`).join('<br>') || 'None provided';
   const row = (label, value) =>
     `<tr><td style="padding:8px 12px;font-weight:bold;color:#555;white-space:nowrap;vertical-align:top;border-bottom:1px solid #f0f0f0;">${label}</td>
          <td style="padding:8px 12px;color:#222;border-bottom:1px solid #f0f0f0;">${value || '—'}</td></tr>`;
+  const heading = isUpdate ? 'Submission Updated' : 'Submission Received';
+  const subjectTag = isUpdate ? 'Updated' : 'Received';
+  const intro = isUpdate
+    ? `Hi ${first_name}, your submission for <strong>${orgName} — ${seasonName}</strong> has been updated. Here's what we have on file.`
+    : `Hi ${first_name}, here's a copy of your submission for <strong>${orgName} — ${seasonName}</strong>.`;
   try {
     await transporter.sendMail({
       from: `"CastSync" <${process.env.EMAIL_USER}>`,
       to: toEmail,
-      subject: `Your CastSync Submission — ${orgName}`,
+      subject: `CastSync Submission ${subjectTag} — ${orgName}`,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#222;">
-        <h2 style="margin-bottom:4px;">Submission Received</h2>
-        <p style="color:#555;margin-top:0;">Hi ${first_name}, here's a copy of your submission for <strong>${orgName} — ${seasonName}</strong>.</p>
+        <h2 style="margin-bottom:4px;">${heading}</h2>
+        <p style="color:#555;margin-top:0;">${intro}</p>
         <p style="color:#555;font-size:13px;">To update your information, log back in and resubmit — your previous submission will be replaced.</p>
         <table style="width:100%;border-collapse:collapse;border:1px solid #e0e0e0;border-radius:6px;overflow:hidden;margin-top:16px;">
           ${row('Name', `${first_name} ${last_name}`)}
@@ -512,12 +517,10 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
     const userResult = await pool.query('SELECT email FROM users WHERE id = $1', [req.session.userId]);
     const userEmail  = userResult.rows[0].email;
 
-    if (!isUpdate) {
-      sendConfirmationEmail(userEmail,
-        { first_name, last_name, phone, address, grade, technique_classes, injuries, absences, availability },
-        org.name, season.name
-      );
-    }
+    sendConfirmationEmail(userEmail,
+      { first_name, last_name, phone, address, grade, technique_classes, injuries, absences, availability },
+      org.name, season.name, isUpdate
+    );
 
     res.status(isUpdate ? 200 : 201).json({
       message: isUpdate ? 'Submission updated!' : 'Submission received!',
