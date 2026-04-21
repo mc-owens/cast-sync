@@ -268,7 +268,7 @@
           <td>${d.grade || '—'}</td>
           <td>${d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>'}</td>
           <td style="color:#888;">${formatDate(d.created_at)}</td>`;
-        tr.addEventListener('click', () => openDancerModal(d.id));
+        tr.addEventListener('click', () => openDancerModal(d.user_id));
         tbody.appendChild(tr);
       });
     }
