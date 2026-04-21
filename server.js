@@ -1020,12 +1020,14 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
       return res.json({ piece_blocks: [], fully_available: [], partially_available: [] });
 
     const dancersResult = await pool.query(
-      `SELECT dp.id, u.id AS user_id, dp.first_name, dp.last_name, sub.availability
+      `SELECT dp.id, u.id AS user_id, dp.first_name, dp.last_name, sub.availability,
+              pc.cast_role AS existing_cast_role
        FROM submissions sub
        JOIN dancer_profiles dp ON dp.user_id = sub.user_id
        JOIN users u ON u.id = sub.user_id
+       LEFT JOIN piece_casts pc ON pc.piece_id = $3 AND pc.user_id = u.id
        WHERE sub.org_id = $1 AND sub.season_id = $2 AND sub.availability IS NOT NULL`,
-      [orgId, seasonId]
+      [orgId, seasonId, req.params.pieceId]
     );
 
     const fully = [], partially = [];
@@ -1037,7 +1039,12 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
         if (avail.some(ab => ab.day === block.day && timeToMinutes(ab.startTime) <= bs && timeToMinutes(ab.endTime) >= be))
           covered++;
       });
-      const entry = { id: dancer.user_id, first_name: dancer.first_name, last_name: dancer.last_name };
+      const entry = {
+        id: dancer.user_id,
+        first_name: dancer.first_name,
+        last_name: dancer.last_name,
+        cast_role: dancer.existing_cast_role || null,
+      };
       if (covered === pieceBlocks.length) fully.push(entry);
       else if (covered > 0)              partially.push(entry);
     });

@@ -201,16 +201,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnGroup.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
 
     const castBtn = document.createElement('button');
-    castBtn.textContent   = '+ Cast';
-    castBtn.className     = 'btn btn-outline-primary';
     castBtn.style.cssText = 'font-size:11px;padding:1px 7px;line-height:1.5;';
-    castBtn.addEventListener('click', () => addToCast(pieceId, dancer.id, 'member', castBtn, understudyBtn));
 
     const understudyBtn = document.createElement('button');
-    understudyBtn.textContent   = '+ Understudy';
-    understudyBtn.className     = 'btn btn-outline-secondary';
     understudyBtn.style.cssText = 'font-size:11px;padding:1px 7px;line-height:1.5;';
-    understudyBtn.addEventListener('click', () => addToCast(pieceId, dancer.id, 'understudy', understudyBtn, castBtn));
+
+    if (dancer.cast_role === 'member') {
+      // Already a cast member — show confirmed state
+      castBtn.textContent = '✓ Cast';
+      castBtn.className   = 'btn btn-success';
+      castBtn.disabled    = true;
+      understudyBtn.style.display = 'none';
+      understudyBtn.textContent   = '+ Understudy';
+      understudyBtn.className     = 'btn btn-outline-secondary';
+    } else if (dancer.cast_role === 'understudy') {
+      // Already an understudy — show confirmed state
+      understudyBtn.textContent = '✓ Understudy';
+      understudyBtn.className   = 'btn btn-success';
+      understudyBtn.disabled    = true;
+      castBtn.style.display     = 'none';
+      castBtn.textContent       = '+ Cast';
+      castBtn.className         = 'btn btn-outline-primary';
+    } else {
+      // Not yet cast — show action buttons
+      castBtn.textContent   = '+ Cast';
+      castBtn.className     = 'btn btn-outline-primary';
+      understudyBtn.textContent = '+ Understudy';
+      understudyBtn.className   = 'btn btn-outline-secondary';
+      castBtn.addEventListener('click', () => addToCast(pieceId, dancer.id, 'member', castBtn, understudyBtn));
+      understudyBtn.addEventListener('click', () => addToCast(pieceId, dancer.id, 'understudy', understudyBtn, castBtn));
+    }
 
     btnGroup.appendChild(castBtn);
     btnGroup.appendChild(understudyBtn);
