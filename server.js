@@ -693,8 +693,9 @@ function buildCastingEmailHTML(orgName, blurb, pieces) {
     ].join('') || '<p style="color:#888;font-style:italic;">No cast assigned.</p>';
     return `
       <div style="margin-bottom:28px;padding-top:16px;border-top:1px solid #e0e0e0;">
-        <h3 style="margin:0 0 6px;">${p.name}</h3>
-        ${p.choreographer_name ? `<p style="margin:0 0 2px;color:#555;font-size:14px;">Choreographer: <strong>${p.choreographer_name}</strong>${p.choreographer_email ? ` &nbsp;·&nbsp; <a href="mailto:${p.choreographer_email}" style="color:#555;">${p.choreographer_email}</a>` : ''}</p>` : ''}
+        ${p.choreographer_name
+          ? `<h3 style="margin:0 0 2px;">${p.choreographer_name}</h3>${p.choreographer_email ? `<p style="margin:0 0 8px;color:#555;font-size:14px;"><a href="mailto:${p.choreographer_email}" style="color:#555;">${p.choreographer_email}</a></p>` : ''}`
+          : `<h3 style="margin:0 0 8px;color:#aaa;font-style:italic;">No choreographer listed</h3>`}
         <p style="margin:0 0 10px;color:#555;font-size:14px;">Rehearsals: ${rehearsalStr}</p>
         ${castLines}
       </div>`;

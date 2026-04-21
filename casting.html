@@ -92,24 +92,12 @@
   <!-- Main content -->
   <div class="container-fluid mt-4 px-4" style="max-width: 800px;">
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <div>
-        <h5 class="mb-0 fw-semibold">Casting</h5>
-        <p class="text-muted mb-0" style="font-size:13px;">
-          Manage cast members and understudies for each piece.
-          Add dancers from the <a href="search.html">Availability</a> tab.
-        </p>
-      </div>
-      <div class="d-flex align-items-center gap-3">
-        <div class="d-flex align-items-center gap-2">
-          <div class="form-check form-switch mb-0">
-            <input class="form-check-input" type="checkbox" id="publish-toggle" role="switch"
-              style="width:2.5em;height:1.25em;cursor:pointer;" disabled>
-          </div>
-          <span id="publish-status-label" style="font-size:13px;font-weight:500;min-width:200px;">Loading…</span>
-        </div>
-        <a href="publish.html" class="btn btn-dark btn-sm">Email / Export →</a>
-      </div>
+    <div class="mb-4">
+      <h5 class="mb-0 fw-semibold">Casting</h5>
+      <p class="text-muted mb-0" style="font-size:13px;">
+        Manage cast members and understudies for each piece.
+        Add dancers from the <a href="search.html">Availability</a> tab.
+      </p>
     </div>
 
     <div id="loading-msg" class="text-muted" style="font-size:14px;">Loading...</div>
@@ -121,6 +109,21 @@
     </div>
 
     <div id="pieces-container"></div>
+
+    <!-- Bottom action bar -->
+    <div class="border-top mt-5 pt-4 pb-5 d-flex justify-content-between align-items-center">
+      <div class="d-flex align-items-center gap-3">
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" id="publish-toggle" role="switch"
+            style="width:2.5em;height:1.25em;cursor:pointer;" disabled>
+        </div>
+        <div>
+          <div id="publish-status-label" style="font-size:14px;font-weight:600;">Loading…</div>
+          <div style="font-size:12px;color:#aaa;">Controls whether auditionees can see the cast list</div>
+        </div>
+      </div>
+      <a href="publish.html" class="btn btn-dark">Email / Export Cast List →</a>
+    </div>
 
   </div>
 

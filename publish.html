@@ -102,11 +102,11 @@
           : '<em style="color:#888;">TBD</em>';
 
         html += `<div class="piece-block">`;
-        html += `<h5 style="margin-bottom:4px;">${p.name}</h5>`;
         if (p.choreographer_name) {
-          html += `<p style="font-size:13px;color:#555;margin-bottom:2px;">Choreographer: <strong>${p.choreographer_name}</strong>`;
-          if (p.choreographer_email) html += ` &nbsp;·&nbsp; ${p.choreographer_email}`;
-          html += `</p>`;
+          html += `<h5 style="margin-bottom:2px;">${p.choreographer_name}</h5>`;
+          if (p.choreographer_email) html += `<p style="font-size:13px;color:#555;margin-bottom:6px;">${p.choreographer_email}</p>`;
+        } else {
+          html += `<h5 style="margin-bottom:6px;color:#aaa;font-style:italic;">No choreographer listed</h5>`;
         }
         html += `<p style="font-size:13px;color:#555;margin-bottom:10px;">Rehearsals: ${rehearsalStr}</p>`;
 
