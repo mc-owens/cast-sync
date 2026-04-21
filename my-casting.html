@@ -9,7 +9,6 @@
   <style>
     .piece-block { border-top: 1px solid #e8e8e8; padding-top: 14px; margin-bottom: 20px; }
     .cast-name { font-size: 14px; margin: 3px 0; }
-    .colordot { display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle; }
     .role-badge {
       font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
       vertical-align: middle; margin-left: 8px; text-transform: uppercase; letter-spacing: .4px;
@@ -120,23 +119,22 @@
                 const inPiece    = !!p.my_role;
                 const blockClass = inPiece ? 'piece-block' : 'piece-block not-cast';
 
-                // Role badge next to piece name
                 let roleBadge = '';
                 if (p.my_role === 'member')     roleBadge = `<span class="role-badge member">Cast</span>`;
                 if (p.my_role === 'understudy') roleBadge = `<span class="role-badge understudy">Understudy</span>`;
 
                 cardHTML += `<div class="${blockClass}">`;
-                cardHTML += `<div class="d-flex align-items-center mb-1">
-                  <span class="colordot" style="background:${p.color};"></span>
-                  <strong style="font-size:15px;">${p.name}</strong>
-                  ${roleBadge}
-                </div>`;
-
                 if (p.choreographer_name) {
-                  cardHTML += `<p style="font-size:13px;color:#555;margin-bottom:2px;">
-                    Choreographer: <strong>${p.choreographer_name}</strong>`;
-                  if (p.choreographer_email) cardHTML += ` &nbsp;·&nbsp; <a href="mailto:${p.choreographer_email}">${p.choreographer_email}</a>`;
-                  cardHTML += `</p>`;
+                  cardHTML += `<div class="d-flex align-items-center gap-2 mb-1">
+                    <strong style="font-size:15px;">${p.choreographer_name}</strong>
+                    ${roleBadge}
+                  </div>`;
+                  if (p.choreographer_email) cardHTML += `<p style="font-size:13px;color:#555;margin-bottom:6px;"><a href="mailto:${p.choreographer_email}" style="color:#555;">${p.choreographer_email}</a></p>`;
+                } else {
+                  cardHTML += `<div class="d-flex align-items-center gap-2 mb-1">
+                    <strong style="font-size:15px;color:#aaa;font-style:italic;">No choreographer listed</strong>
+                    ${roleBadge}
+                  </div>`;
                 }
                 cardHTML += `<p style="font-size:13px;color:#555;margin-bottom:10px;">Rehearsals: ${rehearsalStr}</p>`;
 
