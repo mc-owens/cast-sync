@@ -738,7 +738,14 @@ app.get('/api/publish/status', requireAuth('master'), async (req, res) => {
 // GET /api/my-casting — auditionee views published cast lists for all their submitted orgs
 app.get('/api/my-casting', requireAuth('auditionee'), async (req, res) => {
   try {
-    // All seasons the auditionee submitted to that have casting published
+    // Fetch the viewer's own name (any profile suffices; use most recent)
+    const profileRes = await pool.query(
+      `SELECT first_name, last_name FROM dancer_profiles WHERE user_id=$1 ORDER BY id DESC LIMIT 1`,
+      [req.session.userId]
+    );
+    const viewer = profileRes.rows[0] || null;
+
+    // All seasons the auditionee submitted to
     const subsResult = await pool.query(
       `SELECT sub.season_id, sub.org_id, o.name AS org_name, s.name AS season_name, s.casting_published
        FROM submissions sub
@@ -754,13 +761,14 @@ app.get('/api/my-casting', requireAuth('auditionee'), async (req, res) => {
       const piecesResult = await pool.query(
         `SELECT p.id, p.name, p.color, p.choreographer_name, p.choreographer_email,
            COALESCE(json_agg(DISTINCT jsonb_build_object('day',mb.day,'start_time',mb.start_time,'end_time',mb.end_time)) FILTER (WHERE mb.id IS NOT NULL),'[]') AS blocks,
-           COALESCE(json_agg(DISTINCT jsonb_build_object('first_name',dp.first_name,'last_name',dp.last_name,'cast_role',pc.cast_role)) FILTER (WHERE pc.id IS NOT NULL),'[]') AS casts
+           COALESCE(json_agg(DISTINCT jsonb_build_object('first_name',dp.first_name,'last_name',dp.last_name,'cast_role',pc.cast_role)) FILTER (WHERE pc.id IS NOT NULL),'[]') AS casts,
+           (SELECT cast_role FROM piece_casts WHERE piece_id=p.id AND user_id=$2) AS my_role
          FROM pieces p
          LEFT JOIN master_blocks mb ON mb.piece_id=p.id
          LEFT JOIN piece_casts pc ON pc.piece_id=p.id
          LEFT JOIN dancer_profiles dp ON dp.user_id=pc.user_id
          WHERE p.season_id=$1 GROUP BY p.id ORDER BY p.created_at ASC`,
-        [row.season_id]
+        [row.season_id, req.session.userId]
       );
       results.push({
         org_name: row.org_name,
@@ -769,7 +777,7 @@ app.get('/api/my-casting', requireAuth('auditionee'), async (req, res) => {
         pieces: piecesResult.rows,
       });
     }
-    res.json(results);
+    res.json({ viewer, orgs: results });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to load casting.' });

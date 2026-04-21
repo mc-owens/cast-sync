@@ -10,6 +10,14 @@
     .piece-block { border-top: 1px solid #e8e8e8; padding-top: 14px; margin-bottom: 20px; }
     .cast-name { font-size: 14px; margin: 3px 0; }
     .colordot { display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle; }
+    .role-badge {
+      font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+      vertical-align: middle; margin-left: 8px; text-transform: uppercase; letter-spacing: .4px;
+    }
+    .role-badge.member     { background: #d4edda; color: #155724; }
+    .role-badge.understudy { background: #fff3cd; color: #856404; }
+    .piece-block.not-cast .cast-name { color: #888; }
+    .you-label { font-size: 11px; color: #198754; font-weight: 600; margin-left: 6px; }
   </style>
 </head>
 <body style="visibility:hidden">
@@ -35,7 +43,7 @@
     </div>
   </nav>
 
-  <div class="container mt-4" style="max-width:680px;">
+  <div class="container mt-4" style="max-width:700px;">
     <h5 class="mb-1 fw-semibold">Casting</h5>
     <p class="text-muted mb-4" style="font-size:13px;">Cast lists for organizations you've auditioned for. Directors control when results are visible.</p>
 
@@ -54,7 +62,11 @@
     async function loadCasting() {
       try {
         const res  = await fetch('/api/my-casting');
-        const orgs = await res.json();
+        const data = await res.json();
+        const orgs   = data.orgs   || [];
+        const viewer = data.viewer || null;
+        if (viewer) window._castingUserName = { first: viewer.first_name, last: viewer.last_name };
+
         document.getElementById('loading-msg').style.display = 'none';
 
         if (orgs.length === 0) {
@@ -66,69 +78,99 @@
         let anyVisible = false;
 
         orgs.forEach(org => {
-          const section = document.createElement('div');
-          section.className = 'mb-5';
+          const card = document.createElement('div');
+          card.className = 'card mb-4';
 
-          const header = `
-            <div class="d-flex align-items-baseline gap-2 mb-1">
-              <h6 class="fw-bold mb-0">${org.org_name}</h6>
-              <span class="text-muted" style="font-size:12px;">${org.season_name}</span>
-            </div>`;
+          // ── Org header ────────────────────────────────────────────────────
+          const myPieces = (org.pieces || []).filter(p => p.my_role);
+          let summaryBadge = '';
+          if (org.casting_published && myPieces.length > 0) {
+            summaryBadge = `<span class="badge bg-success ms-2" style="font-size:11px;">
+              You're in ${myPieces.length} piece${myPieces.length !== 1 ? 's' : ''}
+            </span>`;
+          }
+
+          let cardHTML = `
+            <div class="card-header d-flex align-items-center justify-content-between" style="background:#f8f9fa;">
+              <div>
+                <span class="fw-bold">${org.org_name}</span>
+                <span class="text-muted ms-2" style="font-size:12px;">${org.season_name}</span>
+                ${summaryBadge}
+              </div>
+            </div>
+            <div class="card-body" style="padding:20px 24px;">`;
 
           if (!org.casting_published) {
-            section.innerHTML = header +
-              `<p class="text-muted" style="font-size:13px;">Casting results haven't been published yet for this organization.</p>`;
-            container.appendChild(section);
-            return;
-          }
-
-          anyVisible = true;
-          let piecesHTML = '';
-
-          if (org.pieces.length === 0) {
-            piecesHTML = '<p class="text-muted" style="font-size:13px;">No pieces in the schedule yet.</p>';
+            cardHTML += `<p class="text-muted mb-0" style="font-size:13px;">Casting results haven't been published yet.</p>`;
           } else {
-            org.pieces.forEach(p => {
-              const blocks = p.blocks || [];
-              const casts  = p.casts  || [];
-              const members     = casts.filter(c => c.cast_role === 'member');
-              const understudies = casts.filter(c => c.cast_role === 'understudy');
-              const rehearsalStr = blocks.length
-                ? blocks.map(b => `${b.day} ${b.start_time}–${b.end_time}`).join(', ')
-                : 'TBD';
+            anyVisible = true;
 
-              piecesHTML += `<div class="piece-block">`;
-              piecesHTML += `<div class="d-flex align-items-center mb-1">
-                <span class="colordot" style="background:${p.color};"></span>
-                <strong style="font-size:15px;">${p.name}</strong>
-              </div>`;
-              if (p.choreographer_name) {
-                piecesHTML += `<p style="font-size:13px;color:#555;margin-bottom:2px;">
-                  Choreographer: <strong>${p.choreographer_name}</strong>`;
-                if (p.choreographer_email) piecesHTML += ` &nbsp;·&nbsp; <a href="mailto:${p.choreographer_email}">${p.choreographer_email}</a>`;
-                piecesHTML += `</p>`;
-              }
-              piecesHTML += `<p style="font-size:13px;color:#555;margin-bottom:10px;">Rehearsals: ${rehearsalStr}</p>`;
+            if (!org.pieces || org.pieces.length === 0) {
+              cardHTML += `<p class="text-muted mb-0" style="font-size:13px;">No pieces in the schedule yet.</p>`;
+            } else {
+              org.pieces.forEach(p => {
+                const blocks      = p.blocks || [];
+                const casts       = p.casts  || [];
+                const members     = casts.filter(c => c.cast_role === 'member');
+                const understudies = casts.filter(c => c.cast_role === 'understudy');
+                const rehearsalStr = blocks.length
+                  ? blocks.map(b => `${b.day} ${b.start_time}–${b.end_time}`).join(', ')
+                  : 'TBD';
 
-              if (members.length === 0 && understudies.length === 0) {
-                piecesHTML += `<p style="font-size:13px;color:#aaa;font-style:italic;">No cast assigned yet.</p>`;
-              } else {
-                members.forEach(c => {
-                  piecesHTML += `<p class="cast-name">${c.first_name} ${c.last_name}</p>`;
-                });
-                understudies.forEach(c => {
-                  piecesHTML += `<p class="cast-name">${c.first_name} ${c.last_name} <span style="color:#888;font-size:12px;">(understudy)</span></p>`;
-                });
-              }
-              piecesHTML += `</div>`;
-            });
+                const inPiece    = !!p.my_role;
+                const blockClass = inPiece ? 'piece-block' : 'piece-block not-cast';
+
+                // Role badge next to piece name
+                let roleBadge = '';
+                if (p.my_role === 'member')     roleBadge = `<span class="role-badge member">Cast</span>`;
+                if (p.my_role === 'understudy') roleBadge = `<span class="role-badge understudy">Understudy</span>`;
+
+                cardHTML += `<div class="${blockClass}">`;
+                cardHTML += `<div class="d-flex align-items-center mb-1">
+                  <span class="colordot" style="background:${p.color};"></span>
+                  <strong style="font-size:15px;">${p.name}</strong>
+                  ${roleBadge}
+                </div>`;
+
+                if (p.choreographer_name) {
+                  cardHTML += `<p style="font-size:13px;color:#555;margin-bottom:2px;">
+                    Choreographer: <strong>${p.choreographer_name}</strong>`;
+                  if (p.choreographer_email) cardHTML += ` &nbsp;·&nbsp; <a href="mailto:${p.choreographer_email}">${p.choreographer_email}</a>`;
+                  cardHTML += `</p>`;
+                }
+                cardHTML += `<p style="font-size:13px;color:#555;margin-bottom:10px;">Rehearsals: ${rehearsalStr}</p>`;
+
+                if (members.length === 0 && understudies.length === 0) {
+                  cardHTML += `<p style="font-size:13px;color:#aaa;font-style:italic;">No cast assigned yet.</p>`;
+                } else {
+                  members.forEach(c => {
+                    cardHTML += `<p class="cast-name" data-first="${c.first_name}" data-last="${c.last_name}">${c.first_name} ${c.last_name}</p>`;
+                  });
+                  understudies.forEach(c => {
+                    cardHTML += `<p class="cast-name" data-first="${c.first_name}" data-last="${c.last_name}">${c.first_name} ${c.last_name} <span style="color:#888;font-size:12px;">(understudy)</span></p>`;
+                  });
+                }
+                cardHTML += `</div>`;
+              });
+            }
           }
 
-          section.innerHTML = header + piecesHTML;
-          container.appendChild(section);
+          cardHTML += `</div>`; // card-body
+          card.innerHTML = cardHTML;
+          container.appendChild(card);
         });
 
-        // If every org is unpublished, show a gentle note
+        // Tag the user's own name rows (done after DOM insert, using global userName)
+        if (window._castingUserName) {
+          const { first, last } = window._castingUserName;
+          document.querySelectorAll('.cast-name').forEach(el => {
+            if (el.dataset.first === first && el.dataset.last === last) {
+              el.innerHTML += `<span class="you-label">you</span>`;
+              el.style.fontWeight = '600';
+            }
+          });
+        }
+
         if (!anyVisible && orgs.length > 0) {
           document.getElementById('empty-msg').textContent =
             'No cast lists have been published yet. Check back after your audition results are announced.';
