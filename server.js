@@ -85,6 +85,8 @@ function generateJoinCode() {
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 
+app.set('trust proxy', 1); // Railway sits behind a proxy — needed for secure cookies
+
 app.use(cors());
 app.use(express.json());
 app.use(session({
@@ -92,7 +94,12 @@ app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000, httpOnly: true },
+  cookie: {
+    maxAge:   7 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    secure:   process.env.NODE_ENV === 'production', // HTTPS-only in prod
+    sameSite: 'lax',
+  },
 }));
 
 // ── Passport / Google OAuth ───────────────────────────────────────────────────
@@ -238,6 +245,68 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => res.json({ message: 'Logged out.' }));
+});
+
+// POST /api/auth/forgot-password — generate a reset token and email it
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required.' });
+  // Always respond 200 so we don't reveal whether an account exists
+  res.json({ message: 'If that email exists, a reset link has been sent.' });
+  try {
+    const result = await pool.query('SELECT id FROM users WHERE email = $1', [email.toLowerCase().trim()]);
+    if (result.rows.length === 0) return; // silently do nothing
+    const token   = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await pool.query(
+      'UPDATE users SET reset_token=$1, reset_token_expires=$2 WHERE id=$3',
+      [token, expires, result.rows[0].id]
+    );
+    if (!emailEnabled) return;
+    const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+    await transporter.sendMail({
+      from: `"CastSync" <${process.env.EMAIL_USER}>`,
+      to:   email.toLowerCase().trim(),
+      subject: 'Reset your CastSync password',
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+          <h2 style="margin-bottom:8px;">Reset your password</h2>
+          <p>Click the link below to set a new password. This link expires in 1 hour.</p>
+          <p style="margin:24px 0;">
+            <a href="${baseUrl}/reset-password.html?token=${token}"
+               style="background:#0d6efd;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">
+              Reset Password
+            </a>
+          </p>
+          <p style="color:#888;font-size:13px;">If you didn't request this, you can safely ignore this email.</p>
+        </div>`,
+    });
+  } catch (err) {
+    console.error('Forgot password error:', err.message);
+  }
+});
+
+// POST /api/auth/reset-password — validate token and set new password
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) return res.status(400).json({ error: 'Token and password required.' });
+  if (password.length < 6)  return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+  try {
+    const result = await pool.query(
+      'SELECT id FROM users WHERE reset_token=$1 AND reset_token_expires > NOW()',
+      [token]
+    );
+    if (result.rows.length === 0) return res.status(400).json({ error: 'Invalid or expired reset link.' });
+    const hash = await bcrypt.hash(password, 12);
+    await pool.query(
+      'UPDATE users SET password_hash=$1, reset_token=NULL, reset_token_expires=NULL WHERE id=$2',
+      [hash, result.rows[0].id]
+    );
+    res.json({ message: 'Password updated.' });
+  } catch (err) {
+    console.error('Reset password error:', err.message);
+    res.status(500).json({ error: 'Could not reset password.' });
+  }
 });
 
 app.get('/api/auth/me', (req, res) => {
@@ -1218,6 +1287,12 @@ async function runMigrations() {
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
       DO $$ BEGIN
         ALTER TABLE seasons ADD COLUMN casting_published BOOLEAN NOT NULL DEFAULT FALSE;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN reset_token VARCHAR(64);
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN reset_token_expires TIMESTAMP;
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
     `);
     console.log('Migrations complete.');
