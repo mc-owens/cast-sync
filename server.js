@@ -709,6 +709,72 @@ function buildCastingEmailHTML(orgName, blurb, pieces) {
   </div>`;
 }
 
+// POST /api/publish/toggle — director publishes or un-publishes casting for current season
+app.post('/api/publish/toggle', requireAuth('master'), async (req, res) => {
+  const { published } = req.body;
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    await pool.query('UPDATE seasons SET casting_published=$1 WHERE id=$2', [!!published, seasonId]);
+    res.json({ published: !!published });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update publish state.' });
+  }
+});
+
+// GET /api/publish/status — director checks current published state
+app.get('/api/publish/status', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query('SELECT casting_published FROM seasons WHERE id=$1', [seasonId]);
+    res.json({ published: result.rows[0]?.casting_published || false });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch publish state.' });
+  }
+});
+
+// GET /api/my-casting — auditionee views published cast lists for all their submitted orgs
+app.get('/api/my-casting', requireAuth('auditionee'), async (req, res) => {
+  try {
+    // All seasons the auditionee submitted to that have casting published
+    const subsResult = await pool.query(
+      `SELECT sub.season_id, sub.org_id, o.name AS org_name, s.name AS season_name, s.casting_published
+       FROM submissions sub
+       JOIN seasons s ON s.id = sub.season_id
+       JOIN orgs o ON o.id = sub.org_id
+       WHERE sub.user_id = $1
+       ORDER BY sub.created_at DESC`,
+      [req.session.userId]
+    );
+
+    const results = [];
+    for (const row of subsResult.rows) {
+      const piecesResult = await pool.query(
+        `SELECT p.id, p.name, p.color, p.choreographer_name, p.choreographer_email,
+           COALESCE(json_agg(DISTINCT jsonb_build_object('day',mb.day,'start_time',mb.start_time,'end_time',mb.end_time)) FILTER (WHERE mb.id IS NOT NULL),'[]') AS blocks,
+           COALESCE(json_agg(DISTINCT jsonb_build_object('first_name',dp.first_name,'last_name',dp.last_name,'cast_role',pc.cast_role)) FILTER (WHERE pc.id IS NOT NULL),'[]') AS casts
+         FROM pieces p
+         LEFT JOIN master_blocks mb ON mb.piece_id=p.id
+         LEFT JOIN piece_casts pc ON pc.piece_id=p.id
+         LEFT JOIN dancer_profiles dp ON dp.user_id=pc.user_id
+         WHERE p.season_id=$1 GROUP BY p.id ORDER BY p.created_at ASC`,
+        [row.season_id]
+      );
+      results.push({
+        org_name: row.org_name,
+        season_name: row.season_name,
+        casting_published: row.casting_published,
+        pieces: piecesResult.rows,
+      });
+    }
+    res.json(results);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load casting.' });
+  }
+});
+
 // ── Master dancer routes (org/season scoped) ──────────────────────────────────
 
 // GET /api/dancers — all submissions for current org/season
@@ -1133,6 +1199,9 @@ async function runMigrations() {
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
       DO $$ BEGIN
         ALTER TABLE pieces ADD COLUMN choreographer_email VARCHAR(255);
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE seasons ADD COLUMN casting_published BOOLEAN NOT NULL DEFAULT FALSE;
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
     `);
     console.log('Migrations complete.');

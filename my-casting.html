@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Casting — CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .piece-block { border-top: 1px solid #e8e8e8; padding-top: 14px; margin-bottom: 20px; }
+    .cast-name { font-size: 14px; margin: 3px 0; }
+    .colordot { display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle; }
+  </style>
+</head>
+<body style="visibility:hidden">
+
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">CastSync</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item"><a class="nav-link" href="auditionForm.html">Audition Form</a></li>
+          <li class="nav-item"><a class="nav-link" href="my-submissions.html">My Submissions</a></li>
+          <li class="nav-item"><a class="nav-link active" href="my-casting.html">Casting</a></li>
+          <li class="nav-item"><a class="nav-link" href="upgrade.html">Director Access</a></li>
+          <li class="nav-item d-flex align-items-center d-none" id="switch-director-item">
+            <button class="btn btn-outline-light btn-sm ms-1" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center gap-3" id="right-nav"></div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4" style="max-width:680px;">
+    <h5 class="mb-1 fw-semibold">Casting</h5>
+    <p class="text-muted mb-4" style="font-size:13px;">Cast lists for organizations you've auditioned for. Directors control when results are visible.</p>
+
+    <div id="loading-msg" class="text-muted">Loading…</div>
+
+    <div id="empty-msg" class="alert alert-info d-none">
+      You haven't submitted any audition forms yet, or no cast lists have been published yet.
+    </div>
+
+    <div id="orgs-container"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    async function loadCasting() {
+      try {
+        const res  = await fetch('/api/my-casting');
+        const orgs = await res.json();
+        document.getElementById('loading-msg').style.display = 'none';
+
+        if (orgs.length === 0) {
+          document.getElementById('empty-msg').classList.remove('d-none');
+          return;
+        }
+
+        const container = document.getElementById('orgs-container');
+        let anyVisible = false;
+
+        orgs.forEach(org => {
+          const section = document.createElement('div');
+          section.className = 'mb-5';
+
+          const header = `
+            <div class="d-flex align-items-baseline gap-2 mb-1">
+              <h6 class="fw-bold mb-0">${org.org_name}</h6>
+              <span class="text-muted" style="font-size:12px;">${org.season_name}</span>
+            </div>`;
+
+          if (!org.casting_published) {
+            section.innerHTML = header +
+              `<p class="text-muted" style="font-size:13px;">Casting results haven't been published yet for this organization.</p>`;
+            container.appendChild(section);
+            return;
+          }
+
+          anyVisible = true;
+          let piecesHTML = '';
+
+          if (org.pieces.length === 0) {
+            piecesHTML = '<p class="text-muted" style="font-size:13px;">No pieces in the schedule yet.</p>';
+          } else {
+            org.pieces.forEach(p => {
+              const blocks = p.blocks || [];
+              const casts  = p.casts  || [];
+              const members     = casts.filter(c => c.cast_role === 'member');
+              const understudies = casts.filter(c => c.cast_role === 'understudy');
+              const rehearsalStr = blocks.length
+                ? blocks.map(b => `${b.day} ${b.start_time}–${b.end_time}`).join(', ')
+                : 'TBD';
+
+              piecesHTML += `<div class="piece-block">`;
+              piecesHTML += `<div class="d-flex align-items-center mb-1">
+                <span class="colordot" style="background:${p.color};"></span>
+                <strong style="font-size:15px;">${p.name}</strong>
+              </div>`;
+              if (p.choreographer_name) {
+                piecesHTML += `<p style="font-size:13px;color:#555;margin-bottom:2px;">
+                  Choreographer: <strong>${p.choreographer_name}</strong>`;
+                if (p.choreographer_email) piecesHTML += ` &nbsp;·&nbsp; <a href="mailto:${p.choreographer_email}">${p.choreographer_email}</a>`;
+                piecesHTML += `</p>`;
+              }
+              piecesHTML += `<p style="font-size:13px;color:#555;margin-bottom:10px;">Rehearsals: ${rehearsalStr}</p>`;
+
+              if (members.length === 0 && understudies.length === 0) {
+                piecesHTML += `<p style="font-size:13px;color:#aaa;font-style:italic;">No cast assigned yet.</p>`;
+              } else {
+                members.forEach(c => {
+                  piecesHTML += `<p class="cast-name">${c.first_name} ${c.last_name}</p>`;
+                });
+                understudies.forEach(c => {
+                  piecesHTML += `<p class="cast-name">${c.first_name} ${c.last_name} <span style="color:#888;font-size:12px;">(understudy)</span></p>`;
+                });
+              }
+              piecesHTML += `</div>`;
+            });
+          }
+
+          section.innerHTML = header + piecesHTML;
+          container.appendChild(section);
+        });
+
+        // If every org is unpublished, show a gentle note
+        if (!anyVisible && orgs.length > 0) {
+          document.getElementById('empty-msg').textContent =
+            'No cast lists have been published yet. Check back after your audition results are announced.';
+          document.getElementById('empty-msg').classList.remove('d-none');
+        }
+
+      } catch (err) {
+        document.getElementById('loading-msg').textContent = 'Could not load casting results.';
+      }
+    }
+
+    loadCasting();
+  </script>
+
+  <script>
+    (async () => {
+      try {
+        const res  = await fetch('/api/auth/me');
+        const user = await res.json();
+        if (!res.ok) { window.location.href = 'login.html'; return; }
+        if (user.role === 'master' || user.mode === 'director') { window.location.href = 'org-select.html'; return; }
+
+        document.getElementById('right-nav').innerHTML =
+          `<span class="text-white-50" style="font-size:13px;">${user.email}</span>
+           <button class="btn btn-link nav-link text-white p-0" id="logout-btn">Log Out</button>`;
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+        if (user.isDirector) {
+          document.getElementById('switch-director-item').classList.remove('d-none');
+          document.getElementById('switch-mode-btn').addEventListener('click', async () => {
+            await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'director' }) });
+            window.location.href = 'org-select.html';
+          });
+        }
+        document.body.style.visibility = 'visible';
+      } catch (err) { window.location.href = 'login.html'; }
+    })();
+  </script>
+
+</body>
+</html>

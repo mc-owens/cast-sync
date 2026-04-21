@@ -80,7 +80,11 @@
           Add dancers from the <a href="search.html">Availability</a> tab.
         </p>
       </div>
-      <a href="publish.html" class="btn btn-dark btn-sm">Publish Casting →</a>
+      <div class="d-flex align-items-center gap-2">
+        <span id="publish-status-label" class="text-muted" style="font-size:12px;"></span>
+        <button id="publish-toggle-btn" class="btn btn-sm btn-outline-secondary" style="min-width:130px;">Loading…</button>
+        <a href="publish.html" class="btn btn-dark btn-sm">Email / Export →</a>
+      </div>
     </div>
 
     <div id="loading-msg" class="text-muted" style="font-size:14px;">Loading...</div>
@@ -240,6 +244,50 @@
       const uBadge = document.getElementById(`understudy-badge-${pieceId}`);
       if (uBadge) uBadge.textContent = uCount;
     }
+
+    // ── Publish toggle ────────────────────────────────────────────────────────
+    let isPublished = false;
+
+    async function loadPublishStatus() {
+      try {
+        const res = await fetch('/api/publish/status');
+        const data = await res.json();
+        setPublishUI(data.published);
+      } catch (e) { /* ignore */ }
+    }
+
+    function setPublishUI(published) {
+      isPublished = published;
+      const btn   = document.getElementById('publish-toggle-btn');
+      const label = document.getElementById('publish-status-label');
+      if (published) {
+        btn.textContent  = 'Unpublish Casting';
+        btn.className    = 'btn btn-sm btn-success';
+        label.textContent = 'Visible to auditionees';
+        label.style.color = '#198754';
+      } else {
+        btn.textContent  = 'Publish Casting';
+        btn.className    = 'btn btn-sm btn-outline-secondary';
+        label.textContent = 'Draft — not visible';
+        label.style.color = '#888';
+      }
+    }
+
+    document.getElementById('publish-toggle-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('publish-toggle-btn');
+      btn.disabled = true;
+      try {
+        const res  = await fetch('/api/publish/toggle', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ published: !isPublished }),
+        });
+        const data = await res.json();
+        setPublishUI(data.published);
+      } catch (e) { alert('Could not update publish state.'); }
+      finally { btn.disabled = false; }
+    });
+
+    loadPublishStatus();
 
     // Auto-save choreographer fields on blur
     document.addEventListener('blur', async (e) => {
