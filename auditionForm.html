@@ -59,6 +59,9 @@
               <a class="nav-link active" href="auditionForm.html">Audition Form</a>
             </li>
             <li class="nav-item">
+              <a class="nav-link" href="my-submissions.html">My Submissions</a>
+            </li>
+            <li class="nav-item">
               <a class="nav-link" href="upgrade.html">Director Access</a>
             </li>
             <li class="nav-item d-flex align-items-center d-none" id="switch-director-item">
@@ -71,6 +74,28 @@
         </div>
       </div>
     </nav>
+
+    <!-- Session timeout warning (fixed bottom) -->
+    <div id="session-timeout-bar" class="d-none"
+      style="position:fixed;bottom:0;left:0;right:0;background:#212529;color:#fff;padding:10px 20px;
+             display:flex;align-items:center;justify-content:space-between;z-index:9999;font-size:13px;">
+      <span>Your session has expired — save your draft before logging back in.</span>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-warning" id="timeout-save-btn">Save Draft</button>
+        <a href="login.html" class="btn btn-sm btn-outline-light">Log In</a>
+      </div>
+    </div>
+
+    <!-- Draft restore banner -->
+    <div id="draft-banner" class="d-none" style="background:#fff3cd;border-bottom:1px solid #ffc107;">
+      <div class="container py-2 d-flex justify-content-between align-items-center" style="max-width:780px;font-size:13px;">
+        <span>You have a saved draft for this org from <strong id="draft-date"></strong>.</span>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-warning" id="restore-draft-btn">Restore Draft</button>
+          <button class="btn btn-sm btn-outline-secondary" id="dismiss-draft-btn">Dismiss</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Main content -->
     <div class="container mt-4" style="max-width: 780px;">
@@ -162,7 +187,11 @@
           </div>
         </div>
 
-        <button type="button" class="btn btn-primary px-4" onclick="addDancer()">Submit</button>
+        <div class="d-flex gap-2 align-items-center">
+          <button type="button" class="btn btn-primary px-4" onclick="addDancer()">Submit</button>
+          <button type="button" class="btn btn-outline-secondary" id="save-draft-btn">Save Draft</button>
+          <span id="draft-saved-msg" class="text-success d-none" style="font-size:13px;">Draft saved.</span>
+        </div>
 
       </form>
     </div>
@@ -230,7 +259,7 @@
           codeInput.addEventListener('input', () => {
             clearTimeout(previewTimer);
             const code = codeInput.value.trim();
-            if (code.length < 6) { previewEl.style.display = 'none'; return; }
+            if (code.length < 6) { previewEl.style.display = 'none'; hideDraftBanner(); return; }
             previewTimer = setTimeout(async () => {
               try {
                 const r    = await fetch(`/api/orgs/preview?join_code=${encodeURIComponent(code)}`);
@@ -245,8 +274,120 @@
                     `<span style="color:#dc3545;">&#10007; That code doesn't match any active organization. Check with your director.</span>`;
                 }
               } catch (e) { previewEl.style.display = 'none'; }
+              checkForDraft(code);
             }, 400);
           });
+
+          // ── URL param pre-fill ────────────────────────────────────────────
+          const urlCode = new URLSearchParams(window.location.search).get('code');
+          if (urlCode) {
+            codeInput.value = urlCode.toUpperCase();
+            codeInput.dispatchEvent(new Event('input'));
+          }
+
+          // ── Draft save / restore ──────────────────────────────────────────
+          const DRAFT_KEY = code => `castsync_draft_${code.toUpperCase()}`;
+
+          function serializeBlocks() {
+            const SLOT_HEIGHT = 12.5, START_HOUR = 8, INCREMENT = 15;
+            const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+            const gridEl = document.getElementById('grid');
+            const dayWidth = gridEl.clientWidth / 7;
+            return Array.from(gridEl.querySelectorAll('.block')).map(block => {
+              const topPx = parseFloat(block.style.top), hPx = parseFloat(block.style.height);
+              const leftPx = parseFloat(block.style.left);
+              const dayIdx = Math.round(leftPx / dayWidth);
+              const startSlot = Math.round(topPx / SLOT_HEIGHT);
+              const endSlot   = startSlot + Math.round(hPx / SLOT_HEIGHT);
+              const toT = m => { const h=Math.floor(m/60),mn=m%60,ap=h>=12?'PM':'AM',hr=h%12||12; return `${hr}:${mn.toString().padStart(2,'0')} ${ap}`; };
+              return { day: DAYS[dayIdx]||'Unknown', startTime: toT(startSlot*INCREMENT+START_HOUR*60), endTime: toT(endSlot*INCREMENT+START_HOUR*60) };
+            });
+          }
+
+          function saveDraft() {
+            const code = codeInput.value.trim().toUpperCase();
+            if (!code) { alert('Enter a join code before saving a draft.'); return; }
+            const gradeRadio = document.querySelector('input[name="flexRadioDefault"]:checked');
+            const draft = {
+              fname: document.getElementById('fname').value,
+              lname: document.getElementById('lname').value,
+              phone: document.getElementById('phonenumber').value,
+              address: document.getElementById('address').value,
+              techniqueclasses: document.getElementById('techniqueclasses').value,
+              injuries: document.getElementById('injuries').value,
+              absences: document.getElementById('absences').value,
+              grade: gradeRadio ? gradeRadio.nextElementSibling.textContent.trim() : null,
+              availability: serializeBlocks(),
+              savedAt: new Date().toISOString(),
+            };
+            localStorage.setItem(DRAFT_KEY(code), JSON.stringify(draft));
+            const msg = document.getElementById('draft-saved-msg');
+            msg.classList.remove('d-none');
+            setTimeout(() => msg.classList.add('d-none'), 2500);
+          }
+
+          function restoreAvailabilityBlocks(availability) {
+            const SLOT_HEIGHT = 12.5, START_HOUR = 8, INCREMENT = 15;
+            const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+            const gridEl = document.getElementById('grid');
+            gridEl.querySelectorAll('.block').forEach(b => b.remove());
+            const dayWidth = gridEl.clientWidth / 7;
+            const parseMins = str => { const [t,ap]=str.trim().split(' '); const [h,m]=t.split(':').map(Number); let hr=h; if(ap==='PM'&&hr!==12)hr+=12; if(ap==='AM'&&hr===12)hr=0; return hr*60+m; };
+            availability.forEach(({day, startTime, endTime}) => {
+              const di = DAYS.indexOf(day); if(di===-1) return;
+              const sM = parseMins(startTime), eM = parseMins(endTime);
+              const startSlot = (sM - START_HOUR*60)/INCREMENT, numSlots=(eM-sM)/INCREMENT;
+              if(numSlots<=0) return;
+              const block = document.createElement('div');
+              block.className = 'block';
+              block.dataset.startIndex = startSlot;
+              block.style.left   = `${di * dayWidth}px`;
+              block.style.top    = `${startSlot * SLOT_HEIGHT}px`;
+              block.style.height = `${numSlots * SLOT_HEIGHT}px`;
+              block.innerHTML = `<span class="time-label-text">${startTime} – ${endTime}</span><span class="delete-btn">✕</span><div class="resize-handle resize-top"></div><div class="resize-handle resize-bottom"></div>`;
+              gridEl.appendChild(block);
+            });
+          }
+
+          let currentDraft = null;
+          function checkForDraft(code) {
+            const raw = localStorage.getItem(DRAFT_KEY(code));
+            if (!raw) { hideDraftBanner(); return; }
+            currentDraft = JSON.parse(raw);
+            document.getElementById('draft-date').textContent =
+              new Date(currentDraft.savedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+            document.getElementById('draft-banner').classList.remove('d-none');
+          }
+          function hideDraftBanner() { document.getElementById('draft-banner').classList.add('d-none'); currentDraft = null; }
+
+          document.getElementById('restore-draft-btn').addEventListener('click', () => {
+            if (!currentDraft) return;
+            const d = currentDraft;
+            if (d.fname) document.getElementById('fname').value = d.fname;
+            if (d.lname) document.getElementById('lname').value = d.lname;
+            if (d.phone) document.getElementById('phonenumber').value = d.phone;
+            if (d.address) document.getElementById('address').value = d.address;
+            if (d.techniqueclasses) document.getElementById('techniqueclasses').value = d.techniqueclasses;
+            if (d.injuries) document.getElementById('injuries').value = d.injuries;
+            if (d.absences) document.getElementById('absences').value = d.absences;
+            if (d.grade) {
+              const gm = {Senior:'flexRadioDefault1',Junior:'flexRadioDefault2',Sophomore:'flexRadioDefault3',Freshman:'flexRadioDefault4'};
+              if (gm[d.grade]) document.getElementById(gm[d.grade]).checked = true;
+            }
+            if (d.availability?.length) restoreAvailabilityBlocks(d.availability);
+            hideDraftBanner();
+          });
+          document.getElementById('dismiss-draft-btn').addEventListener('click', hideDraftBanner);
+          document.getElementById('save-draft-btn').addEventListener('click', saveDraft);
+          document.getElementById('timeout-save-btn').addEventListener('click', saveDraft);
+
+          // ── Session timeout ping ──────────────────────────────────────────
+          setInterval(async () => {
+            try {
+              const r = await fetch('/api/auth/me');
+              if (r.status === 401) document.getElementById('session-timeout-bar').classList.remove('d-none');
+            } catch (e) { /* network issue, ignore */ }
+          }, 240000); // ping every 4 minutes
 
         } catch (err) {
           window.location.href = 'login.html';

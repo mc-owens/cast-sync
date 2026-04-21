@@ -584,6 +584,131 @@ app.get('/api/submissions/me', requireAuth('auditionee'), async (req, res) => {
   }
 });
 
+// GET /api/my-submissions — auditionee's full submission history across all orgs
+app.get('/api/my-submissions', requireAuth('auditionee'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT sub.created_at, o.name AS org_name, o.join_code, s.name AS season_name
+       FROM submissions sub
+       JOIN orgs o ON o.id = sub.org_id
+       JOIN seasons s ON s.id = sub.season_id
+       WHERE sub.user_id = $1
+       ORDER BY sub.created_at DESC`,
+      [req.session.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch submissions.' });
+  }
+});
+
+// GET /api/publish — all pieces with casts + blocks for the current season (director)
+app.get('/api/publish', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const [orgRes, piecesRes, emailRes] = await Promise.all([
+      pool.query('SELECT o.name AS org_name, s.name AS season_name FROM orgs o JOIN seasons s ON s.org_id=o.id WHERE o.id=$1 AND s.id=$2', [orgId, seasonId]),
+      pool.query(
+        `SELECT p.id, p.name, p.choreographer_name, p.choreographer_email,
+           COALESCE(json_agg(DISTINCT jsonb_build_object('day',mb.day,'start_time',mb.start_time,'end_time',mb.end_time)) FILTER (WHERE mb.id IS NOT NULL),'[]') AS blocks,
+           COALESCE(json_agg(DISTINCT jsonb_build_object('first_name',dp.first_name,'last_name',dp.last_name,'cast_role',pc.cast_role)) FILTER (WHERE pc.id IS NOT NULL),'[]') AS casts
+         FROM pieces p
+         LEFT JOIN master_blocks mb ON mb.piece_id=p.id
+         LEFT JOIN piece_casts pc ON pc.piece_id=p.id
+         LEFT JOIN dancer_profiles dp ON dp.user_id=pc.user_id
+         WHERE p.season_id=$1 GROUP BY p.id ORDER BY p.created_at ASC`,
+        [seasonId]
+      ),
+      pool.query(
+        'SELECT DISTINCT u.email FROM submissions sub JOIN users u ON u.id=sub.user_id WHERE sub.org_id=$1 AND sub.season_id=$2',
+        [orgId, seasonId]
+      ),
+    ]);
+    const { org_name, season_name } = orgRes.rows[0] || {};
+    res.json({
+      org_name, season_name,
+      pieces: piecesRes.rows,
+      auditionee_count: emailRes.rows.length,
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load publish data.' });
+  }
+});
+
+// POST /api/publish/send — email cast results to all auditionees in the season
+app.post('/api/publish/send', requireAuth('master'), async (req, res) => {
+  if (!emailEnabled) return res.status(503).json({ error: 'Email is not configured on this server.' });
+  const { blurb } = req.body;
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const [orgRes, piecesRes, emailRes] = await Promise.all([
+      pool.query('SELECT o.name AS org_name FROM orgs o WHERE o.id=$1', [orgId]),
+      pool.query(
+        `SELECT p.id, p.name, p.choreographer_name, p.choreographer_email,
+           COALESCE(json_agg(DISTINCT jsonb_build_object('day',mb.day,'start_time',mb.start_time,'end_time',mb.end_time)) FILTER (WHERE mb.id IS NOT NULL),'[]') AS blocks,
+           COALESCE(json_agg(DISTINCT jsonb_build_object('first_name',dp.first_name,'last_name',dp.last_name,'cast_role',pc.cast_role)) FILTER (WHERE pc.id IS NOT NULL),'[]') AS casts
+         FROM pieces p
+         LEFT JOIN master_blocks mb ON mb.piece_id=p.id
+         LEFT JOIN piece_casts pc ON pc.piece_id=p.id
+         LEFT JOIN dancer_profiles dp ON dp.user_id=pc.user_id
+         WHERE p.season_id=$1 GROUP BY p.id ORDER BY p.created_at ASC`,
+        [seasonId]
+      ),
+      pool.query(
+        'SELECT DISTINCT u.email FROM submissions sub JOIN users u ON u.id=sub.user_id WHERE sub.org_id=$1 AND sub.season_id=$2',
+        [orgId, seasonId]
+      ),
+    ]);
+    const orgName = orgRes.rows[0]?.org_name || 'CastSync';
+    const emails  = emailRes.rows.map(r => r.email);
+    if (emails.length === 0) return res.status(400).json({ error: 'No auditionees to email.' });
+
+    const html = buildCastingEmailHTML(orgName, blurb, piecesRes.rows);
+    await Promise.all(emails.map(to =>
+      transporter.sendMail({ from: `"CastSync" <${process.env.EMAIL_USER}>`, to, subject: `Casting Results — ${orgName}`, html })
+        .catch(err => console.error(`Email to ${to} failed:`, err.message))
+    ));
+    res.json({ message: `Sent to ${emails.length} auditionee${emails.length === 1 ? '' : 's'}.` });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to send emails.' });
+  }
+});
+
+function buildCastingEmailHTML(orgName, blurb, pieces) {
+  const piecesHTML = pieces.map(p => {
+    const blocks     = p.blocks  || [];
+    const casts      = p.casts   || [];
+    const members    = casts.filter(c => c.cast_role === 'member');
+    const understudies = casts.filter(c => c.cast_role === 'understudy');
+    const rehearsalStr = blocks.length
+      ? blocks.map(b => `${b.day} ${b.start_time}–${b.end_time}`).join(', ')
+      : 'TBD';
+    const castLines = [
+      ...members.map(c => `<p style="margin:2px 0;">${c.first_name} ${c.last_name}</p>`),
+      ...understudies.map(c => `<p style="margin:2px 0;">${c.first_name} ${c.last_name} <span style="color:#888;">(understudy)</span></p>`),
+    ].join('') || '<p style="color:#888;font-style:italic;">No cast assigned.</p>';
+    return `
+      <div style="margin-bottom:28px;padding-top:16px;border-top:1px solid #e0e0e0;">
+        <h3 style="margin:0 0 6px;">${p.name}</h3>
+        ${p.choreographer_name ? `<p style="margin:0 0 2px;color:#555;font-size:14px;">Choreographer: <strong>${p.choreographer_name}</strong>${p.choreographer_email ? ` &nbsp;·&nbsp; <a href="mailto:${p.choreographer_email}" style="color:#555;">${p.choreographer_email}</a>` : ''}</p>` : ''}
+        <p style="margin:0 0 10px;color:#555;font-size:14px;">Rehearsals: ${rehearsalStr}</p>
+        ${castLines}
+      </div>`;
+  }).join('');
+  return `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#222;padding:24px;">
+    <h1 style="text-align:center;margin-bottom:4px;">${orgName}</h1>
+    <p style="text-align:center;color:#555;margin-top:0;">Casting is now final.</p>
+    ${blurb ? `<p style="color:#333;border-left:3px solid #ddd;padding:8px 12px;margin:16px 0;">${blurb.replace(/\n/g,'<br>')}</p>` : ''}
+    ${piecesHTML}
+    <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+    <p style="color:#aaa;font-size:12px;text-align:center;">CastSync — this is an automated message.</p>
+  </div>`;
+}
+
 // ── Master dancer routes (org/season scoped) ──────────────────────────────────
 
 // GET /api/dancers — all submissions for current org/season
