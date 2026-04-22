@@ -361,15 +361,17 @@ app.post('/api/auth/switch-mode', async (req, res) => {
 
 // ── Org routes ────────────────────────────────────────────────────────────────
 
-// GET /api/orgs — list all orgs this director belongs to
+// GET /api/orgs — list all orgs this director belongs to (org-wide or production-specific)
 app.get('/api/orgs', requireAuth('master'), async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT o.id, o.name, o.join_code, om.role,
-              (SELECT COUNT(*) FROM seasons WHERE org_id = o.id) AS season_count
+      `SELECT DISTINCT o.id, o.name, o.join_code,
+              COALESCE(om.role, 'co-director') AS role
        FROM orgs o
-       JOIN org_members om ON om.org_id = o.id
-       WHERE om.user_id = $1
+       LEFT JOIN org_members om ON om.org_id = o.id AND om.user_id = $1
+       LEFT JOIN seasons s2    ON s2.org_id = o.id
+       LEFT JOIN season_members sm ON sm.season_id = s2.id AND sm.user_id = $1
+       WHERE om.user_id = $1 OR sm.user_id = $1
        ORDER BY o.created_at DESC`,
       [req.session.userId]
     );
@@ -380,17 +382,16 @@ app.get('/api/orgs', requireAuth('master'), async (req, res) => {
   }
 });
 
-// GET /api/orgs/preview?join_code=XXX — public org lookup for join code preview
+// GET /api/orgs/preview?join_code=XXX — public lookup by production join code
 app.get('/api/orgs/preview', async (req, res) => {
   const { join_code } = req.query;
-  if (!join_code || join_code.trim().length < 6) return res.json({ found: false });
+  if (!join_code || join_code.trim().length < 4) return res.json({ found: false });
   try {
+    // Look up by season join code (production code)
     const result = await pool.query(
       `SELECT o.name AS org_name, s.name AS season_name
-       FROM orgs o
-       JOIN seasons s ON s.org_id = o.id AND s.is_active = TRUE
-       WHERE UPPER(o.join_code) = UPPER($1)
-       ORDER BY s.created_at DESC LIMIT 1`,
+       FROM seasons s JOIN orgs o ON o.id = s.org_id
+       WHERE UPPER(s.join_code) = UPPER($1) LIMIT 1`,
       [join_code.trim()]
     );
     if (result.rows.length === 0) return res.json({ found: false });
@@ -440,40 +441,67 @@ app.post('/api/orgs', requireAuth('master'), async (req, res) => {
       'INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, $3)',
       [org.id, req.session.userId, 'owner']
     );
-    // Auto-create first season
-    const seasonResult = await pool.query(
-      'INSERT INTO seasons (org_id, name, is_active) VALUES ($1, $2, TRUE) RETURNING id, name',
-      [org.id, 'Season 1']
-    );
-    const season = seasonResult.rows[0];
-    res.status(201).json({ org, season });
+    // Auto-create first production with its own join code
+    let seasonCode, inserted = false;
+    while (!inserted) {
+      try {
+        seasonCode = generateJoinCode();
+        const seasonResult = await pool.query(
+          'INSERT INTO seasons (org_id, name, is_active, join_code) VALUES ($1, $2, TRUE, $3) RETURNING id, name, join_code',
+          [org.id, 'Production 1', seasonCode]
+        );
+        inserted = true;
+        res.status(201).json({ org, season: seasonResult.rows[0] });
+      } catch (e) {
+        if (e.code !== '23505') throw e; // retry only on unique violation
+      }
+    }
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to create org.' });
   }
 });
 
-// POST /api/orgs/:id/invite — invite a co-director by email
-app.post('/api/orgs/:id/invite', requireAuth('master'), async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'Email is required.' });
+// PATCH /api/orgs/:id — update org name
+app.patch('/api/orgs/:id', requireAuth('master'), async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name is required.' });
   try {
-    // Check user is owner of this org
-    const ownerCheck = await pool.query(
+    const check = await pool.query(
       'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2 AND role = $3',
       [req.params.id, req.session.userId, 'owner']
     );
+    if (check.rows.length === 0) return res.status(403).json({ error: 'Only the org owner can rename it.' });
+    await pool.query('UPDATE orgs SET name = $1 WHERE id = $2', [name.trim(), req.params.id]);
+    res.json({ message: 'Org renamed.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to rename org.' });
+  }
+});
+
+// POST /api/orgs/:orgId/seasons/:seasonId/invite — invite a co-director to one production
+app.post('/api/orgs/:orgId/seasons/:seasonId/invite', requireAuth('master'), async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required.' });
+  try {
+    const ownerCheck = await pool.query(
+      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2 AND role = $3',
+      [req.params.orgId, req.session.userId, 'owner']
+    );
     if (ownerCheck.rows.length === 0) return res.status(403).json({ error: 'Only the org owner can invite co-directors.' });
 
-    const userResult = await pool.query('SELECT id FROM users WHERE email = $1 AND role = $2', [email.toLowerCase().trim(), 'master']);
+    const userResult = await pool.query(
+      'SELECT id FROM users WHERE email = $1 AND (role = $2 OR is_director = TRUE)',
+      [email.toLowerCase().trim(), 'master']
+    );
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'No director account found with that email.' });
 
     const inviteeId = userResult.rows[0].id;
     await pool.query(
-      'INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (org_id, user_id) DO NOTHING',
-      [req.params.id, inviteeId, 'editor']
+      'INSERT INTO season_members (season_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (season_id, user_id) DO NOTHING',
+      [req.params.seasonId, inviteeId, 'editor']
     );
-    res.json({ message: 'Co-director added.' });
+    res.json({ message: 'Co-director added to this production.' });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to invite co-director.' });
@@ -485,10 +513,13 @@ app.post('/api/session/org', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.body;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'orgId and seasonId required.' });
   try {
-    // Verify membership
+    // Verify org-wide membership OR production-specific membership
     const check = await pool.query(
-      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
-      [orgId, req.session.userId]
+      `SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM season_members WHERE season_id = $3 AND user_id = $2
+       LIMIT 1`,
+      [orgId, req.session.userId, seasonId]
     );
     if (check.rows.length === 0) return res.status(403).json({ error: 'Not a member of this org.' });
 
@@ -510,14 +541,20 @@ app.post('/api/session/org', requireAuth('master'), async (req, res) => {
 
 // ── Season routes ─────────────────────────────────────────────────────────────
 
-// GET /api/orgs/:orgId/seasons
+// GET /api/orgs/:orgId/seasons — filtered by user's access level
 app.get('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT s.id, s.name, s.is_active, s.created_at,
+      `SELECT s.id, s.name, s.join_code, s.is_active, s.created_at,
               (SELECT COUNT(*) FROM submissions WHERE season_id = s.id) AS submission_count
-       FROM seasons s WHERE s.org_id = $1 ORDER BY s.created_at DESC`,
-      [req.params.orgId]
+       FROM seasons s
+       WHERE s.org_id = $1 AND (
+         EXISTS (SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2)
+         OR
+         EXISTS (SELECT 1 FROM season_members WHERE season_id = s.id AND user_id = $2)
+       )
+       ORDER BY s.created_at DESC`,
+      [req.params.orgId, req.session.userId]
     );
     res.json(result.rows);
   } catch (err) {
@@ -526,19 +563,61 @@ app.get('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => {
   }
 });
 
-// POST /api/orgs/:orgId/seasons — create a new season
+// POST /api/orgs/:orgId/seasons — create a new production with its own join code
 app.post('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => {
   const { name } = req.body;
-  if (!name) return res.status(400).json({ error: 'Season name is required.' });
+  if (!name) return res.status(400).json({ error: 'Production name is required.' });
   try {
-    const result = await pool.query(
-      'INSERT INTO seasons (org_id, name, is_active) VALUES ($1, $2, TRUE) RETURNING id, name',
-      [req.params.orgId, name.trim()]
-    );
-    res.status(201).json(result.rows[0]);
+    let row, inserted = false;
+    while (!inserted) {
+      try {
+        const code = generateJoinCode();
+        const result = await pool.query(
+          'INSERT INTO seasons (org_id, name, is_active, join_code) VALUES ($1, $2, TRUE, $3) RETURNING id, name, join_code',
+          [req.params.orgId, name.trim(), code]
+        );
+        row = result.rows[0];
+        inserted = true;
+      } catch (e) {
+        if (e.code !== '23505') throw e;
+      }
+    }
+    res.status(201).json(row);
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ error: 'Failed to create season.' });
+    res.status(500).json({ error: 'Failed to create production.' });
+  }
+});
+
+// PATCH /api/orgs/:orgId/seasons/:seasonId — rename a production
+app.patch('/api/orgs/:orgId/seasons/:seasonId', requireAuth('master'), async (req, res) => {
+  const { name } = req.body;
+  if (!name) return res.status(400).json({ error: 'Name is required.' });
+  try {
+    const check = await pool.query(
+      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2 AND role = $3',
+      [req.params.orgId, req.session.userId, 'owner']
+    );
+    if (check.rows.length === 0) return res.status(403).json({ error: 'Only the org owner can rename productions.' });
+    await pool.query('UPDATE seasons SET name = $1 WHERE id = $2 AND org_id = $3', [name.trim(), req.params.seasonId, req.params.orgId]);
+    res.json({ message: 'Production renamed.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to rename production.' });
+  }
+});
+
+// DELETE /api/orgs/:orgId/seasons/:seasonId — delete a production
+app.delete('/api/orgs/:orgId/seasons/:seasonId', requireAuth('master'), async (req, res) => {
+  try {
+    const check = await pool.query(
+      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2 AND role = $3',
+      [req.params.orgId, req.session.userId, 'owner']
+    );
+    if (check.rows.length === 0) return res.status(403).json({ error: 'Only the org owner can delete productions.' });
+    await pool.query('DELETE FROM seasons WHERE id = $1 AND org_id = $2', [req.params.seasonId, req.params.orgId]);
+    res.json({ message: 'Production deleted.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete production.' });
   }
 });
 
@@ -566,22 +645,18 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
   if (!first_name || !last_name) return res.status(400).json({ error: 'Name is required.' });
 
   try {
-    // Look up org by join code
-    const orgResult = await pool.query('SELECT id, name FROM orgs WHERE UPPER(join_code) = UPPER($1)', [join_code.trim()]);
-    if (orgResult.rows.length === 0)
-      return res.status(404).json({ error: 'Invalid join code. Please check with your director.' });
-
-    const org = orgResult.rows[0];
-
-    // Get active season for this org
-    const seasonResult = await pool.query(
-      'SELECT id, name FROM seasons WHERE org_id = $1 AND is_active = TRUE ORDER BY created_at DESC LIMIT 1',
-      [org.id]
+    // Look up production by its join code
+    const seasonLookup = await pool.query(
+      `SELECT s.id AS season_id, s.name AS season_name, o.id AS org_id, o.name AS org_name
+       FROM seasons s JOIN orgs o ON o.id = s.org_id
+       WHERE UPPER(s.join_code) = UPPER($1) LIMIT 1`,
+      [join_code.trim()]
     );
-    if (seasonResult.rows.length === 0)
-      return res.status(404).json({ error: 'This organization has no active season.' });
+    if (seasonLookup.rows.length === 0)
+      return res.status(404).json({ error: 'Invalid code. Please check with your director.' });
 
-    const season = seasonResult.rows[0];
+    const org    = { id: seasonLookup.rows[0].org_id,    name: seasonLookup.rows[0].org_name };
+    const season = { id: seasonLookup.rows[0].season_id, name: seasonLookup.rows[0].season_name };
 
     // Upsert dancer profile (reusable across orgs)
     await pool.query(
@@ -664,7 +739,7 @@ app.get('/api/submissions/me', requireAuth('auditionee'), async (req, res) => {
 app.get('/api/my-submissions', requireAuth('auditionee'), async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT sub.created_at, o.name AS org_name, o.join_code, s.name AS season_name
+      `SELECT sub.created_at, o.name AS org_name, s.join_code, s.name AS season_name
        FROM submissions sub
        JOIN orgs o ON o.id = sub.org_id
        JOIN seasons s ON s.id = sub.season_id
@@ -1301,6 +1376,34 @@ async function runMigrations() {
       DO $$ BEGIN
         ALTER TABLE users ADD COLUMN reset_token_expires TIMESTAMP;
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE seasons ADD COLUMN join_code VARCHAR(20) UNIQUE;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    // Backfill join codes for any productions that don't have one yet
+    const nullSeasons = await pool.query('SELECT id FROM seasons WHERE join_code IS NULL');
+    for (const row of nullSeasons.rows) {
+      let done = false;
+      while (!done) {
+        try {
+          const code = generateJoinCode();
+          await pool.query('UPDATE seasons SET join_code = $1 WHERE id = $2', [code, row.id]);
+          done = true;
+        } catch (e) {
+          if (e.code !== '23505') throw e; // retry only on unique collision
+        }
+      }
+    }
+    // Create season_members table for production-level co-directors
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS season_members (
+        id         SERIAL PRIMARY KEY,
+        season_id  INTEGER REFERENCES seasons(id) ON DELETE CASCADE,
+        user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        role       VARCHAR(20) NOT NULL DEFAULT 'editor',
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (season_id, user_id)
+      );
     `);
     console.log('Migrations complete.');
   } catch (err) {
