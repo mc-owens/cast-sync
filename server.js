@@ -404,20 +404,39 @@ app.post('/api/auth/switch-mode', async (req, res) => {
 // GET /api/orgs — list all orgs this director belongs to (org-wide or production-specific)
 app.get('/api/orgs', requireAuth('master'), async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT DISTINCT o.id, o.name, o.join_code,
-              COALESCE(om.role, 'co-director') AS role
+    // Primary: orgs where the user is an org-level member
+    const orgResult = await pool.query(
+      `SELECT o.id, o.name, o.join_code, om.role
        FROM orgs o
-       LEFT JOIN org_members om ON om.org_id = o.id AND om.user_id = $1
-       LEFT JOIN seasons s2    ON s2.org_id = o.id
-       LEFT JOIN season_members sm ON sm.season_id = s2.id AND sm.user_id = $1
-       WHERE om.user_id = $1 OR sm.user_id = $1
+       JOIN org_members om ON om.org_id = o.id
+       WHERE om.user_id = $1
        ORDER BY o.created_at DESC`,
       [req.session.userId]
     );
-    res.json(result.rows);
+
+    // Secondary: orgs accessible only via season_members (production co-directors)
+    // Wrapped in its own try so a missing season_members table doesn't break the whole route
+    let seasonOrgRows = [];
+    try {
+      const smResult = await pool.query(
+        `SELECT DISTINCT o.id, o.name, o.join_code, 'co-director' AS role
+         FROM orgs o
+         JOIN seasons s  ON s.org_id   = o.id
+         JOIN season_members sm ON sm.season_id = s.id
+         WHERE sm.user_id = $1`,
+        [req.session.userId]
+      );
+      seasonOrgRows = smResult.rows;
+    } catch (e) {
+      console.warn('season_members query failed (table may not exist yet):', e.message);
+    }
+
+    // Merge — org_members takes priority; avoid duplicates
+    const seen     = new Set(orgResult.rows.map(r => r.id));
+    const combined = [...orgResult.rows, ...seasonOrgRows.filter(r => !seen.has(r.id))];
+    res.json(combined);
   } catch (err) {
-    console.error(err.message);
+    console.error('GET /api/orgs error:', err.message);
     res.status(500).json({ error: 'Failed to fetch orgs.' });
   }
 });
@@ -584,22 +603,56 @@ app.post('/api/session/org', requireAuth('master'), async (req, res) => {
 // GET /api/orgs/:orgId/seasons — filtered by user's access level
 app.get('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT s.id, s.name, s.join_code, s.is_active, s.created_at,
-              (SELECT COUNT(*) FROM submissions WHERE season_id = s.id) AS submission_count
-       FROM seasons s
-       WHERE s.org_id = $1 AND (
-         EXISTS (SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2)
-         OR
-         EXISTS (SELECT 1 FROM season_members WHERE season_id = s.id AND user_id = $2)
-       )
-       ORDER BY s.created_at DESC`,
+    // Check if user is an org-level member
+    const isOrgMember = await pool.query(
+      'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2',
       [req.params.orgId, req.session.userId]
     );
+
+    let seasonFilter = isOrgMember.rows.length > 0
+      ? '' // org member sees all seasons
+      : 'AND FALSE'; // fallback; will be overridden below if season_members works
+
+    // Build the WHERE clause; if season_members doesn't exist yet, fall back to org_members only
+    let query, params;
+    if (isOrgMember.rows.length > 0) {
+      // Org-level member: show all seasons in the org
+      query  = `SELECT s.id, s.name, s.join_code, s.is_active, s.created_at,
+                       (SELECT COUNT(*) FROM submissions WHERE season_id = s.id) AS submission_count
+                FROM seasons s
+                WHERE s.org_id = $1
+                ORDER BY s.created_at DESC`;
+      params = [req.params.orgId];
+    } else {
+      // Production co-director: only seasons in season_members
+      query  = `SELECT s.id, s.name, s.join_code, s.is_active, s.created_at,
+                       (SELECT COUNT(*) FROM submissions WHERE season_id = s.id) AS submission_count
+                FROM seasons s
+                JOIN season_members sm ON sm.season_id = s.id
+                WHERE s.org_id = $1 AND sm.user_id = $2
+                ORDER BY s.created_at DESC`;
+      params = [req.params.orgId, req.session.userId];
+    }
+
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: 'Failed to fetch seasons.' });
+    console.error('GET seasons error:', err.message);
+    // If season_members doesn't exist, return all seasons for org members
+    try {
+      const fallback = await pool.query(
+        `SELECT s.id, s.name, s.join_code, s.is_active, s.created_at,
+                (SELECT COUNT(*) FROM submissions WHERE season_id = s.id) AS submission_count
+         FROM seasons s
+         JOIN org_members om ON om.org_id = s.org_id
+         WHERE s.org_id = $1 AND om.user_id = $2
+         ORDER BY s.created_at DESC`,
+        [req.params.orgId, req.session.userId]
+      );
+      res.json(fallback.rows);
+    } catch (err2) {
+      res.status(500).json({ error: 'Failed to fetch seasons.' });
+    }
   }
 });
 
