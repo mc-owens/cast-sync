@@ -117,20 +117,16 @@ body {
 }
 
 .time-label {
-  height: 48.5px;
-  line-height: 0;
+  height: 50px;
   text-align: right;
   padding-right: 8px;
   color: #444;
-  font-size: 13px;
+  font-size: 11px;
   border-bottom: 1px solid #eee;
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
-}
-
-.time-column .time-label:first-child {
-  margin-top: 9px;
+  padding-top: 2px;
 }
 
 .grid {
