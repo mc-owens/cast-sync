@@ -87,7 +87,10 @@ async function addDancer() {
     });
   });
 
-  const data = { join_code, first_name, last_name, phone, address, grade, technique_classes, injuries, absences, availability };
+  const auditionNumEl  = document.getElementById('audition-number');
+  const audition_number = auditionNumEl ? auditionNumEl.value.trim() || null : null;
+
+  const data = { join_code, first_name, last_name, phone, address, grade, technique_classes, injuries, absences, availability, audition_number };
 
   // Check for existing submission with this join code
   try {

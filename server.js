@@ -732,7 +732,7 @@ app.get('/api/profile', requireAuth('auditionee'), async (req, res) => {
 // POST /api/submissions — auditionee submits (or updates) for a specific org season
 app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
   const { join_code, first_name, last_name, phone, address, grade,
-          technique_classes, injuries, absences, availability } = req.body;
+          technique_classes, injuries, absences, availability, audition_number } = req.body;
 
   if (!join_code)   return res.status(400).json({ error: 'Join code is required.' });
   if (!first_name || !last_name) return res.status(400).json({ error: 'Name is required.' });
@@ -768,17 +768,18 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
 
     const isUpdate = existing.rows.length > 0;
 
+    const audNum = audition_number ? audition_number.toString().trim() : null;
     if (isUpdate) {
       await pool.query(
-        `UPDATE submissions SET injuries=$1, absences=$2, availability=$3
-         WHERE user_id=$4 AND season_id=$5`,
-        [injuries||null, absences||null, JSON.stringify(availability||[]), req.session.userId, season.id]
+        `UPDATE submissions SET injuries=$1, absences=$2, availability=$3, audition_number=$4
+         WHERE user_id=$5 AND season_id=$6`,
+        [injuries||null, absences||null, JSON.stringify(availability||[]), audNum, req.session.userId, season.id]
       );
     } else {
       await pool.query(
-        `INSERT INTO submissions (user_id, org_id, season_id, injuries, absences, availability)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [req.session.userId, org.id, season.id, injuries||null, absences||null, JSON.stringify(availability||[])]
+        `INSERT INTO submissions (user_id, org_id, season_id, injuries, absences, availability, audition_number)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [req.session.userId, org.id, season.id, injuries||null, absences||null, JSON.stringify(availability||[]), audNum]
       );
     }
 
@@ -1038,6 +1039,7 @@ app.get('/api/dancers', requireAuth('master'), async (req, res) => {
     const result = await pool.query(
       `SELECT dp.id AS profile_id, u.id AS user_id,
               dp.first_name, dp.last_name, u.email, dp.grade, sub.created_at,
+              sub.audition_number,
               (SELECT COUNT(*) FROM piece_casts pc
                JOIN pieces p ON p.id = pc.piece_id
                WHERE pc.user_id = u.id AND p.season_id = $2) AS piece_count
@@ -1265,7 +1267,7 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
 
     const dancersResult = await pool.query(
       `SELECT dp.id, u.id AS user_id, dp.first_name, dp.last_name, sub.availability,
-              pc.cast_role AS existing_cast_role
+              sub.audition_number, pc.cast_role AS existing_cast_role
        FROM submissions sub
        JOIN dancer_profiles dp ON dp.user_id = sub.user_id
        JOIN users u ON u.id = sub.user_id
@@ -1287,6 +1289,7 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
         id: dancer.user_id,
         first_name: dancer.first_name,
         last_name: dancer.last_name,
+        audition_number: dancer.audition_number || null,
         cast_role: dancer.existing_cast_role || null,
       };
       if (covered === pieceBlocks.length) fully.push(entry);
@@ -1476,6 +1479,9 @@ async function runMigrations() {
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
       DO $$ BEGIN
         ALTER TABLE seasons ADD COLUMN join_code VARCHAR(20) UNIQUE;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE submissions ADD COLUMN audition_number VARCHAR(20);
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
     `);
     console.log('Migration step 2 (column additions) complete.');

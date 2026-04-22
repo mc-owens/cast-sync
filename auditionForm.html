@@ -47,7 +47,7 @@
     </div>
 
     <!-- Nav -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg app-nav">
       <div class="container-fluid">
         <a class="navbar-brand" href="#">CastSync</a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -68,7 +68,7 @@
               <a class="nav-link" href="upgrade.html">Director Access</a>
             </li>
             <li class="nav-item d-flex align-items-center d-none" id="switch-director-item">
-              <button class="btn btn-outline-light btn-sm ms-1" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>
+              <button class="btn btn-outline-secondary btn-sm ms-1" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>
             </li>
           </ul>
           <div class="d-flex align-items-center gap-3" id="right-nav">
@@ -118,6 +118,12 @@
                  maxlength="6" autocomplete="off" />
           <div id="join-code-hint" class="form-text">Your director will share this 6-character code with you.</div>
           <div id="join-code-preview" class="mt-2" style="display:none;font-size:13px;"></div>
+          <div class="mt-3">
+            <label for="audition-number" class="form-label fw-semibold" style="font-size:14px;">Audition Number</label>
+            <input type="text" id="audition-number" class="form-control" placeholder="Leave blank if not yet provided"
+                   style="max-width:200px;" maxlength="20" autocomplete="off" />
+            <div class="form-text">Your director may assign you a number at the audition. You can leave this blank and fill it in later.</div>
+          </div>
         </div>
 
         <div class="row g-3 mb-3">
@@ -214,11 +220,11 @@
           // Dual-role user in director mode → go to director side
           if (user.mode === 'director') { window.location.href = 'org-select.html'; return; }
 
-          // Right side: email + logout
+          // Right side: account + logout
+          document.getElementById('right-nav').className = 'app-nav-right';
           document.getElementById('right-nav').innerHTML =
-            `<span class="text-white-50" style="font-size:13px;">${user.email}</span>
-             <a href="account.html" class="text-white-50 text-decoration-none" style="font-size:13px;">Account</a>
-             <button class="btn btn-link nav-link text-white p-0" id="logout-btn">Log Out</button>`;
+            `<a href="account.html">Account</a>
+             <button id="logout-btn">Log Out</button>`;
           document.getElementById('logout-btn').addEventListener('click', async () => {
             await fetch('/api/auth/logout', { method: 'POST' });
             window.location.href = 'login.html';

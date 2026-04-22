@@ -63,7 +63,7 @@
   </div>
 
   <!-- Nav -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <nav class="navbar navbar-expand-lg app-nav">
     <div class="container-fluid">
       <a class="navbar-brand" href="#">CastSync</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -89,6 +89,7 @@
         </ul>
       </div>
     </div>
+    <div class="app-nav-right" id="right-nav"></div>
   </nav>
 
   <!-- Main content -->
@@ -154,10 +155,11 @@
 
         const nav = document.querySelector('.navbar-nav');
         nav.insertAdjacentHTML('beforeend',
-          `<li class="nav-item"><span class="nav-link text-white-50">${user.email}</span></li>
-           <li class="nav-item"><a class="nav-link text-white-50" href="account.html" style="font-size:13px;">Account</a></li>
-           <li class="nav-item"><button class="btn btn-link nav-link text-white" id="logout-btn">Log Out</button></li>`
+          `<li class="nav-item"><span class="nav-link nav-context">${user.orgName} · ${user.seasonName}</span></li>`
         );
+        document.getElementById('right-nav').innerHTML =
+          `<a href="account.html" class="btn-nav-account">Account</a>
+           <button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
         document.getElementById('logout-btn').addEventListener('click', async () => {
           await fetch('/api/auth/logout', { method: 'POST' });
           window.location.href = 'login.html';

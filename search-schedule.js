@@ -185,7 +185,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     li.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;';
 
     const link = document.createElement('span');
-    link.textContent   = `${dancer.first_name} ${dancer.last_name}`;
+    link.textContent   = dancer.audition_number
+      ? `#${dancer.audition_number} — ${dancer.first_name} ${dancer.last_name}`
+      : `${dancer.first_name} ${dancer.last_name}`;
     link.style.cssText = 'cursor:pointer;text-decoration:underline;color:#0d6efd;font-size:13px;flex:1;';
     link.title         = 'Click to view schedule';
     link.addEventListener('click', () => {
