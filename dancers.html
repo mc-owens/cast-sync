@@ -307,7 +307,7 @@
     }
 
     async function confirmRemove(userId, name) {
-      if (!confirm(`Remove ${name}'s submission from this season? Their account won't be deleted.`)) return;
+      if (!confirm(`Remove ${name}'s submission from this production? Their account won't be deleted.`)) return;
       try {
         const res = await fetch(`/api/dancers/${userId}/submission`, { method: 'DELETE' });
         if (!res.ok) { alert('Could not remove submission.'); return; }

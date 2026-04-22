@@ -82,19 +82,19 @@
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title">New Season</h5>
+          <h5 class="modal-title">New Production</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
           <div id="new-season-error" class="alert alert-danger d-none"></div>
           <div class="mb-3">
-            <label class="form-label">Season Name</label>
-            <input type="text" class="form-control" id="new-season-name" placeholder="e.g. Spring 2027" />
+            <label class="form-label">Production Name</label>
+            <input type="text" class="form-control" id="new-season-name" placeholder="e.g. Spring Showcase 2027" />
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-dark" id="create-season-btn">Create Season</button>
+          <button type="button" class="btn btn-dark" id="create-season-btn">Create Production</button>
         </div>
       </div>
     </div>
@@ -113,7 +113,7 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
       <div>
         <h4 class="mb-0 fw-semibold">Your Organizations</h4>
-        <p class="text-muted mb-0" style="font-size:13px;">Select an org and season to continue.</p>
+        <p class="text-muted mb-0" style="font-size:13px;">Select an organization and production to continue.</p>
       </div>
       <button class="btn btn-dark btn-sm" data-bs-toggle="modal" data-bs-target="#newOrgModal">+ New Org</button>
     </div>
@@ -159,7 +159,7 @@
                 </div>
                 <div class="d-flex gap-2">
                   ${org.role === 'owner' ? `<button class="btn btn-outline-dark btn-sm invite-btn" data-org-id="${org.id}">+ Co-Director</button>` : ''}
-                  <button class="btn btn-outline-secondary btn-sm new-season-btn" data-org-id="${org.id}">+ Season</button>
+                  <button class="btn btn-outline-secondary btn-sm new-season-btn" data-org-id="${org.id}">+ Production</button>
                   ${org.role === 'owner' ? `<button class="btn btn-outline-danger btn-sm delete-org-btn" data-org-id="${org.id}" data-org-name="${org.name}">Delete</button>` : ''}
                 </div>
               </div>
@@ -170,7 +170,7 @@
                     <span>${s.name}</span>
                     <span class="badge bg-secondary">${s.submission_count} submission${s.submission_count == 1 ? '' : 's'}</span>
                   </button>`).join('')}
-                ${seasons.length === 0 ? '<div class="list-group-item text-muted" style="font-size:13px;">No seasons yet.</div>' : ''}
+                ${seasons.length === 0 ? '<div class="list-group-item text-muted" style="font-size:13px;">No productions yet.</div>' : ''}
               </div>
             </div>`;
           container.appendChild(card);

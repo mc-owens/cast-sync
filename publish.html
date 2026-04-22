@@ -163,7 +163,7 @@
     document.getElementById('csv-btn').addEventListener('click', () => {
       if (!publishData) return;
       const { org_name, season_name, pieces } = publishData;
-      const rows = [['Org','Season','Piece','Choreographer','Choreo Email','Rehearsals','First Name','Last Name','Role']];
+      const rows = [['Org','Production','Piece','Choreographer','Choreo Email','Rehearsals','First Name','Last Name','Role']];
       pieces.forEach(p => {
         const rehearsalStr = (p.blocks||[]).map(b=>`${b.day} ${b.start_time}-${b.end_time}`).join(' | ');
         const casts = p.casts || [];
