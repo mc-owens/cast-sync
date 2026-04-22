@@ -1,5 +1,12 @@
 require('dotenv').config();
 
+const Sentry = require('@sentry/node');
+Sentry.init({
+  dsn: 'https://b9b4ddbbf1e8899b87e12bb698567716@o4511260506128384.ingest.us.sentry.io/4511260518580224',
+  environment: process.env.NODE_ENV || 'development',
+  tracesSampleRate: 0.2, // capture 20% of requests for performance tracing
+});
+
 if (!process.env.SESSION_SECRET) {
   console.error('FATAL: SESSION_SECRET environment variable is not set.');
   process.exit(1);
@@ -1300,6 +1307,9 @@ async function runMigrations() {
     console.error('Migration error:', err.message);
   }
 }
+
+// ── Sentry error handler (must be after all routes) ──────────────────────────
+Sentry.setupExpressErrorHandler(app);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
