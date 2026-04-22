@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CastSync — Audition & Casting Management for Dance</title>
+  <meta name="description" content="CastSync streamlines dance auditions — collect availability, build your cast, and publish results, all in one place.">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --brand: #111;
+      --accent: #2563eb;
+      --accent-light: #eff6ff;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; }
+    a { color: var(--accent); }
+
+    /* Nav */
+    .top-nav { background: #fff; border-bottom: 1px solid var(--border); padding: 14px 0; position: sticky; top: 0; z-index: 100; }
+    .top-nav .brand { font-weight: 700; font-size: 18px; color: #111; text-decoration: none; }
+    .top-nav .nav-links a { color: var(--muted); text-decoration: none; font-size: 14px; margin-left: 28px; }
+    .top-nav .nav-links a:hover { color: #111; }
+
+    /* Hero */
+    .hero { padding: 96px 0 80px; text-align: center; background: #fff; }
+    .hero h1 { font-size: clamp(2rem, 5vw, 3.25rem); font-weight: 800; letter-spacing: -1px; line-height: 1.1; margin-bottom: 20px; }
+    .hero p.lead { font-size: 1.15rem; color: var(--muted); max-width: 520px; margin: 0 auto 36px; line-height: 1.6; }
+    .badge-pill { display: inline-block; background: var(--accent-light); color: var(--accent); font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 99px; margin-bottom: 20px; letter-spacing: .3px; }
+
+    /* Buttons */
+    .btn-brand { background: var(--brand); color: #fff; border: none; padding: 13px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; text-decoration: none; display: inline-block; transition: opacity .15s; }
+    .btn-brand:hover { opacity: .85; color: #fff; }
+    .btn-outline-brand { background: transparent; color: var(--brand); border: 1.5px solid var(--brand); padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 15px; text-decoration: none; display: inline-block; transition: background .15s; }
+    .btn-outline-brand:hover { background: #f3f4f6; color: var(--brand); }
+
+    /* How it works */
+    .section { padding: 80px 0; }
+    .section-label { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+    .section-title { font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 800; letter-spacing: -.5px; margin-bottom: 16px; }
+    .section-sub { color: var(--muted); font-size: 1rem; max-width: 540px; line-height: 1.6; }
+
+    .step-num { width: 36px; height: 36px; border-radius: 50%; background: var(--brand); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+    .step-card { display: flex; gap: 20px; padding: 28px; background: #f9fafb; border-radius: 12px; border: 1px solid var(--border); }
+    .step-card h5 { font-weight: 700; margin-bottom: 6px; font-size: 15px; }
+    .step-card p { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0; }
+
+    /* Features */
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+    .feature-card { padding: 28px; border: 1px solid var(--border); border-radius: 12px; }
+    .feature-icon { font-size: 22px; margin-bottom: 12px; }
+    .feature-card h5 { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+    .feature-card p { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0; }
+
+    /* Pricing */
+    .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; max-width: 780px; margin: 0 auto; }
+    .price-card { border: 1px solid var(--border); border-radius: 14px; padding: 32px; position: relative; }
+    .price-card.featured { border-color: var(--brand); border-width: 2px; }
+    .price-card .featured-badge { position: absolute; top: -13px; left: 50%; transform: translateX(-50%); background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; padding: 3px 14px; border-radius: 99px; letter-spacing: .5px; white-space: nowrap; }
+    .price-card h4 { font-weight: 800; font-size: 17px; margin-bottom: 6px; }
+    .price-card .price { font-size: 2.4rem; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+    .price-card .price-sub { color: var(--muted); font-size: 13px; margin-top: 4px; margin-bottom: 20px; }
+    .price-card ul { list-style: none; padding: 0; margin: 0 0 24px; }
+    .price-card ul li { font-size: 14px; color: #374151; padding: 6px 0; border-bottom: 1px solid #f3f4f6; display: flex; gap: 8px; align-items: flex-start; }
+    .price-card ul li:last-child { border-bottom: none; }
+    .check { color: #16a34a; font-weight: 700; flex-shrink: 0; }
+
+    /* FAQ */
+    .faq-item { border-bottom: 1px solid var(--border); padding: 20px 0; }
+    .faq-item:first-child { border-top: 1px solid var(--border); }
+    .faq-q { font-weight: 700; font-size: 15px; cursor: pointer; display: flex; justify-content: space-between; gap: 16px; }
+    .faq-a { color: var(--muted); font-size: 14px; line-height: 1.6; margin-top: 10px; max-width: 640px; }
+
+    /* CTA band */
+    .cta-band { background: var(--brand); color: #fff; padding: 72px 0; text-align: center; }
+    .cta-band h2 { font-size: clamp(1.5rem, 3vw, 2.2rem); font-weight: 800; letter-spacing: -.5px; margin-bottom: 12px; }
+    .cta-band p { color: rgba(255,255,255,.65); margin-bottom: 32px; font-size: 16px; }
+    .btn-white { background: #fff; color: var(--brand); padding: 13px 28px; border-radius: 8px; font-weight: 700; font-size: 15px; text-decoration: none; display: inline-block; transition: opacity .15s; }
+    .btn-white:hover { opacity: .9; color: var(--brand); }
+
+    /* Footer */
+    footer { padding: 40px 0; border-top: 1px solid var(--border); }
+    footer .footer-brand { font-weight: 700; font-size: 16px; }
+    footer a { color: var(--muted); text-decoration: none; font-size: 13px; }
+    footer a:hover { color: #111; }
+
+    @media (max-width: 600px) {
+      .hero { padding: 64px 0 56px; }
+      .top-nav .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav class="top-nav">
+    <div class="container d-flex align-items-center justify-content-between">
+      <a class="brand" href="#">CastSync</a>
+      <div class="nav-links">
+        <a href="#how-it-works">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="login.html" class="btn-outline-brand" style="padding:9px 18px;font-size:14px;">Log in</a>
+        <a href="signup.html" class="btn-brand" style="padding:9px 18px;font-size:14px;">Get started</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <div class="badge-pill">Built for dance directors</div>
+      <h1>Auditions, organized.<br>Casting, done.</h1>
+      <p class="lead">CastSync replaces spreadsheets and email chains with a single tool — collect availability, schedule rehearsals, build your cast, and notify everyone automatically.</p>
+      <div class="d-flex gap-3 justify-content-center flex-wrap">
+        <a href="signup.html" class="btn-brand">Start your first production →</a>
+        <a href="login.html" class="btn-outline-brand">Log in</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="section bg-white" id="how-it-works">
+    <div class="container">
+      <div class="row align-items-center g-5">
+        <div class="col-lg-4">
+          <div class="section-label">How it works</div>
+          <h2 class="section-title">From audition to cast list in three steps</h2>
+          <p class="section-sub">No setup fees, no complex software. Directors are up and running in minutes.</p>
+        </div>
+        <div class="col-lg-8">
+          <div class="d-flex flex-column gap-3">
+            <div class="step-card">
+              <div class="step-num">1</div>
+              <div>
+                <h5>Share your production code</h5>
+                <p>Create a production and send the 6-character code to your auditionees. They submit their info, weekly availability, and known conflicts — no account required on their end.</p>
+              </div>
+            </div>
+            <div class="step-card">
+              <div class="step-num">2</div>
+              <div>
+                <h5>Build your schedule and cast</h5>
+                <p>See everyone's availability at a glance. Add pieces, assign rehearsal blocks, and cast dancers — CastSync flags conflicts automatically so you don't double-book anyone.</p>
+              </div>
+            </div>
+            <div class="step-card">
+              <div class="step-num">3</div>
+              <div>
+                <h5>Publish results instantly</h5>
+                <p>Send the full cast list to every auditionee with one click. They see their role, their piece's rehearsal schedule, and any message you add — no back-and-forth needed.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section" style="background:#f9fafb;" id="features">
+    <div class="container">
+      <div class="text-center mb-5">
+        <div class="section-label">Features</div>
+        <h2 class="section-title">Everything a director needs</h2>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">📋</div>
+          <h5>Auditionee submissions</h5>
+          <p>A clean form collects name, contact info, grade, technique background, injuries, absences, and a visual weekly availability grid.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📅</div>
+          <h5>Master schedule view</h5>
+          <p>See all your rehearsal blocks for every piece across the week. Spot conflicts at a glance before they become a problem.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔍</div>
+          <h5>Availability search</h5>
+          <p>Filter auditionees by who is free during a specific time block. Find your cast by matching schedules, not just talent.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🎭</div>
+          <h5>Cast builder</h5>
+          <p>Assign dancers to pieces as members or understudies. See their full profile and conflicts before you commit.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📣</div>
+          <h5>One-click publish</h5>
+          <p>Email the complete cast list to all auditionees at once — including rehearsal times, choreographer info, and a custom message.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📄</div>
+          <h5>PDF & CSV export</h5>
+          <p>Download a printable cast sheet or a spreadsheet of all casting data — useful for rehearsal packets and record-keeping.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">👥</div>
+          <h5>Co-director access</h5>
+          <p>Invite a co-director to a specific production. They get full access to that show's data without seeing your other work.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🏢</div>
+          <h5>Multi-production orgs</h5>
+          <p>Run multiple productions under one organization — a Fall Show, Spring Showcase, and Workshop can all live in the same account.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="section bg-white" id="pricing">
+    <div class="container">
+      <div class="text-center mb-5">
+        <div class="section-label">Pricing</div>
+        <h2 class="section-title">Simple, per-production pricing</h2>
+        <p class="text-muted" style="font-size:15px;max-width:440px;margin:0 auto;">Pay only for what you use. No subscriptions, no seat fees.</p>
+      </div>
+      <div class="pricing-grid">
+        <div class="price-card">
+          <h4>Pay as you go</h4>
+          <div class="price">$79</div>
+          <div class="price-sub">per production</div>
+          <ul>
+            <li><span class="check">✓</span> Unlimited auditionees</li>
+            <li><span class="check">✓</span> All features included</li>
+            <li><span class="check">✓</span> PDF & CSV export</li>
+            <li><span class="check">✓</span> Co-director access</li>
+            <li><span class="check">✓</span> Email cast results</li>
+            <li><span class="check">✓</span> No expiry — use it at your own pace</li>
+          </ul>
+          <a href="signup.html" class="btn-outline-brand w-100 text-center">Get started</a>
+        </div>
+        <div class="price-card featured">
+          <div class="featured-badge">BEST VALUE</div>
+          <h4>Annual pass</h4>
+          <div class="price">$249</div>
+          <div class="price-sub">per year · unlimited productions</div>
+          <ul>
+            <li><span class="check">✓</span> Everything in Pay as you go</li>
+            <li><span class="check">✓</span> Unlimited productions</li>
+            <li><span class="check">✓</span> Multiple organizations</li>
+            <li><span class="check">✓</span> Priority support</li>
+            <li><span class="check">✓</span> Saves $80+ if you run 4+ shows</li>
+          </ul>
+          <a href="signup.html" class="btn-brand w-100 text-center">Get started</a>
+        </div>
+      </div>
+      <p class="text-center text-muted mt-4" style="font-size:13px;">Student organization or nonprofit? <a href="mailto:support@cast-sync.com">Contact us</a> for a discount.</p>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section" style="background:#f9fafb;">
+    <div class="container" style="max-width:720px;">
+      <div class="text-center mb-5">
+        <div class="section-label">FAQ</div>
+        <h2 class="section-title">Common questions</h2>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">Do auditionees need to create an account? <span>+</span></div>
+        <div class="faq-a" style="display:none;">Yes — they sign up with an email and password, then enter your production code to submit. Their profile saves automatically so they only fill in personal info once across all future auditions.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">What is a "production"? <span>+</span></div>
+        <div class="faq-a" style="display:none;">A production is one audition cycle — a Fall Showcase, Spring Concert, or Workshop, for example. Each production has its own join code, auditionee list, pieces, and cast. You can run as many as you need under one organization.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">Can I try it before paying? <span>+</span></div>
+        <div class="faq-a" style="display:none;">Yes. You can create an account and explore the director tools at no cost. Payment is required before publishing casting results.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">How does co-director access work? <span>+</span></div>
+        <div class="faq-a" style="display:none;">You can invite a co-director to a specific production by email. They get full access to that show's data — scheduling, casting, and publishing — without seeing your other productions.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">Is my data secure? <span>+</span></div>
+        <div class="faq-a" style="display:none;">Yes. All data is stored in a PostgreSQL database hosted on Railway. Sessions are encrypted, passwords are hashed with bcrypt, and we never share your data with third parties. See our <a href="privacy.html">Privacy Policy</a> for details.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-band">
+    <div class="container">
+      <h2>Ready to run a cleaner audition?</h2>
+      <p>Join directors who've already replaced their spreadsheets with CastSync.</p>
+      <a href="signup.html" class="btn-white">Create your free account →</a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <div class="footer-brand">CastSync</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">© 2026 CastSync. All rights reserved.</div>
+      </div>
+      <div class="d-flex gap-4 flex-wrap">
+        <a href="login.html">Log in</a>
+        <a href="signup.html">Sign up</a>
+        <a href="terms.html">Terms</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="mailto:support@cast-sync.com">Contact</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    function toggleFaq(el) {
+      const answer = el.nextElementSibling;
+      const icon   = el.querySelector('span');
+      const open   = answer.style.display !== 'none';
+      answer.style.display = open ? 'none' : 'block';
+      icon.textContent     = open ? '+' : '−';
+    }
+  </script>
+
+</body>
+</html>
