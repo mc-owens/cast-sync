@@ -104,7 +104,7 @@
     <div class="container mt-4" style="max-width: 780px;">
 
       <h4 class="mb-1">Dancer Registration</h4>
-      <p class="text-muted mb-2" style="font-size:13px;">Fill out this form for each audition you are applying to. Your director will give you a join code.</p>
+      <p class="text-muted mb-2" style="font-size:13px;">Fill out this form for each audition you are applying to. Your director will give you a production code.</p>
       <div id="profile-prefill-notice" class="alert alert-secondary py-2 px-3 mb-3 d-none" style="font-size:13px;">
         Using your saved profile — review and update anything that has changed.
       </div>
@@ -112,11 +112,11 @@
       <form id="dancer-form">
 
         <div class="mb-4 p-3 border rounded bg-light">
-          <label for="join-code" class="form-label fw-semibold">Director Join Code</label>
+          <label for="join-code" class="form-label fw-semibold">Production Code</label>
           <input type="text" id="join-code" class="form-control" placeholder="e.g. A3F9C2" required
                  style="text-transform:uppercase;letter-spacing:2px;font-weight:bold;max-width:200px;"
                  maxlength="6" autocomplete="off" />
-          <div id="join-code-hint" class="form-text">Your director will share this code with you.</div>
+          <div id="join-code-hint" class="form-text">Your director will share this 6-character code with you.</div>
           <div id="join-code-preview" class="mt-2" style="display:none;font-size:13px;"></div>
         </div>
 
@@ -217,6 +217,7 @@
           // Right side: email + logout
           document.getElementById('right-nav').innerHTML =
             `<span class="text-white-50" style="font-size:13px;">${user.email}</span>
+             <a href="account.html" class="text-white-50 text-decoration-none" style="font-size:13px;">Account</a>
              <button class="btn btn-link nav-link text-white p-0" id="logout-btn">Log Out</button>`;
           document.getElementById('logout-btn').addEventListener('click', async () => {
             await fetch('/api/auth/logout', { method: 'POST' });

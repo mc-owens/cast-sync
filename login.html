@@ -20,6 +20,7 @@
 
     <div id="error-msg" class="alert alert-danger d-none"></div>
     <div id="reset-success-msg" class="alert alert-success d-none">Password updated — you can now log in.</div>
+    <div id="deleted-msg" class="alert alert-info d-none">Your account has been deleted.</div>
 
     <form id="login-form">
       <div class="mb-3">
@@ -51,10 +52,9 @@
   </div>
 
   <script>
-    // Show success banner after password reset
-    if (new URLSearchParams(window.location.search).get('reset') === '1') {
-      document.getElementById('reset-success-msg').classList.remove('d-none');
-    }
+    const _qs = new URLSearchParams(window.location.search);
+    if (_qs.get('reset')   === '1') document.getElementById('reset-success-msg').classList.remove('d-none');
+    if (_qs.get('deleted') === '1') document.getElementById('deleted-msg').classList.remove('d-none');
 
     // If already logged in, redirect to the right page
     fetch('/api/auth/me')

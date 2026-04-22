@@ -21,7 +21,7 @@ const session        = require('express-session');
 const PgSession      = require('connect-pg-simple')(session);
 const passport       = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const nodemailer     = require('nodemailer');
+const { Resend }     = require('resend');
 const crypto         = require('crypto');
 
 const app = express();
@@ -37,10 +37,9 @@ const pool = process.env.DATABASE_URL
 
 // ── Email ─────────────────────────────────────────────────────────────────────
 
-const emailEnabled = !!(process.env.EMAIL_USER && process.env.EMAIL_PASS);
-const transporter  = emailEnabled
-  ? nodemailer.createTransport({ service: 'gmail', auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS } })
-  : null;
+const emailEnabled = !!process.env.RESEND_API_KEY;
+const resend       = emailEnabled ? new Resend(process.env.RESEND_API_KEY) : null;
+const FROM_EMAIL   = 'CastSync <support@cast-sync.com>';
 
 async function sendConfirmationEmail(toEmail, data, orgName, seasonName, isUpdate = false) {
   if (!emailEnabled) return;
@@ -55,9 +54,9 @@ async function sendConfirmationEmail(toEmail, data, orgName, seasonName, isUpdat
     ? `Hi ${first_name}, your submission for <strong>${orgName} — ${seasonName}</strong> has been updated. Here's what we have on file.`
     : `Hi ${first_name}, here's a copy of your submission for <strong>${orgName} — ${seasonName}</strong>.`;
   try {
-    await transporter.sendMail({
-      from: `"CastSync" <${process.env.EMAIL_USER}>`,
-      to: toEmail,
+    await resend.emails.send({
+      from:    FROM_EMAIL,
+      to:      toEmail,
       subject: `CastSync Submission ${subjectTag} — ${orgName}`,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#222;">
         <h2 style="margin-bottom:4px;">${heading}</h2>
@@ -254,6 +253,47 @@ app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => res.json({ message: 'Logged out.' }));
 });
 
+// DELETE /api/auth/account — permanently delete the logged-in user's account
+app.delete('/api/auth/account', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ error: 'Password is required to confirm deletion.' });
+  try {
+    const result = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.session.userId]);
+    const user   = result.rows[0];
+    if (!user || !user.password_hash) return res.status(400).json({ error: 'Cannot delete an account without a password set. Contact support.' });
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) return res.status(403).json({ error: 'Incorrect password.' });
+    // Cascade deletes handle submissions, dancer_profiles, org_members, piece_casts, etc.
+    await pool.query('DELETE FROM users WHERE id = $1', [req.session.userId]);
+    req.session.destroy(() => res.json({ message: 'Account deleted.' }));
+  } catch (err) {
+    console.error('Account deletion error:', err.message);
+    res.status(500).json({ error: 'Failed to delete account.' });
+  }
+});
+
+// POST /api/auth/change-password — change password for logged-in user
+app.post('/api/auth/change-password', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords are required.' });
+  if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters.' });
+  try {
+    const result = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.session.userId]);
+    const user   = result.rows[0];
+    if (!user || !user.password_hash) return res.status(400).json({ error: 'Cannot change password for this account type.' });
+    const match = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!match) return res.status(403).json({ error: 'Current password is incorrect.' });
+    const hash = await bcrypt.hash(newPassword, 12);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.session.userId]);
+    res.json({ message: 'Password updated.' });
+  } catch (err) {
+    console.error('Change password error:', err.message);
+    res.status(500).json({ error: 'Failed to update password.' });
+  }
+});
+
 // POST /api/auth/forgot-password — generate a reset token and email it
 app.post('/api/auth/forgot-password', async (req, res) => {
   const { email } = req.body;
@@ -271,9 +311,9 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     );
     if (!emailEnabled) return;
     const baseUrl = process.env.APP_URL || 'http://localhost:3000';
-    await transporter.sendMail({
-      from: `"CastSync" <${process.env.EMAIL_USER}>`,
-      to:   email.toLowerCase().trim(),
+    await resend.emails.send({
+      from:    FROM_EMAIL,
+      to:      email.toLowerCase().trim(),
       subject: 'Reset your CastSync password',
       html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
@@ -819,7 +859,7 @@ app.post('/api/publish/send', requireAuth('master'), async (req, res) => {
 
     const html = buildCastingEmailHTML(orgName, blurb, piecesRes.rows);
     await Promise.all(emails.map(to =>
-      transporter.sendMail({ from: `"CastSync" <${process.env.EMAIL_USER}>`, to, subject: `Casting Results — ${orgName}`, html })
+      resend.emails.send({ from: FROM_EMAIL, to, subject: `Casting Results — ${orgName}`, html })
         .catch(err => console.error(`Email to ${to} failed:`, err.message))
     ));
     res.json({ message: `Sent to ${emails.length} auditionee${emails.length === 1 ? '' : 's'}.` });
@@ -1272,6 +1312,7 @@ app.delete('/api/piece-casts/:id', requireAuth('master'), async (req, res) => {
 // ── Auto-migration ────────────────────────────────────────────────────────────
 
 async function runMigrations() {
+  // Step 1: base tables
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -1350,7 +1391,11 @@ async function runMigrations() {
         UNIQUE (piece_id, user_id)
       );
     `);
-    // Safe column additions (ALTER TABLE IF NOT EXISTS column doesn't exist in older PG, use DO block)
+    console.log('Migration step 1 (base tables) complete.');
+  } catch (err) { console.error('Migration step 1 error:', err.message); }
+
+  // Step 2: safe column additions
+  try {
     await pool.query(`
       DO $$ BEGIN
         ALTER TABLE users ADD COLUMN google_id VARCHAR(255) UNIQUE;
@@ -1380,7 +1425,11 @@ async function runMigrations() {
         ALTER TABLE seasons ADD COLUMN join_code VARCHAR(20) UNIQUE;
       EXCEPTION WHEN duplicate_column THEN NULL; END $$;
     `);
-    // Backfill join codes for any productions that don't have one yet
+    console.log('Migration step 2 (column additions) complete.');
+  } catch (err) { console.error('Migration step 2 error:', err.message); }
+
+  // Step 3: backfill join codes for productions that don't have one yet
+  try {
     const nullSeasons = await pool.query('SELECT id FROM seasons WHERE join_code IS NULL');
     for (const row of nullSeasons.rows) {
       let done = false;
@@ -1394,7 +1443,11 @@ async function runMigrations() {
         }
       }
     }
-    // Create season_members table for production-level co-directors
+    console.log('Migration step 3 (join code backfill) complete.');
+  } catch (err) { console.error('Migration step 3 error:', err.message); }
+
+  // Step 4: season_members table for production-level co-directors
+  try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS season_members (
         id         SERIAL PRIMARY KEY,
@@ -1405,10 +1458,10 @@ async function runMigrations() {
         UNIQUE (season_id, user_id)
       );
     `);
-    console.log('Migrations complete.');
-  } catch (err) {
-    console.error('Migration error:', err.message);
-  }
+    console.log('Migration step 4 (season_members) complete.');
+  } catch (err) { console.error('Migration step 4 error:', err.message); }
+
+  console.log('All migrations complete.');
 }
 
 // ── Sentry error handler (must be after all routes) ──────────────────────────
@@ -1420,6 +1473,6 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Server running at http://localhost:${PORT}`);
   if (!process.env.GOOGLE_CLIENT_ID) console.log('  → Google OAuth not configured');
-  if (!emailEnabled)                  console.log('  → Email not configured');
+  if (!emailEnabled)                  console.log('  → Email not configured (set RESEND_API_KEY)');
   await runMigrations();
 });

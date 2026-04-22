@@ -183,8 +183,9 @@
       try {
         const res  = await fetch('/api/orgs');
         const orgs = await res.json();
+        if (!res.ok) throw new Error(orgs.error || `Server error ${res.status}`);
         document.getElementById('loading').style.display = 'none';
-        if (orgs.length === 0) { document.getElementById('empty-msg').classList.remove('d-none'); return; }
+        if (!Array.isArray(orgs) || orgs.length === 0) { document.getElementById('empty-msg').classList.remove('d-none'); return; }
 
         const container = document.getElementById('orgs-list');
         for (const org of orgs) {
@@ -194,7 +195,8 @@
         }
         wireEvents();
       } catch (err) {
-        document.getElementById('loading').textContent = 'Could not load organizations.';
+        document.getElementById('loading').innerHTML =
+          `<div class="alert alert-danger">Could not load organizations. ${err.message || ''}</div>`;
       }
     }
 
@@ -477,6 +479,7 @@
         if (!res.ok || (!user.isDirector && user.role !== 'master')) { window.location.href = 'login.html'; return; }
         document.getElementById('right-nav').innerHTML =
           `<span class="text-white-50" style="font-size:13px;">${user.email}</span>
+           <a href="account.html" class="text-white-50 text-decoration-none" style="font-size:13px;">Account</a>
            <button class="btn btn-link nav-link text-white p-0" id="logout-btn">Log Out</button>`;
         document.getElementById('logout-btn').addEventListener('click', async () => {
           await fetch('/api/auth/logout', { method: 'POST' });
