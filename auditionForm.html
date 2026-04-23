@@ -216,10 +216,11 @@
           const res  = await fetch('/api/auth/me');
           const user = await res.json();
           if (!res.ok) { window.location.href = 'login.html'; return; }
-          // Pure master account (not dual-role) → always go to director side
-          if (user.role === 'master') { window.location.href = 'org-select.html'; return; }
-          // Dual-role user in director mode → go to director side
-          if (user.mode === 'director') { window.location.href = 'org-select.html'; return; }
+          // Director in director mode → go to director side
+          // (but allow role=master who has explicitly switched to auditionee mode)
+          if (user.mode === 'director' || (user.role === 'master' && user.mode !== 'auditionee')) {
+            window.location.href = 'org-select.html'; return;
+          }
 
           // Right side: account + logout
           document.getElementById('right-nav').className = 'app-nav-right';

@@ -485,7 +485,8 @@
           await fetch('/api/auth/logout', { method: 'POST' });
           window.location.href = 'login.html';
         });
-        if (user.role === 'auditionee') {
+        // Show Switch to Auditionee for everyone — any director may also be auditioning
+        {
           const btn = document.getElementById('switch-auditionee-btn');
           btn.style.display = '';
           btn.addEventListener('click', async () => {

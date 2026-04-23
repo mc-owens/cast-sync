@@ -92,7 +92,7 @@
         const res  = await fetch('/api/auth/me');
         const user = await res.json();
         if (!res.ok) { window.location.href = 'login.html'; return; }
-        if (user.role === 'master' || user.mode === 'director') { window.location.href = 'org-select.html'; return; }
+        if (user.mode === 'director' || (user.role === 'master' && user.mode !== 'auditionee')) { window.location.href = 'org-select.html'; return; }
 
         document.getElementById('right-nav').className = 'app-nav-right';
         document.getElementById('right-nav').innerHTML =

@@ -550,16 +550,28 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/invite', requireAuth('master'), asy
     if (ownerCheck.rows.length === 0) return res.status(403).json({ error: 'Only the org owner can invite co-directors.' });
 
     const userResult = await pool.query(
-      'SELECT id FROM users WHERE email = $1 AND (role = $2 OR is_director = TRUE)',
-      [email.toLowerCase().trim(), 'master']
+      'SELECT id, role FROM users WHERE email = $1',
+      [email.toLowerCase().trim()]
     );
-    if (userResult.rows.length === 0) return res.status(404).json({ error: 'No director account found with that email.' });
+    if (userResult.rows.length === 0) return res.status(404).json({ error: 'No CastSync account found with that email. Ask them to sign up first.' });
 
-    const inviteeId = userResult.rows[0].id;
+    const inviteeId   = userResult.rows[0].id;
+    const inviteeRole = userResult.rows[0].role;
+
+    // Add to season_members
     await pool.query(
       'INSERT INTO season_members (season_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (season_id, user_id) DO NOTHING',
       [req.params.seasonId, inviteeId, 'editor']
     );
+
+    // Auto-promote to master so they can access director pages without entering the access code
+    if (inviteeRole !== 'master') {
+      await pool.query(
+        "UPDATE users SET role = 'master', is_director = TRUE WHERE id = $1",
+        [inviteeId]
+      );
+    }
+
     res.json({ message: 'Co-director added to this production.' });
   } catch (err) {
     console.error(err.message);
