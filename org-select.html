@@ -112,10 +112,11 @@
             <label class="form-label">Production Name</label>
             <input type="text" class="form-control" id="new-season-name" placeholder="e.g. Spring Showcase 2027" />
           </div>
+          <p class="text-muted mb-0" style="font-size:12px;">Each production is $80. You'll be taken to a secure checkout page to complete payment before the production is created.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-dark" id="create-season-btn">Create Production</button>
+          <button type="button" class="btn btn-dark" id="create-season-btn">Continue to Payment →</button>
         </div>
       </div>
     </div>
@@ -436,13 +437,28 @@
     document.getElementById('create-season-btn').addEventListener('click', async () => {
       const name    = document.getElementById('new-season-name').value.trim();
       const errorEl = document.getElementById('new-season-error');
+      const btn     = document.getElementById('create-season-btn');
       errorEl.classList.add('d-none');
       if (!name) { errorEl.textContent = 'Name is required.'; errorEl.classList.remove('d-none'); return; }
-      const res  = await fetch(`/api/orgs/${selectedOrgId}/seasons`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+
+      btn.disabled    = true;
+      btn.textContent = 'Redirecting to payment…';
+
+      const res  = await fetch('/api/checkout/create-session', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: selectedOrgId, productionName: name }),
+      });
       const data = await res.json();
-      if (!res.ok) { errorEl.textContent = data.error; errorEl.classList.remove('d-none'); return; }
-      await fetch('/api/session/org', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orgId: selectedOrgId, seasonId: data.id }) });
-      window.location.href = 'master.html';
+
+      if (!res.ok) {
+        errorEl.textContent = data.error || 'Could not start checkout.';
+        errorEl.classList.remove('d-none');
+        btn.disabled    = false;
+        btn.textContent = 'Create Production';
+        return;
+      }
+
+      window.location.href = data.url; // → Stripe hosted checkout
     });
 
     document.getElementById('confirm-delete-org-btn').addEventListener('click', async () => {

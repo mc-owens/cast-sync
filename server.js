@@ -23,6 +23,15 @@ const passport       = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { Resend }     = require('resend');
 const crypto         = require('crypto');
+const Stripe         = require('stripe');
+
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
+
+const APP_URL = process.env.APP_URL
+  ? `https://${process.env.APP_URL}`
+  : 'http://localhost:3000';
 
 const app = express();
 
@@ -94,6 +103,8 @@ function generateJoinCode() {
 app.set('trust proxy', 1); // Railway sits behind a proxy — needed for secure cookies
 
 app.use(cors());
+// Raw body needed for Stripe webhook signature verification — must come before express.json()
+app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(session({
   store: new PgSession({ pool, createTableIfMissing: true }),
@@ -668,6 +679,154 @@ app.get('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => {
       res.status(500).json({ error: 'Failed to fetch seasons.' });
     }
   }
+});
+
+// ── Stripe routes ─────────────────────────────────────────────────────────────
+
+// POST /api/checkout/create-session — start Stripe checkout for a new production
+app.post('/api/checkout/create-session', requireAuth('master'), async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
+  const { orgId, productionName } = req.body;
+  if (!orgId || !productionName) return res.status(400).json({ error: 'orgId and productionName required.' });
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          unit_amount: 8000, // $80.00
+          product_data: { name: `CastSync Production — ${productionName}` },
+        },
+        quantity: 1,
+      }],
+      mode: 'payment',
+      success_url: `${APP_URL}/payment-success.html?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url:  `${APP_URL}/org-select.html?cancelled=1`,
+      metadata: {
+        org_id:          String(orgId),
+        user_id:         String(req.session.userId),
+        production_name: productionName,
+      },
+    });
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error('Stripe session error:', err.message);
+    res.status(500).json({ error: 'Could not start checkout.' });
+  }
+});
+
+// GET /api/checkout/complete?session_id=xxx — verify payment and create the season
+app.get('/api/checkout/complete', requireAuth('master'), async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
+  const { session_id } = req.query;
+  if (!session_id) return res.status(400).json({ error: 'session_id required.' });
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(session_id);
+    if (session.payment_status !== 'paid') {
+      return res.status(402).json({ error: 'Payment not completed.' });
+    }
+
+    const { org_id, production_name } = session.metadata;
+
+    // Idempotent: if this session already created a season, just return it
+    const existing = await pool.query(
+      'SELECT id FROM seasons WHERE stripe_session_id = $1',
+      [session_id]
+    );
+    if (existing.rows.length > 0) {
+      const s = existing.rows[0];
+      req.session.orgId    = parseInt(org_id);
+      req.session.seasonId = s.id;
+      const orgR = await pool.query('SELECT name FROM orgs WHERE id = $1', [org_id]);
+      const seaR = await pool.query('SELECT name FROM seasons WHERE id = $1', [s.id]);
+      req.session.orgName    = orgR.rows[0]?.name;
+      req.session.seasonName = seaR.rows[0]?.name;
+      return res.json({ seasonId: s.id });
+    }
+
+    // Create the season
+    let row, inserted = false;
+    while (!inserted) {
+      try {
+        const code = generateJoinCode();
+        const result = await pool.query(
+          'INSERT INTO seasons (org_id, name, is_active, join_code, stripe_session_id) VALUES ($1,$2,TRUE,$3,$4) RETURNING id, name',
+          [org_id, production_name, code, session_id]
+        );
+        row = result.rows[0];
+        inserted = true;
+      } catch (e) {
+        if (e.code !== '23505') throw e;
+      }
+    }
+
+    req.session.orgId      = parseInt(org_id);
+    req.session.seasonId   = row.id;
+    const orgR = await pool.query('SELECT name FROM orgs WHERE id = $1', [org_id]);
+    req.session.orgName    = orgR.rows[0]?.name;
+    req.session.seasonName = row.name;
+    req.session.roomCount  = 1;
+
+    res.json({ seasonId: row.id });
+  } catch (err) {
+    console.error('Checkout complete error:', err.message);
+    res.status(500).json({ error: 'Could not finalize production.' });
+  }
+});
+
+// POST /api/stripe/webhook — backup: create season if webhook fires before user returns
+app.post('/api/stripe/webhook', async (req, res) => {
+  if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) return res.json({ received: true });
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      req.headers['stripe-signature'],
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (err) {
+    console.error('Webhook signature error:', err.message);
+    return res.status(400).send(`Webhook error: ${err.message}`);
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    if (session.payment_status !== 'paid') return res.json({ received: true });
+
+    const { org_id, production_name } = session.metadata;
+    const sessionId = session.id;
+
+    // Idempotent — skip if already created by /api/checkout/complete
+    const existing = await pool.query(
+      'SELECT id FROM seasons WHERE stripe_session_id = $1',
+      [sessionId]
+    );
+    if (existing.rows.length > 0) return res.json({ received: true });
+
+    try {
+      let inserted = false;
+      while (!inserted) {
+        try {
+          const code = generateJoinCode();
+          await pool.query(
+            'INSERT INTO seasons (org_id, name, is_active, join_code, stripe_session_id) VALUES ($1,$2,TRUE,$3,$4)',
+            [org_id, production_name, code, sessionId]
+          );
+          inserted = true;
+        } catch (e) {
+          if (e.code !== '23505') throw e;
+        }
+      }
+      console.log(`Webhook: created production "${production_name}" for org ${org_id}`);
+    } catch (err) {
+      console.error('Webhook season creation error:', err.message);
+    }
+  }
+
+  res.json({ received: true });
 });
 
 // POST /api/orgs/:orgId/seasons — create a new production with its own join code
@@ -1639,6 +1798,16 @@ async function runMigrations() {
     `);
     console.log('Migration step 5 (room_count) complete.');
   } catch (err) { console.error('Migration step 5 error:', err.message); }
+
+  // Step 6: stripe_session_id on seasons (payment tracking)
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE seasons ADD COLUMN stripe_session_id VARCHAR(255) UNIQUE;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 6 (stripe_session_id) complete.');
+  } catch (err) { console.error('Migration step 6 error:', err.message); }
 
   console.log('All migrations complete.');
 }
