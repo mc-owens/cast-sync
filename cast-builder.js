@@ -461,20 +461,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
 
-      // Piece blocks from master schedule (on top)
+      // Piece blocks from master schedule (gray on cast builder to distinguish from green free slots)
       masterBlocks.filter(b => b.day === day).forEach(b => {
         const s = Math.max(timeToMinutes(b.start_time), GRID_START);
         const e = Math.min(timeToMinutes(b.end_time),   GRID_END);
         if (s >= e) return;
         const ht    = (e - s) * PX_PER_MIN;
         const piece = pieces.find(p => p.id === b.piece_id);
-        const color = piece?.color || '#888';
         const el    = document.createElement('div');
-        el.style.cssText = `position:absolute;left:2px;right:2px;top:${(s-GRID_START)*PX_PER_MIN}px;height:${ht}px;background:${hexToRgba(color,.45)};border:1.5px solid ${color};border-radius:2px;box-sizing:border-box;overflow:hidden;`;
+        el.style.cssText = `position:absolute;left:2px;right:2px;top:${(s-GRID_START)*PX_PER_MIN}px;height:${ht}px;background:rgba(100,116,139,0.35);border:1.5px solid #94a3b8;border-radius:2px;box-sizing:border-box;overflow:hidden;`;
         el.title = `${piece?.name || 'Rehearsal'}: ${b.start_time} – ${b.end_time}`;
         if (ht > 14) {
           const lbl = document.createElement('div');
-          lbl.style.cssText = 'font-size:9px;font-weight:700;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+          lbl.style.cssText = 'font-size:9px;font-weight:600;color:#374151;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
           lbl.textContent = piece?.name || '';
           el.appendChild(lbl);
         }
