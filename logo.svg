@@ -1,25 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <!-- Board body -->
-  <rect x="2" y="13" width="28" height="17" rx="3" fill="#1e293b"/>
-  <!-- Top clapper bar -->
-  <rect x="2" y="5" width="28" height="10" rx="3" fill="#334155"/>
-  <!-- Black diagonal stripes on clapper (classic clapperboard look) -->
-  <clipPath id="clip-top">
-    <rect x="2" y="5" width="28" height="10" rx="3"/>
-  </clipPath>
-  <g clip-path="url(#clip-top)">
-    <polygon points="2,5 8,5 2,15" fill="#0f172a"/>
-    <polygon points="10,5 16,5 2,15 2,11" fill="#0f172a"/>
-    <polygon points="18,5 24,5 8,15 2,15" fill="#0f172a"/>
-    <polygon points="26,5 30,5 30,8 16,15 10,15" fill="#0f172a"/>
-    <polygon points="30,12 30,15 24,15" fill="#0f172a"/>
-  </g>
-  <!-- Hinge line -->
-  <rect x="2" y="14.5" width="28" height="1" fill="rgba(0,0,0,0.25)"/>
-  <!-- Red record dot (top right of body) -->
-  <circle cx="23.5" cy="21.5" r="3.5" fill="#ef4444"/>
-  <circle cx="23.5" cy="21.5" r="2" fill="#fca5a5" opacity="0.5"/>
-  <!-- Two text lines on body -->
-  <rect x="5" y="19" width="13" height="2" rx="1" fill="rgba(255,255,255,0.55)"/>
-  <rect x="5" y="24" width="9" height="1.5" rx="0.75" fill="rgba(255,255,255,0.32)"/>
+  <rect width="32" height="32" rx="6" fill="#111111"/>
+  <circle cx="16" cy="11.5" r="4" fill="white"/>
+  <path d="M7.5 26c0-4.7 3.8-8.5 8.5-8.5s8.5 3.8 8.5 8.5" stroke="white" stroke-width="2.2" stroke-linecap="round" fill="none"/>
 </svg>

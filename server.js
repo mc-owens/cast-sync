@@ -1318,7 +1318,7 @@ app.get('/api/pieces', requireAuth('master'), async (req, res) => {
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
     const result = await pool.query(
-      'SELECT id, name, color, choreographer_name, choreographer_email FROM pieces WHERE season_id = $1 ORDER BY created_at ASC',
+      'SELECT id, name, color, choreographer_name, choreographer_email, room FROM pieces WHERE season_id = $1 ORDER BY created_at ASC',
       [seasonId]
     );
     res.json(result.rows);
@@ -1344,11 +1344,11 @@ app.post('/api/pieces', requireAuth('master'), async (req, res) => {
 });
 
 app.patch('/api/pieces/:id', requireAuth('master'), async (req, res) => {
-  const { choreographer_name, choreographer_email } = req.body;
+  const { choreographer_name, choreographer_email, room } = req.body;
   try {
     await pool.query(
-      'UPDATE pieces SET choreographer_name=$1, choreographer_email=$2 WHERE id=$3 AND master_id=$4',
-      [choreographer_name || null, choreographer_email || null, req.params.id, req.session.userId]
+      'UPDATE pieces SET choreographer_name=$1, choreographer_email=$2, room=$3 WHERE id=$4 AND master_id=$5',
+      [choreographer_name || null, choreographer_email || null, room || null, req.params.id, req.session.userId]
     );
     res.json({ message: 'Updated.' });
   } catch (err) {
@@ -1812,6 +1812,16 @@ async function runMigrations() {
     `);
     console.log('Migration step 6 (stripe_session_id) complete.');
   } catch (err) { console.error('Migration step 6 error:', err.message); }
+
+  // Step 7: room on pieces (multi-room support)
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE pieces ADD COLUMN room VARCHAR(100);
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 7 (pieces.room) complete.');
+  } catch (err) { console.error('Migration step 7 error:', err.message); }
 
   console.log('All migrations complete.');
 }
