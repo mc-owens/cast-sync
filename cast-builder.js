@@ -74,13 +74,15 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) { masterBlocks = []; }
   }
 
-  function checkOverlap() {
+  async function checkOverlap() {
     const slotVal   = document.getElementById('slot-select').value;
     const startVal  = document.getElementById('sched-start-time').value;
     const endVal    = document.getElementById('sched-end-time').value;
     const warningEl = document.getElementById('overlap-warning');
+    const dancerEl  = document.getElementById('dancer-conflict-warning');
 
     warningEl.classList.add('d-none');
+    if (dancerEl) dancerEl.classList.add('d-none');
     if (!slotVal || !startVal || !endVal) return;
 
     const [day]    = slotVal.split('|||');
@@ -90,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const newEnd   = eh * 60 + em;
     if (newStart >= newEnd) return;
 
+    // Room schedule overlap (existing master blocks)
     const conflicts = masterBlocks.filter(b => {
       if (b.day !== day) return false;
       const bs = timeToMinutes(b.start_time);
@@ -104,6 +107,25 @@ document.addEventListener('DOMContentLoaded', () => {
       }).join(', ');
       warningEl.textContent = `Heads up: this overlaps with ${names} on the master schedule.`;
       warningEl.classList.remove('d-none');
+    }
+
+    // Dancer double-booking check (against piece_casts in the DB)
+    if (dancerEl && selectedDancers.length > 0) {
+      try {
+        const userIds   = selectedDancers.map(d => d.user_id).join(',');
+        const startTime = hh24ToTimeString(startVal);
+        const endTime   = hh24ToTimeString(endVal);
+        const params    = new URLSearchParams({ day, start_time: startTime, end_time: endTime, user_ids: userIds });
+        const res       = await fetch(`/api/conflicts/dancers?${params}`);
+        if (res.ok) {
+          const doubleBooked = await res.json();
+          if (doubleBooked.length > 0) {
+            const names = doubleBooked.map(c => `${c.first_name} ${c.last_name} (in "${c.piece_name}")`).join(', ');
+            dancerEl.textContent = `Double-booked: ${names} already has a rehearsal at this time.`;
+            dancerEl.classList.remove('d-none');
+          }
+        }
+      } catch (e) { console.error('Dancer conflict check failed:', e); }
     }
   }
 

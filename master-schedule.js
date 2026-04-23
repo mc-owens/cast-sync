@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── State ─────────────────────────────────────────────────────────────────────
   let pieces        = [];
+  let roomCount     = 1;
   let pendingBlock  = null;
   let isSelecting   = false;
   let startSlot     = 0;
@@ -102,6 +103,69 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
   }
 
+  function timeStringToMinutes(str) {
+    const [time, ampm] = str.trim().split(' ');
+    const [h, m]       = time.split(':').map(Number);
+    let hour = h;
+    if (ampm === 'PM' && hour !== 12) hour += 12;
+    if (ampm === 'AM' && hour === 12) hour = 0;
+    return hour * 60 + m;
+  }
+
+  // ── Room count ────────────────────────────────────────────────────────────────
+
+  async function loadRoomCount() {
+    try {
+      const res = await fetch('/api/season/room-count');
+      if (res.ok) {
+        const data = await res.json();
+        roomCount = data.room_count || 1;
+        const input = document.getElementById('room-count-input');
+        if (input) input.value = roomCount;
+      }
+    } catch (e) { console.error('loadRoomCount error:', e); }
+  }
+
+  function highlightConflicts() {
+    document.querySelectorAll('.master-block').forEach(b => b.classList.remove('room-conflict'));
+
+    const blocks = Array.from(document.querySelectorAll('.master-block')).map(el => ({
+      el,
+      day:   el.dataset.day,
+      start: timeStringToMinutes(el.dataset.startTime),
+      end:   timeStringToMinutes(el.dataset.endTime),
+    }));
+
+    let hasConflict = false;
+    blocks.forEach(b => {
+      const sameDay    = blocks.filter(o => o.day === b.day && o !== b);
+      const concurrent = sameDay.filter(o => b.start < o.end && b.end > o.start);
+      // total pieces at same time = this block + all overlapping ones
+      if (concurrent.length + 1 > roomCount) {
+        b.el.classList.add('room-conflict');
+        hasConflict = true;
+      }
+    });
+
+    const banner = document.getElementById('room-conflict-banner');
+    if (banner) banner.style.display = hasConflict ? 'block' : 'none';
+  }
+
+  // Wire up room-count input
+  document.getElementById('room-count-input')?.addEventListener('change', async function () {
+    const n = parseInt(this.value);
+    if (!n || n < 1) { this.value = roomCount; return; }
+    try {
+      const res = await fetch('/api/season/room-count', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ room_count: n }),
+      });
+      if (res.ok) { roomCount = n; highlightConflicts(); }
+      else this.value = roomCount;
+    } catch (e) { console.error(e); this.value = roomCount; }
+  });
+
   // ── Pieces ────────────────────────────────────────────────────────────────────
 
   async function loadPieces() {
@@ -146,6 +210,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           document.querySelectorAll(`.master-block[data-piece-id="${p.id}"]`).forEach(b => b.remove());
           renderLegend();
           populatePieceSelect();
+          highlightConflicts();
         } catch (err) { alert('Could not connect to server.'); }
       });
 
@@ -213,6 +278,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.stopPropagation();
       await fetch(`/api/master-blocks/${dbId}`, { method: 'DELETE' });
       block.remove();
+      highlightConflicts();
     });
 
     grid.appendChild(block);
@@ -232,6 +298,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const dayIndex = DAYS.indexOf(b.day);
         renderBlock(b.id, piece, topPx, btmPx - topPx, dayIndex, b.start_time, b.end_time);
       });
+      highlightConflicts();
     } catch (e) { console.error(e); }
   }
 
@@ -352,6 +419,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify(pos),
           });
+          highlightConflicts();
         } catch (err) { console.error('Update failed:', err); }
       }
       activeBlockId = null;
@@ -423,6 +491,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       pendingBlock.remove();
       pendingBlock = null;
       renderBlock(saved.id, piece, topPx, heightPx, dayIndex, startTime, endTime);
+      highlightConflicts();
     } catch (err) { console.error(err); return; }
 
     bootstrap.Modal.getInstance(document.getElementById('pieceModal')).hide();
@@ -439,6 +508,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Initialize ────────────────────────────────────────────────────────────────
 
   await loadPieces();
+  await loadRoomCount();
   await new Promise(r => requestAnimationFrame(r));
   await loadBlocks();
 });

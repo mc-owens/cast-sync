@@ -368,6 +368,7 @@ app.get('/api/auth/me', (req, res) => {
     seasonId:   req.session.seasonId || null,
     orgName:    req.session.orgName  || null,
     seasonName: req.session.seasonName || null,
+    roomCount:  req.session.roomCount || 1,
   });
 });
 
@@ -595,7 +596,7 @@ app.post('/api/session/org', requireAuth('master'), async (req, res) => {
     if (check.rows.length === 0) return res.status(403).json({ error: 'Not a member of this org.' });
 
     const orgResult    = await pool.query('SELECT name FROM orgs WHERE id = $1', [orgId]);
-    const seasonResult = await pool.query('SELECT name FROM seasons WHERE id = $1 AND org_id = $2', [seasonId, orgId]);
+    const seasonResult = await pool.query('SELECT name, COALESCE(room_count, 1) AS room_count FROM seasons WHERE id = $1 AND org_id = $2', [seasonId, orgId]);
     if (orgResult.rows.length === 0 || seasonResult.rows.length === 0)
       return res.status(404).json({ error: 'Org or season not found.' });
 
@@ -603,6 +604,7 @@ app.post('/api/session/org', requireAuth('master'), async (req, res) => {
     req.session.seasonId   = parseInt(seasonId);
     req.session.orgName    = orgResult.rows[0].name;
     req.session.seasonName = seasonResult.rows[0].name;
+    req.session.roomCount  = seasonResult.rows[0].room_count;
     res.json({ orgId, seasonId, orgName: req.session.orgName, seasonName: req.session.seasonName });
   } catch (err) {
     console.error(err.message);
@@ -1253,6 +1255,102 @@ app.delete('/api/master-blocks/:id', requireAuth('master'), async (req, res) => 
   }
 });
 
+// ── Room count routes ─────────────────────────────────────────────────────────
+
+// GET /api/season/room-count — return current season's room count
+app.get('/api/season/room-count', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      'SELECT COALESCE(room_count, 1) AS room_count FROM seasons WHERE id = $1',
+      [seasonId]
+    );
+    res.json({ room_count: result.rows[0]?.room_count || 1 });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch room count.' });
+  }
+});
+
+// PATCH /api/season/room-count — update current season's room count
+app.patch('/api/season/room-count', requireAuth('master'), async (req, res) => {
+  const { room_count } = req.body;
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const n = parseInt(room_count);
+  if (!n || n < 1 || n > 20) return res.status(400).json({ error: 'Room count must be between 1 and 20.' });
+  try {
+    await pool.query('UPDATE seasons SET room_count = $1 WHERE id = $2', [n, seasonId]);
+    req.session.roomCount = n;
+    res.json({ room_count: n });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update room count.' });
+  }
+});
+
+// ── Dancer conflict route ─────────────────────────────────────────────────────
+
+// GET /api/conflicts/dancers — check if any dancers are double-booked at a proposed time
+// Query params: day, start_time, end_time, user_ids (comma-separated), exclude_piece_id (optional)
+app.get('/api/conflicts/dancers', requireAuth('master'), async (req, res) => {
+  const { day, start_time, end_time, user_ids, exclude_piece_id } = req.query;
+  const { seasonId } = req.session;
+  if (!seasonId || !day || !start_time || !end_time)
+    return res.status(400).json({ error: 'Missing params.' });
+
+  try {
+    const userIdList = (user_ids || '').split(',').map(Number).filter(Boolean);
+    if (!userIdList.length) return res.json([]);
+
+    const excludeId = exclude_piece_id ? parseInt(exclude_piece_id) : null;
+
+    // Get all pieces this season where these dancers are cast, plus their blocks on the given day
+    const result = await pool.query(
+      `SELECT pc.user_id, dp.first_name, dp.last_name, p.id AS piece_id, p.name AS piece_name,
+              mb.start_time AS block_start, mb.end_time AS block_end
+       FROM piece_casts pc
+       JOIN pieces p ON p.id = pc.piece_id AND p.season_id = $1
+       JOIN master_blocks mb ON mb.piece_id = p.id AND mb.day = $2
+       JOIN dancer_profiles dp ON dp.user_id = pc.user_id
+       WHERE pc.user_id = ANY($3)
+         AND ($4::integer IS NULL OR p.id != $4::integer)`,
+      [seasonId, day, userIdList, excludeId]
+    );
+
+    // Parse time string "H:MM AM/PM" → minutes since midnight
+    function parseTime(str) {
+      const [time, ampm] = str.trim().split(' ');
+      const [h, m]       = time.split(':').map(Number);
+      let hour = h;
+      if (ampm === 'PM' && hour !== 12) hour += 12;
+      if (ampm === 'AM' && hour === 12) hour = 0;
+      return hour * 60 + m;
+    }
+
+    const newStart = parseTime(start_time);
+    const newEnd   = parseTime(end_time);
+
+    const conflicts = result.rows.filter(row => {
+      const bs = parseTime(row.block_start);
+      const be = parseTime(row.block_end);
+      return newStart < be && newEnd > bs;
+    });
+
+    // Deduplicate — keep first conflict per dancer
+    const seen   = new Set();
+    const unique = conflicts.filter(c => {
+      if (seen.has(c.user_id)) return false;
+      seen.add(c.user_id);
+      return true;
+    });
+
+    res.json(unique);
+  } catch (err) {
+    console.error('Dancer conflict check error:', err.message);
+    res.status(500).json({ error: 'Failed to check conflicts.' });
+  }
+});
+
 // ── Availability route (season-scoped) ───────────────────────────────────────
 
 app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, res) => {
@@ -1531,6 +1629,16 @@ async function runMigrations() {
     `);
     console.log('Migration step 4 (season_members) complete.');
   } catch (err) { console.error('Migration step 4 error:', err.message); }
+
+  // Step 5: room_count on seasons (multi-room conflict detection)
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE seasons ADD COLUMN room_count INTEGER NOT NULL DEFAULT 1;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 5 (room_count) complete.');
+  } catch (err) { console.error('Migration step 5 error:', err.message); }
 
   console.log('All migrations complete.');
 }
