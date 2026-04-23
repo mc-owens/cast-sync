@@ -23,10 +23,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const summary      = document.getElementById('cast-summary');
   const placeholder  = document.getElementById('common-placeholder');
   const results      = document.getElementById('common-results');
-  const commonList   = document.getElementById('common-list');
   const noCommon     = document.getElementById('no-common');
   const actionPanel  = document.getElementById('action-panel');
   const addSchedBtn  = document.getElementById('add-to-schedule-btn');
+
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+
+  function hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
 
   // ── Time helpers ──────────────────────────────────────────────────────────────
 
@@ -187,9 +195,12 @@ document.addEventListener('DOMContentLoaded', () => {
         dropdown.innerHTML = '<div class="dropdown-item-dancer text-muted">No results found.</div>';
       } else {
         filtered.forEach(dancer => {
-          const item       = document.createElement('div');
-          item.className   = 'dropdown-item-dancer';
-          item.textContent = `${dancer.first_name} ${dancer.last_name}`;
+          const item     = document.createElement('div');
+          item.className = 'dropdown-item-dancer';
+          item.innerHTML = `${dancer.first_name} ${dancer.last_name}`
+            + (dancer.audition_number
+                ? ` <span style="color:#999;font-size:12px;">#${dancer.audition_number}</span>`
+                : '');
           item.addEventListener('click', () => addDancer(dancer));
           dropdown.appendChild(item);
         });
@@ -303,6 +314,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Common availability ───────────────────────────────────────────────────────
 
+  const GRID_START = 8 * 60;   // 8 AM in minutes
+  const GRID_END   = 23 * 60;  // 11 PM in minutes
+  const GRID_RANGE = GRID_END - GRID_START;
+
   function getDayIntervals(dancer, day) {
     return (dancer.availability || [])
       .filter(b => b.day === day)
@@ -320,10 +335,101 @@ document.addEventListener('DOMContentLoaded', () => {
     return result;
   }
 
+  // Build the grid header + time column once, then reuse
+  function buildGridSkeleton() {
+    const headers = document.getElementById('avail-day-headers');
+    const timeCol = document.getElementById('avail-time-col');
+    if (headers.childElementCount > 0) return; // already built
+
+    // Corner cell
+    const corner = document.createElement('div');
+    corner.style.cssText = 'height:28px;';
+    headers.appendChild(corner);
+
+    DAYS.forEach(day => {
+      const h = document.createElement('div');
+      h.style.cssText = 'text-align:center;font-size:11px;font-weight:600;color:#555;padding:5px 0;border-left:1px solid #ddd;';
+      h.textContent = day.slice(0, 3);
+      headers.appendChild(h);
+    });
+
+    // Time labels — one per hour
+    for (let h = 8; h <= 23; h++) {
+      const label = document.createElement('div');
+      const ampm  = h >= 12 ? 'PM' : 'AM';
+      const hr    = h % 12 === 0 ? 12 : h % 12;
+      label.style.cssText = 'height:40px;font-size:9px;color:#888;text-align:right;padding-right:4px;padding-top:2px;border-bottom:1px solid #f0f0f0;box-sizing:border-box;';
+      label.textContent = `${hr}${ampm}`;
+      timeCol.appendChild(label);
+    }
+  }
+
+  function renderAvailGrid(commonByDay) {
+    buildGridSkeleton();
+    const grid = document.getElementById('avail-grid');
+    grid.innerHTML = '';
+
+    DAYS.forEach((day, di) => {
+      const col = document.createElement('div');
+      col.style.cssText = `position:relative;border-left:${di > 0 ? '1px solid #eee' : 'none'};`;
+
+      // Hour lines
+      for (let h = 0; h < 16; h++) {
+        const line = document.createElement('div');
+        line.style.cssText = `height:40px;border-bottom:1px solid ${h % 1 === 0 ? '#f0f0f0' : '#f8f8f8'};box-sizing:border-box;`;
+        col.appendChild(line);
+      }
+
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:absolute;inset:0;';
+
+      // Green: common availability windows
+      (commonByDay[day] || []).forEach(iv => {
+        const s   = Math.max(iv.start, GRID_START);
+        const e   = Math.min(iv.end,   GRID_END);
+        if (s >= e) return;
+        const top = ((s - GRID_START) / GRID_RANGE) * 640;
+        const ht  = ((e - s)          / GRID_RANGE) * 640;
+        const block = document.createElement('div');
+        block.style.cssText = `position:absolute;left:1px;right:1px;top:${top}px;height:${ht}px;background:rgba(34,197,94,.28);border:1px solid rgba(34,197,94,.7);border-radius:2px;box-sizing:border-box;`;
+        block.title = `${minutesToTimeString(iv.start)} – ${minutesToTimeString(iv.end)}`;
+        overlay.appendChild(block);
+      });
+
+      // Blue: existing master schedule blocks for this day
+      masterBlocks.filter(b => b.day === day).forEach(b => {
+        const s   = Math.max(timeToMinutes(b.start_time), GRID_START);
+        const e   = Math.min(timeToMinutes(b.end_time),   GRID_END);
+        if (s >= e) return;
+        const top   = ((s - GRID_START) / GRID_RANGE) * 640;
+        const ht    = ((e - s)          / GRID_RANGE) * 640;
+        const piece = pieces.find(p => p.id === b.piece_id);
+        const color = piece?.color || '#3b82f6';
+        const block = document.createElement('div');
+        block.style.cssText = `position:absolute;left:2px;right:2px;top:${top}px;height:${ht}px;background:${hexToRgba(color, 0.4)};border:1.5px solid ${color};border-radius:2px;box-sizing:border-box;overflow:hidden;`;
+        block.title = `${piece?.name || 'Rehearsal'}: ${b.start_time} – ${b.end_time}`;
+        if (ht > 16) {
+          const lbl = document.createElement('div');
+          lbl.style.cssText = 'font-size:9px;font-weight:600;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+          lbl.textContent = piece?.name || '';
+          block.appendChild(lbl);
+        }
+        overlay.appendChild(block);
+      });
+
+      col.appendChild(overlay);
+      grid.appendChild(col);
+    });
+
+    // Set grid total height to match time col (16 hours × 40px)
+    grid.style.height = '640px';
+    document.getElementById('avail-time-col').style.height = '640px';
+  }
+
   function computeCommonAvailability() {
     currentCommonSlots = [];
 
-    if (selectedDancers.length < 2) {
+    if (selectedDancers.length === 0) {
       placeholder.style.display = 'block';
       results.style.display     = 'none';
       updateActionPanel();
@@ -332,34 +438,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     placeholder.style.display = 'none';
     results.style.display     = 'block';
-    commonList.innerHTML      = '';
-    noCommon.style.display    = 'none';
 
+    const commonByDay = {};
     let foundAny = false;
+
     DAYS.forEach(day => {
+      // With 1 dancer: show their own availability; with 2+ show intersection
       let common = getDayIntervals(selectedDancers[0], day);
       for (let i = 1; i < selectedDancers.length; i++) {
         common = intersectIntervals(common, getDayIntervals(selectedDancers[i], day));
         if (common.length === 0) break;
       }
-      if (common.length === 0) return;
-      foundAny = true;
-
-      common.forEach(iv => currentCommonSlots.push({ day, start: iv.start, end: iv.end }));
-
-      const dayEl = document.createElement('div');
-      dayEl.className = 'common-day';
-      dayEl.innerHTML = `<h6>${day}</h6>`;
-      common.forEach(iv => {
-        const badge       = document.createElement('span');
-        badge.className   = 'time-window';
-        badge.textContent = `${minutesToTimeString(iv.start)} – ${minutesToTimeString(iv.end)}`;
-        dayEl.appendChild(badge);
-      });
-      commonList.appendChild(dayEl);
+      commonByDay[day] = common;
+      if (common.length > 0) {
+        foundAny = true;
+        common.forEach(iv => currentCommonSlots.push({ day, start: iv.start, end: iv.end }));
+      }
     });
 
-    if (!foundAny) noCommon.style.display = 'block';
+    const noCommon = document.getElementById('no-common');
+    noCommon.style.display = (!foundAny && selectedDancers.length >= 2) ? 'block' : 'none';
+
+    renderAvailGrid(commonByDay);
     updateActionPanel();
   }
 
@@ -508,6 +608,9 @@ document.addEventListener('DOMContentLoaded', () => {
       successEl.textContent = `✓ "${pieceName}" — ${day} ${startTime} – ${endTime} added to the Master Schedule`;
       successEl.classList.remove('d-none');
       document.getElementById('piece-name-input').value = '';
+      // Reload blocks and re-render grid to reflect the new rehearsal
+      await loadMasterBlocks();
+      computeCommonAvailability();
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.classList.remove('d-none');

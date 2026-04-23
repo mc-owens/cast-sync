@@ -238,27 +238,38 @@
         </div>
       </div>
 
-      <!-- Right panel: common availability -->
+      <!-- Right panel: common availability grid -->
       <div class="col-md-8">
         <h5 class="mb-1">Common Availability</h5>
-        <p id="cast-summary" class="text-muted mb-3" style="font-size:13px;font-weight:600;min-height:1.4em;"></p>
+        <p id="cast-summary" class="text-muted mb-2" style="font-size:13px;font-weight:600;min-height:1.4em;"></p>
 
         <div id="common-placeholder" class="text-muted" style="font-size:14px;">
-          Add at least 2 dancers to see their common availability.
+          Add at least one dancer to see availability. Add a second to see shared windows.
         </div>
 
         <div id="common-results" style="display:none;">
-          <p class="text-muted mb-3" style="font-size:13px;">
-            These are the time windows when <strong>all</strong> selected dancers are available to rehearse.
-          </p>
-          <div id="common-list"></div>
-          <div id="no-common" class="alert alert-warning" style="display:none;">
+          <!-- Legend -->
+          <div class="d-flex align-items-center gap-3 mb-2" style="font-size:12px;color:#555;">
+            <span><span style="display:inline-block;width:12px;height:12px;background:rgba(34,197,94,.35);border:1px solid #22c55e;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Everyone free</span>
+            <span><span style="display:inline-block;width:12px;height:12px;background:rgba(59,130,246,.22);border:1px solid #3b82f6;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>Scheduled rehearsal</span>
+          </div>
+
+          <!-- Grid -->
+          <div id="avail-grid-wrapper" style="width:100%;overflow:hidden;">
+            <div id="avail-day-headers" style="display:grid;grid-template-columns:44px repeat(7,1fr);background:#f7f7f7;border:1px solid #ccc;border-bottom:none;border-radius:4px 4px 0 0;"></div>
+            <div style="display:grid;grid-template-columns:44px 1fr;border:1px solid #ccc;border-top:none;border-radius:0 0 4px 4px;background:#fff;">
+              <div id="avail-time-col" style="background:#f4f4f4;border-right:1px solid #ccc;"></div>
+              <div id="avail-grid" style="display:grid;grid-template-columns:repeat(7,1fr);position:relative;"></div>
+            </div>
+          </div>
+
+          <div id="no-common" class="alert alert-warning mt-2" style="display:none;">
             No common availability found for all selected dancers.
           </div>
         </div>
 
-        <!-- Action panel — appears when dancers have shared availability -->
-        <div id="action-panel" style="display:none;" class="mt-4 pt-3 border-top">
+        <!-- Action panel -->
+        <div id="action-panel" style="display:none;" class="mt-3">
           <button id="add-to-schedule-btn" class="btn btn-dark btn-sm">+ Add Rehearsal to Schedule</button>
         </div>
       </div>

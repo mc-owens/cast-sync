@@ -1262,19 +1262,23 @@ app.delete('/api/dancers', requireAuth('master'), async (req, res) => {
   }
 });
 
-// GET /api/dancers/search — search by name within current org/season
+// GET /api/dancers/search — search by name or audition number within current org/season
 app.get('/api/dancers/search', requireAuth('master'), async (req, res) => {
   const { q } = req.query;
   const { orgId, seasonId } = req.session;
   if (!q || !orgId || !seasonId) return res.json([]);
   try {
     const result = await pool.query(
-      `SELECT dp.id AS id, u.id AS user_id, dp.first_name, dp.last_name, sub.availability
+      `SELECT dp.id AS id, u.id AS user_id, dp.first_name, dp.last_name,
+              sub.availability, sub.audition_number
        FROM submissions sub
        JOIN dancer_profiles dp ON dp.user_id = sub.user_id
        JOIN users u ON u.id = sub.user_id
        WHERE sub.org_id = $1 AND sub.season_id = $2
-         AND LOWER(dp.first_name || ' ' || dp.last_name) LIKE LOWER($3)
+         AND (
+           LOWER(dp.first_name || ' ' || dp.last_name) LIKE LOWER($3)
+           OR LOWER(COALESCE(sub.audition_number, '')) LIKE LOWER($3)
+         )
        ORDER BY dp.last_name, dp.first_name LIMIT 10`,
       [orgId, seasonId, `%${q.trim()}%`]
     );
