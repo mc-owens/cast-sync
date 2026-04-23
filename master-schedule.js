@@ -126,27 +126,56 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) { console.error('loadRoomCount error:', e); }
   }
 
-  function highlightConflicts() {
-    document.querySelectorAll('.master-block').forEach(b => b.classList.remove('room-conflict'));
+  // Assign overlapping blocks to side-by-side lanes, flag overflow as conflicts
+  function repositionAllBlocks() {
+    const dayWidth = grid.clientWidth / 7;
 
-    const blocks = Array.from(document.querySelectorAll('.master-block')).map(el => ({
-      el,
-      day:   el.dataset.day,
-      start: timeStringToMinutes(el.dataset.startTime),
-      end:   timeStringToMinutes(el.dataset.endTime),
-    }));
+    DAYS.forEach((day, di) => {
+      const dayBlocks = Array.from(document.querySelectorAll(`.master-block[data-day="${day}"]`))
+        .map(el => ({
+          el,
+          startMin: timeStringToMinutes(el.dataset.startTime),
+          endMin:   timeStringToMinutes(el.dataset.endTime),
+        }));
 
-    let hasConflict = false;
-    blocks.forEach(b => {
-      const sameDay    = blocks.filter(o => o.day === b.day && o !== b);
-      const concurrent = sameDay.filter(o => b.start < o.end && b.end > o.start);
-      // total pieces at same time = this block + all overlapping ones
-      if (concurrent.length + 1 > roomCount) {
-        b.el.classList.add('room-conflict');
-        hasConflict = true;
+      if (!dayBlocks.length) return;
+
+      // Sort by start, assign lanes with sweep line
+      dayBlocks.sort((a, b) => a.startMin - b.startMin);
+      const laneEnds = [];
+      for (const b of dayBlocks) {
+        let li = laneEnds.findIndex(e => b.startMin >= e);
+        if (li === -1) { li = laneEnds.length; laneEnds.push(0); }
+        laneEnds[li] = b.endMin;
+        b.laneIdx = li;
+      }
+
+      // Determine total lanes needed per block (max of all overlapping)
+      for (const b of dayBlocks) {
+        const concurrent = dayBlocks.filter(o => o !== b && o.startMin < b.endMin && o.endMin > b.startMin);
+        b.laneCount = Math.max(b.laneIdx + 1, ...concurrent.map(o => o.laneIdx + 1), 1);
+      }
+
+      // Apply positions and store lane index for conflict detection
+      for (const b of dayBlocks) {
+        const laneW = dayWidth / b.laneCount;
+        b.el.style.left  = `${di * dayWidth + b.laneIdx * laneW}px`;
+        b.el.style.width = `${laneW}px`;
+        b.el.dataset.laneIdx = b.laneIdx;
       }
     });
 
+    highlightConflicts();
+  }
+
+  function highlightConflicts() {
+    let hasConflict = false;
+    document.querySelectorAll('.master-block').forEach(b => {
+      const laneIdx = parseInt(b.dataset.laneIdx ?? 0);
+      const isConflict = laneIdx >= roomCount;
+      b.classList.toggle('room-conflict', isConflict);
+      if (isConflict) hasConflict = true;
+    });
     const banner = document.getElementById('room-conflict-banner');
     if (banner) banner.style.display = hasConflict ? 'block' : 'none';
   }
@@ -161,7 +190,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ room_count: n }),
       });
-      if (res.ok) { roomCount = n; highlightConflicts(); }
+      if (res.ok) { roomCount = n; repositionAllBlocks(); }
       else this.value = roomCount;
     } catch (e) { console.error(e); this.value = roomCount; }
   });
@@ -210,7 +239,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           document.querySelectorAll(`.master-block[data-piece-id="${p.id}"]`).forEach(b => b.remove());
           renderLegend();
           populatePieceSelect();
-          highlightConflicts();
+          repositionAllBlocks();
         } catch (err) { alert('Could not connect to server.'); }
       });
 
@@ -278,7 +307,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.stopPropagation();
       await fetch(`/api/master-blocks/${dbId}`, { method: 'DELETE' });
       block.remove();
-      highlightConflicts();
+      repositionAllBlocks();
     });
 
     grid.appendChild(block);
@@ -298,7 +327,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const dayIndex = DAYS.indexOf(b.day);
         renderBlock(b.id, piece, topPx, btmPx - topPx, dayIndex, b.start_time, b.end_time);
       });
-      highlightConflicts();
+      repositionAllBlocks();
     } catch (e) { console.error(e); }
   }
 
@@ -317,7 +346,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.target.closest('.master-block')) {
       currentBlock  = e.target.closest('.master-block');
       activeBlockId = currentBlock.dataset.dbId;
-      offsetY       = e.clientY - currentBlock.getBoundingClientRect().top;
+      // Expand to full column width during drag so it moves cleanly between days
+      const dayWidth = grid.clientWidth / 7;
+      const dayIdx   = DAYS.indexOf(currentBlock.dataset.day);
+      currentBlock.style.width = `${dayWidth}px`;
+      currentBlock.style.left  = `${dayIdx * dayWidth}px`;
+      offsetY = e.clientY - currentBlock.getBoundingClientRect().top;
       e.preventDefault();
       return;
     }
@@ -419,7 +453,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify(pos),
           });
-          highlightConflicts();
+          repositionAllBlocks();
         } catch (err) { console.error('Update failed:', err); }
       }
       activeBlockId = null;
@@ -491,7 +525,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       pendingBlock.remove();
       pendingBlock = null;
       renderBlock(saved.id, piece, topPx, heightPx, dayIndex, startTime, endTime);
-      highlightConflicts();
+      repositionAllBlocks();
     } catch (err) { console.error(err); return; }
 
     bootstrap.Modal.getInstance(document.getElementById('pieceModal')).hide();

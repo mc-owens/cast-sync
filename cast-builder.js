@@ -9,10 +9,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const PALETTE = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1','#ff9da7'];
 
   // ── State ─────────────────────────────────────────────────────────────────────
-  let selectedDancers    = []; // { id (profile id), user_id, first_name, last_name, availability }
-  let pieces             = []; // pieces in this season (kept in sync as new ones are created)
-  let currentCommonSlots = []; // [{ day, start (minutes), end (minutes) }]
-  let masterBlocks       = []; // [{ id, piece_id, day, start_time, end_time }]
+  let selectedDancers    = [];
+  let pieces             = [];
+  let currentCommonSlots = [];
+  let masterBlocks       = [];
+  let roomCount          = 1;
+  let viewMode           = 'all'; // 'all' | 'open'
 
   // ── DOM ───────────────────────────────────────────────────────────────────────
   const searchInput  = document.getElementById('dancer-search');
@@ -80,6 +82,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/master-blocks');
       masterBlocks = res.ok ? await res.json() : [];
     } catch (e) { masterBlocks = []; }
+  }
+
+  async function loadRoomCount() {
+    try {
+      const res = await fetch('/api/season/room-count');
+      if (res.ok) { const d = await res.json(); roomCount = d.room_count || 1; }
+    } catch (e) { roomCount = 1; }
   }
 
   async function checkOverlap() {
@@ -314,9 +323,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── Common availability ───────────────────────────────────────────────────────
 
-  const GRID_START = 8 * 60;   // 8 AM in minutes
-  const GRID_END   = 23 * 60;  // 11 PM in minutes
-  const GRID_RANGE = GRID_END - GRID_START;
+  const GRID_START  = 8 * 60;
+  const GRID_END    = 23 * 60;
+  const GRID_RANGE  = GRID_END - GRID_START;  // 900 min = 15 hrs
+  const GRID_H      = 512;                    // 32px per hour × 16 labels
+  const PX_PER_MIN  = GRID_H / GRID_RANGE;
 
   function getDayIntervals(dancer, day) {
     return (dancer.availability || [])
@@ -335,95 +346,171 @@ document.addEventListener('DOMContentLoaded', () => {
     return result;
   }
 
-  // Build the grid header + time column once, then reuse
+  // Subtract time spans where all rooms are occupied from the available intervals
+  function openRoomIntervals(availIntervals, dayBlocks) {
+    if (!dayBlocks.length || roomCount <= 0) return availIntervals;
+
+    const events = [];
+    dayBlocks.forEach(b => {
+      events.push({ t: timeToMinutes(b.start_time), d: +1 });
+      events.push({ t: timeToMinutes(b.end_time),   d: -1 });
+    });
+    events.sort((a, b) => a.t !== b.t ? a.t - b.t : a.d - b.d); // ends before starts at same t
+
+    const blocked = [];
+    let count = 0, blockStart = null;
+    for (const ev of events) {
+      count += ev.d;
+      if (count >= roomCount && blockStart === null) blockStart = ev.t;
+      if (count < roomCount  && blockStart !== null) { blocked.push({ start: blockStart, end: ev.t }); blockStart = null; }
+    }
+
+    let result = availIntervals.slice();
+    for (const bp of blocked) {
+      result = result.flatMap(iv => {
+        if (bp.end <= iv.start || bp.start >= iv.end) return [iv];
+        const parts = [];
+        if (bp.start > iv.start) parts.push({ start: iv.start, end: bp.start });
+        if (bp.end   < iv.end)   parts.push({ start: bp.end,   end: iv.end   });
+        return parts;
+      });
+    }
+    return result;
+  }
+
+  // Build the static skeleton (headers + time labels) once
   function buildGridSkeleton() {
     const headers = document.getElementById('avail-day-headers');
     const timeCol = document.getElementById('avail-time-col');
-    if (headers.childElementCount > 0) return; // already built
+    if (headers.childElementCount > 0) return;
 
-    // Corner cell
     const corner = document.createElement('div');
-    corner.style.cssText = 'height:28px;';
+    corner.style.cssText = 'height:24px;';
     headers.appendChild(corner);
-
     DAYS.forEach(day => {
       const h = document.createElement('div');
-      h.style.cssText = 'text-align:center;font-size:11px;font-weight:600;color:#555;padding:5px 0;border-left:1px solid #ddd;';
+      h.style.cssText = 'text-align:center;font-size:11px;font-weight:600;color:#555;padding:4px 0;border-left:1px solid #ddd;';
       h.textContent = day.slice(0, 3);
       headers.appendChild(h);
     });
 
-    // Time labels — one per hour
     for (let h = 8; h <= 23; h++) {
       const label = document.createElement('div');
       const ampm  = h >= 12 ? 'PM' : 'AM';
       const hr    = h % 12 === 0 ? 12 : h % 12;
-      label.style.cssText = 'height:40px;font-size:9px;color:#888;text-align:right;padding-right:4px;padding-top:2px;border-bottom:1px solid #f0f0f0;box-sizing:border-box;';
+      label.style.cssText = 'height:32px;font-size:9px;color:#888;text-align:right;padding-right:4px;padding-top:2px;border-bottom:1px solid #f0f0f0;box-sizing:border-box;';
       label.textContent = `${hr}${ampm}`;
       timeCol.appendChild(label);
     }
   }
 
-  function renderAvailGrid(commonByDay) {
+  function renderAvailGrid(allByDay, openByDay) {
     buildGridSkeleton();
     const grid = document.getElementById('avail-grid');
     grid.innerHTML = '';
+    const activeByDay = viewMode === 'open' ? openByDay : allByDay;
 
     DAYS.forEach((day, di) => {
       const col = document.createElement('div');
       col.style.cssText = `position:relative;border-left:${di > 0 ? '1px solid #eee' : 'none'};`;
 
-      // Hour lines
       for (let h = 0; h < 16; h++) {
         const line = document.createElement('div');
-        line.style.cssText = `height:40px;border-bottom:1px solid ${h % 1 === 0 ? '#f0f0f0' : '#f8f8f8'};box-sizing:border-box;`;
+        line.style.cssText = 'height:32px;border-bottom:1px solid #f0f0f0;box-sizing:border-box;';
         col.appendChild(line);
       }
 
       const overlay = document.createElement('div');
       overlay.style.cssText = 'position:absolute;inset:0;';
 
-      // Green: common availability windows
-      (commonByDay[day] || []).forEach(iv => {
-        const s   = Math.max(iv.start, GRID_START);
-        const e   = Math.min(iv.end,   GRID_END);
+      // Green: active common availability (based on view mode)
+      (activeByDay[day] || []).forEach(iv => {
+        const s = Math.max(iv.start, GRID_START), e = Math.min(iv.end, GRID_END);
         if (s >= e) return;
-        const top = ((s - GRID_START) / GRID_RANGE) * 640;
-        const ht  = ((e - s)          / GRID_RANGE) * 640;
-        const block = document.createElement('div');
-        block.style.cssText = `position:absolute;left:1px;right:1px;top:${top}px;height:${ht}px;background:rgba(34,197,94,.28);border:1px solid rgba(34,197,94,.7);border-radius:2px;box-sizing:border-box;`;
-        block.title = `${minutesToTimeString(iv.start)} – ${minutesToTimeString(iv.end)}`;
-        overlay.appendChild(block);
+        const el = document.createElement('div');
+        el.style.cssText = `position:absolute;left:1px;right:1px;top:${(s-GRID_START)*PX_PER_MIN}px;height:${(e-s)*PX_PER_MIN}px;background:rgba(34,197,94,.28);border:1px solid rgba(34,197,94,.75);border-radius:2px;box-sizing:border-box;`;
+        el.title = `${minutesToTimeString(iv.start)} – ${minutesToTimeString(iv.end)}`;
+        overlay.appendChild(el);
       });
 
-      // Blue: existing master schedule blocks for this day
+      // In "all" mode, also show grey where rooms are full (so director can see the distinction)
+      if (viewMode === 'all') {
+        const allSlots  = allByDay[day]  || [];
+        const openSlots = openByDay[day] || [];
+        // Blocked = allSlots minus openSlots
+        const blockedSlots = allSlots.flatMap(iv => {
+          let remaining = [iv];
+          for (const op of openSlots) {
+            remaining = remaining.flatMap(r => {
+              if (op.end <= r.start || op.start >= r.end) return [r];
+              const parts = [];
+              if (op.start > r.start) parts.push({ start: r.start, end: op.start });
+              if (op.end   < r.end)   parts.push({ start: op.end,   end: r.end   });
+              return parts;
+            });
+          }
+          return remaining;
+        });
+        blockedSlots.forEach(iv => {
+          const s = Math.max(iv.start, GRID_START), e = Math.min(iv.end, GRID_END);
+          if (s >= e) return;
+          const el = document.createElement('div');
+          el.style.cssText = `position:absolute;left:1px;right:1px;top:${(s-GRID_START)*PX_PER_MIN}px;height:${(e-s)*PX_PER_MIN}px;background:rgba(234,179,8,.18);border:1px solid rgba(234,179,8,.5);border-radius:2px;box-sizing:border-box;`;
+          el.title = `Rooms full: ${minutesToTimeString(iv.start)} – ${minutesToTimeString(iv.end)}`;
+          overlay.appendChild(el);
+        });
+      }
+
+      // Piece blocks from master schedule (on top)
       masterBlocks.filter(b => b.day === day).forEach(b => {
-        const s   = Math.max(timeToMinutes(b.start_time), GRID_START);
-        const e   = Math.min(timeToMinutes(b.end_time),   GRID_END);
+        const s = Math.max(timeToMinutes(b.start_time), GRID_START);
+        const e = Math.min(timeToMinutes(b.end_time),   GRID_END);
         if (s >= e) return;
-        const top   = ((s - GRID_START) / GRID_RANGE) * 640;
-        const ht    = ((e - s)          / GRID_RANGE) * 640;
+        const ht    = (e - s) * PX_PER_MIN;
         const piece = pieces.find(p => p.id === b.piece_id);
-        const color = piece?.color || '#3b82f6';
-        const block = document.createElement('div');
-        block.style.cssText = `position:absolute;left:2px;right:2px;top:${top}px;height:${ht}px;background:${hexToRgba(color, 0.4)};border:1.5px solid ${color};border-radius:2px;box-sizing:border-box;overflow:hidden;`;
-        block.title = `${piece?.name || 'Rehearsal'}: ${b.start_time} – ${b.end_time}`;
-        if (ht > 16) {
+        const color = piece?.color || '#888';
+        const el    = document.createElement('div');
+        el.style.cssText = `position:absolute;left:2px;right:2px;top:${(s-GRID_START)*PX_PER_MIN}px;height:${ht}px;background:${hexToRgba(color,.45)};border:1.5px solid ${color};border-radius:2px;box-sizing:border-box;overflow:hidden;`;
+        el.title = `${piece?.name || 'Rehearsal'}: ${b.start_time} – ${b.end_time}`;
+        if (ht > 14) {
           const lbl = document.createElement('div');
-          lbl.style.cssText = 'font-size:9px;font-weight:600;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+          lbl.style.cssText = 'font-size:9px;font-weight:700;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
           lbl.textContent = piece?.name || '';
-          block.appendChild(lbl);
+          el.appendChild(lbl);
         }
-        overlay.appendChild(block);
+        overlay.appendChild(el);
       });
 
       col.appendChild(overlay);
       grid.appendChild(col);
     });
 
-    // Set grid total height to match time col (16 hours × 40px)
-    grid.style.height = '640px';
-    document.getElementById('avail-time-col').style.height = '640px';
+    grid.style.height = `${GRID_H}px`;
+    document.getElementById('avail-time-col').style.height = `${GRID_H}px`;
+  }
+
+  function renderTextList(slots) {
+    const wrapper = document.getElementById('avail-text-list-wrapper');
+    const list    = document.getElementById('avail-text-list');
+    if (!list) return;
+
+    if (!slots.length) {
+      if (wrapper) wrapper.style.display = 'none';
+      return;
+    }
+
+    if (wrapper) wrapper.style.display = 'block';
+
+    const byDay = {};
+    slots.forEach(s => { if (!byDay[s.day]) byDay[s.day] = []; byDay[s.day].push(s); });
+
+    list.innerHTML = DAYS.filter(d => byDay[d])
+      .map(day => `<div class="mb-1"><span style="font-size:12px;font-weight:600;color:#555;margin-right:6px;">${day}</span>`
+        + byDay[day].map(iv =>
+            `<span class="time-window">${minutesToTimeString(iv.start)} – ${minutesToTimeString(iv.end)}</span>`
+          ).join('')
+        + '</div>'
+      ).join('');
   }
 
   function computeCommonAvailability() {
@@ -439,27 +526,29 @@ document.addEventListener('DOMContentLoaded', () => {
     placeholder.style.display = 'none';
     results.style.display     = 'block';
 
-    const commonByDay = {};
-    let foundAny = false;
+    const allByDay  = {};
+    const openByDay = {};
 
     DAYS.forEach(day => {
-      // With 1 dancer: show their own availability; with 2+ show intersection
       let common = getDayIntervals(selectedDancers[0], day);
       for (let i = 1; i < selectedDancers.length; i++) {
         common = intersectIntervals(common, getDayIntervals(selectedDancers[i], day));
-        if (common.length === 0) break;
+        if (!common.length) break;
       }
-      commonByDay[day] = common;
-      if (common.length > 0) {
-        foundAny = true;
-        common.forEach(iv => currentCommonSlots.push({ day, start: iv.start, end: iv.end }));
-      }
+      allByDay[day]  = common;
+      openByDay[day] = openRoomIntervals(common, masterBlocks.filter(b => b.day === day));
     });
 
-    const noCommon = document.getElementById('no-common');
+    const active = viewMode === 'open' ? openByDay : allByDay;
+    DAYS.forEach(day => {
+      (active[day] || []).forEach(iv => currentCommonSlots.push({ day, start: iv.start, end: iv.end }));
+    });
+
+    const foundAny = currentCommonSlots.length > 0;
     noCommon.style.display = (!foundAny && selectedDancers.length >= 2) ? 'block' : 'none';
 
-    renderAvailGrid(commonByDay);
+    renderAvailGrid(allByDay, openByDay);
+    renderTextList(currentCommonSlots);
     updateActionPanel();
   }
 
@@ -620,7 +709,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // ── View toggle ───────────────────────────────────────────────────────────────
+
+  const viewAllBtn  = document.getElementById('view-all-btn');
+  const viewOpenBtn = document.getElementById('view-open-btn');
+  const viewHint    = document.getElementById('view-mode-hint');
+
+  function setViewMode(mode) {
+    viewMode = mode;
+    if (mode === 'all') {
+      viewAllBtn.classList.replace('btn-outline-dark', 'btn-dark');
+      viewOpenBtn.classList.replace('btn-dark', 'btn-outline-dark');
+      viewHint.textContent = 'Showing all time windows when dancers are free';
+    } else {
+      viewOpenBtn.classList.replace('btn-outline-dark', 'btn-dark');
+      viewAllBtn.classList.replace('btn-dark', 'btn-outline-dark');
+      viewHint.textContent = 'Showing only windows with an open room available';
+    }
+    computeCommonAvailability();
+  }
+
+  viewAllBtn.addEventListener('click',  () => setViewMode('all'));
+  viewOpenBtn.addEventListener('click', () => setViewMode('open'));
+
   // ── Init ──────────────────────────────────────────────────────────────────────
 
-  loadPieces();
+  Promise.all([loadPieces(), loadMasterBlocks(), loadRoomCount()]);
 });
