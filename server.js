@@ -678,10 +678,36 @@ app.get('/api/subscription', requireAuth('master'), async (req, res) => {
       [req.session.userId]
     );
     const { plan_type, plan_expires_at } = row.rows[0] || {};
-    const isAnnualActive = plan_type === 'annual' && plan_expires_at && new Date(plan_expires_at) > new Date();
+    const isAnnualActive = (plan_type === 'annual' || plan_type === 'free') &&
+      (!plan_expires_at || new Date(plan_expires_at) > new Date());
     res.json({ planType: plan_type || 'none', planExpiresAt: plan_expires_at || null, isAnnualActive });
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch subscription.' });
+  }
+});
+
+// POST /api/promo/redeem — apply a promo code to grant free access
+app.post('/api/promo/redeem', requireAuth('master'), async (req, res) => {
+  const { code } = req.body;
+  if (!code) return res.status(400).json({ error: 'Code is required.' });
+
+  const validCodes = (process.env.PROMO_CODES || '')
+    .split(',')
+    .map(c => c.trim().toUpperCase())
+    .filter(Boolean);
+
+  if (!validCodes.includes(code.trim().toUpperCase())) {
+    return res.status(400).json({ error: 'Invalid or expired promo code.' });
+  }
+
+  try {
+    await pool.query(
+      `UPDATE users SET plan_type = 'free', plan_expires_at = NULL WHERE id = $1`,
+      [req.session.userId]
+    );
+    res.json({ ok: true, message: 'Promo code applied! You have free unlimited access.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not apply promo code.' });
   }
 });
 
@@ -918,7 +944,8 @@ app.post('/api/orgs/:orgId/seasons/free', requireAuth('master'), async (req, res
       [req.session.userId]
     );
     const { plan_type, plan_expires_at } = planRow.rows[0] || {};
-    const hasAnnual = plan_type === 'annual' && plan_expires_at && new Date(plan_expires_at) > new Date();
+    const hasAnnual = (plan_type === 'annual' || plan_type === 'free') &&
+      (!plan_expires_at || new Date(plan_expires_at) > new Date());
     if (!hasAnnual) return res.status(403).json({ error: 'An active annual plan is required.' });
 
     // Verify membership in this org

@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+
+# Keep app pages private from search engines
+Disallow: /master.html
+Disallow: /search.html
+Disallow: /cast.html
+Disallow: /casting.html
+Disallow: /dancers.html
+Disallow: /auditionForm.html
+Disallow: /org-select.html
+Disallow: /plan-select.html
+Disallow: /account.html
+Disallow: /payment-success.html
+Disallow: /api/
+
+Sitemap: https://www.cast-sync.com/sitemap.xml

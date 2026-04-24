@@ -170,6 +170,22 @@
 
       <button class="btn btn-dark w-100" id="checkout-btn" style="padding:12px;">Continue to Payment →</button>
       <p class="text-center text-muted mt-2" style="font-size:11px;">Secure checkout · All purchases are final</p>
+
+      <!-- Promo code -->
+      <div class="mt-4 pt-3 border-top">
+        <button class="btn btn-link p-0 text-muted" style="font-size:13px;text-decoration:none;" id="promo-toggle">
+          Have a promo code? <span id="promo-chevron">▾</span>
+        </button>
+        <div id="promo-section" style="display:none;margin-top:12px;">
+          <div id="promo-error" class="alert alert-danger d-none py-2" style="font-size:13px;"></div>
+          <div id="promo-success" class="alert alert-success d-none py-2" style="font-size:13px;"></div>
+          <div class="d-flex gap-2">
+            <input type="text" class="form-control" id="promo-input" placeholder="Enter code"
+                   style="font-size:13px;text-transform:uppercase;" autocomplete="off" />
+            <button class="btn btn-outline-secondary" id="promo-btn" style="white-space:nowrap;font-size:13px;">Apply</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -303,6 +319,51 @@
         errorEl.classList.remove('d-none');
         btn.disabled    = false;
         btn.textContent = 'Continue to Payment →';
+      }
+    });
+
+    // Promo code toggle
+    document.getElementById('promo-toggle').addEventListener('click', () => {
+      const sec = document.getElementById('promo-section');
+      const open = sec.style.display === 'none';
+      sec.style.display = open ? 'block' : 'none';
+      document.getElementById('promo-chevron').textContent = open ? '▴' : '▾';
+    });
+
+    // Promo code apply
+    document.getElementById('promo-btn').addEventListener('click', async () => {
+      const code      = document.getElementById('promo-input').value.trim();
+      const errorEl   = document.getElementById('promo-error');
+      const successEl = document.getElementById('promo-success');
+      const btn       = document.getElementById('promo-btn');
+      errorEl.classList.add('d-none');
+      successEl.classList.add('d-none');
+      if (!code) return;
+
+      btn.disabled    = true;
+      btn.textContent = 'Applying…';
+
+      try {
+        const res  = await fetch('/api/promo/redeem', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errorEl.textContent = data.error;
+          errorEl.classList.remove('d-none');
+        } else {
+          successEl.textContent = data.message;
+          successEl.classList.remove('d-none');
+          // Reload after 1.5s — page will now show annual/free view
+          setTimeout(() => window.location.reload(), 1500);
+        }
+      } catch (err) {
+        errorEl.textContent = 'Could not connect to server.';
+        errorEl.classList.remove('d-none');
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = 'Apply';
       }
     });
   </script>
