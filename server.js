@@ -686,17 +686,43 @@ app.get('/api/subscription', requireAuth('master'), async (req, res) => {
   }
 });
 
-// POST /api/promo/redeem — apply a promo code to grant free access
+// Helper: parse DISCOUNT_CODES env var → Map of CODE → percentage (integer)
+// Format: "SAVE10:10,LAUNCH20:20"
+function parseDiscountCodes() {
+  const map = new Map();
+  (process.env.DISCOUNT_CODES || '').split(',').forEach(entry => {
+    const [code, pct] = entry.split(':');
+    if (code && pct) map.set(code.trim().toUpperCase(), parseInt(pct, 10));
+  });
+  return map;
+}
+
+// POST /api/promo/check — validate any code; returns type ('free' | 'discount') + value
+app.post('/api/promo/check', requireAuth('master'), (req, res) => {
+  const { code } = req.body;
+  if (!code) return res.status(400).json({ error: 'Code is required.' });
+  const upper = code.trim().toUpperCase();
+
+  const freeCodes = (process.env.PROMO_CODES || '').split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+  if (freeCodes.includes(upper)) {
+    return res.json({ type: 'free' });
+  }
+
+  const discountMap = parseDiscountCodes();
+  if (discountMap.has(upper)) {
+    return res.json({ type: 'discount', percent: discountMap.get(upper) });
+  }
+
+  res.status(400).json({ error: 'Invalid or expired promo code.' });
+});
+
+// POST /api/promo/redeem — apply a free-access promo code to the user's account
 app.post('/api/promo/redeem', requireAuth('master'), async (req, res) => {
   const { code } = req.body;
   if (!code) return res.status(400).json({ error: 'Code is required.' });
 
-  const validCodes = (process.env.PROMO_CODES || '')
-    .split(',')
-    .map(c => c.trim().toUpperCase())
-    .filter(Boolean);
-
-  if (!validCodes.includes(code.trim().toUpperCase())) {
+  const freeCodes = (process.env.PROMO_CODES || '').split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+  if (!freeCodes.includes(code.trim().toUpperCase())) {
     return res.status(400).json({ error: 'Invalid or expired promo code.' });
   }
 
@@ -714,7 +740,7 @@ app.post('/api/promo/redeem', requireAuth('master'), async (req, res) => {
 // POST /api/checkout/create-session — start Stripe checkout for a new production
 app.post('/api/checkout/create-session', requireAuth('master'), async (req, res) => {
   if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
-  const { orgId, productionName, plan } = req.body;
+  const { orgId, productionName, plan, discountCode } = req.body;
   if (!orgId || !productionName || !plan) return res.status(400).json({ error: 'orgId, productionName and plan required.' });
   if (!['payasyougo', 'annual'].includes(plan)) return res.status(400).json({ error: 'Invalid plan.' });
 
@@ -730,10 +756,19 @@ app.post('/api/checkout/create-session', requireAuth('master'), async (req, res)
     const userRow = await pool.query('SELECT stripe_customer_id FROM users WHERE id = $1', [req.session.userId]);
     const existingCustomer = userRow.rows[0]?.stripe_customer_id;
 
-    const unitAmount   = plan === 'annual' ? 24900 : 7900; // $249 or $79
+    // Apply discount code if provided
+    let discountPercent = 0;
+    if (discountCode) {
+      const discountMap = parseDiscountCodes();
+      const pct = discountMap.get(discountCode.trim().toUpperCase());
+      if (pct) discountPercent = pct;
+    }
+
+    const baseAmount   = plan === 'annual' ? 24900 : 7900;
+    const unitAmount   = Math.round(baseAmount * (1 - discountPercent / 100));
     const productLabel = plan === 'annual'
-      ? 'CastSync Annual Pass — Unlimited Productions'
-      : `CastSync Production — ${productionName}`;
+      ? `CastSync Annual Pass — Unlimited Productions${discountPercent ? ` (${discountPercent}% off)` : ''}`
+      : `CastSync Production — ${productionName}${discountPercent ? ` (${discountPercent}% off)` : ''}`;
 
     const sessionParams = {
       payment_method_types: ['card'],

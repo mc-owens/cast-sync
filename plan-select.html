@@ -93,8 +93,8 @@
     <div class="container" style="max-width:480px;">
       <a href="org-select.html" class="text-muted" style="font-size:13px;text-decoration:none;">← Back</a>
       <h4 class="fw-semibold mt-3 mb-1">New Production</h4>
-      <p class="text-muted mb-1" style="font-size:14px;">Your annual plan is active <span id="annual-expires-note"></span></p>
-      <span class="annual-badge">Annual Pass</span>
+      <p class="text-muted mb-1" style="font-size:14px;">Your plan is active <span id="annual-expires-note"></span></p>
+      <span class="annual-badge" id="annual-badge-label">Annual Pass</span>
       <div class="mt-4">
         <div id="annual-error" class="alert alert-danger d-none"></div>
         <label class="form-label fw-medium">Production name</label>
@@ -132,8 +132,8 @@
               </div>
               <div class="select-indicator" id="radio-payasyougo"></div>
             </div>
-            <div class="plan-price">$79</div>
-            <div class="plan-price-sub">per production</div>
+            <div class="plan-price" id="price-payasyougo">$79</div>
+            <div class="plan-price-sub" id="price-sub-payasyougo">per production</div>
             <ul>
               <li><span class="check">✓</span> Unlimited auditionees</li>
               <li><span class="check">✓</span> Conflict detection</li>
@@ -155,8 +155,8 @@
               </div>
               <div class="select-indicator" id="radio-annual"></div>
             </div>
-            <div class="plan-price">$249</div>
-            <div class="plan-price-sub">per year</div>
+            <div class="plan-price" id="price-annual">$249</div>
+            <div class="plan-price-sub" id="price-sub-annual">per year</div>
             <ul>
               <li><span class="check">✓</span> Everything in Pay per production</li>
               <li><span class="check">✓</span> Unlimited productions</li>
@@ -199,12 +199,26 @@
     const orgId  = params.get('orgId');
 
     // Default to annual selected
-    let selectedPlan = 'annual';
+    let selectedPlan      = 'annual';
+    let activeDiscountCode = null;   // set when a % discount code is applied
 
     function selectPlan(plan) {
       selectedPlan = plan;
       document.getElementById('card-payasyougo').classList.toggle('selected', plan === 'payasyougo');
       document.getElementById('card-annual').classList.toggle('selected', plan === 'annual');
+    }
+
+    function applyDiscountUI(percent) {
+      const payFull    = 79;
+      const annualFull = 249;
+      const payNew     = Math.round(payFull    * (1 - percent / 100));
+      const annualNew  = Math.round(annualFull * (1 - percent / 100));
+      document.getElementById('price-payasyougo').textContent  = `$${payNew}`;
+      document.getElementById('price-sub-payasyougo').innerHTML =
+        `<s style="color:#9ca3af;">$${payFull}</s> per production`;
+      document.getElementById('price-annual').textContent  = `$${annualNew}`;
+      document.getElementById('price-sub-annual').innerHTML =
+        `<s style="color:#9ca3af;">$${annualFull}</s> per year`;
     }
 
     // Nav auth
@@ -237,8 +251,13 @@
 
         if (data.isAnnualActive) {
           // Annual user — skip plan selection
-          const expiresDate = new Date(data.planExpiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-          document.getElementById('annual-expires-note').textContent = `· expires ${expiresDate}`;
+          if (data.planType === 'free') {
+            document.getElementById('annual-expires-note').textContent = '';
+            document.getElementById('annual-badge-label').textContent  = 'Free Access';
+          } else if (data.planExpiresAt) {
+            const expiresDate = new Date(data.planExpiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            document.getElementById('annual-expires-note').textContent = `· expires ${expiresDate}`;
+          }
           document.getElementById('annual-view').style.display = 'block';
         } else {
           // Show plan selection
@@ -303,7 +322,7 @@
       try {
         const res  = await fetch('/api/checkout/create-session', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orgId, productionName: name, plan: selectedPlan }),
+          body: JSON.stringify({ orgId, productionName: name, plan: selectedPlan, discountCode: activeDiscountCode }),
         });
         const data = await res.json();
         if (!res.ok) {
@@ -344,26 +363,54 @@
       btn.textContent = 'Applying…';
 
       try {
-        const res  = await fetch('/api/promo/redeem', {
+        // Step 1: check what type of code this is
+        const checkRes  = await fetch('/api/promo/check', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code }),
         });
-        const data = await res.json();
-        if (!res.ok) {
-          errorEl.textContent = data.error;
+        const checkData = await checkRes.json();
+
+        if (!checkRes.ok) {
+          errorEl.textContent = checkData.error || 'Invalid or expired promo code.';
+          errorEl.classList.remove('d-none');
+          return;
+        }
+
+        if (checkData.type === 'discount') {
+          // Percentage discount — update prices in UI, store code for checkout
+          activeDiscountCode = code.trim().toUpperCase();
+          applyDiscountUI(checkData.percent);
+          successEl.textContent = `${checkData.percent}% discount applied!`;
+          successEl.classList.remove('d-none');
+          document.getElementById('promo-input').disabled = true;
+          btn.textContent = 'Applied ✓';
+          btn.disabled    = true;
+          return; // don't reload — stay on page with updated prices
+        }
+
+        // Step 2: free-access code — redeem it on the account
+        const redeemRes  = await fetch('/api/promo/redeem', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+        const redeemData = await redeemRes.json();
+        if (!redeemRes.ok) {
+          errorEl.textContent = redeemData.error || 'Could not apply promo code.';
           errorEl.classList.remove('d-none');
         } else {
-          successEl.textContent = data.message;
+          successEl.textContent = redeemData.message;
           successEl.classList.remove('d-none');
-          // Reload after 1.5s — page will now show annual/free view
+          // Reload after 1.5s — page will now show free-access view
           setTimeout(() => window.location.reload(), 1500);
         }
       } catch (err) {
         errorEl.textContent = 'Could not connect to server.';
         errorEl.classList.remove('d-none');
       } finally {
-        btn.disabled    = false;
-        btn.textContent = 'Apply';
+        if (!activeDiscountCode) {
+          btn.disabled    = false;
+          btn.textContent = 'Apply';
+        }
       }
     });
   </script>
