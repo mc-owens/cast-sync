@@ -513,21 +513,7 @@ app.post('/api/orgs', requireAuth('master'), async (req, res) => {
       'INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, $3)',
       [org.id, req.session.userId, 'owner']
     );
-    // Auto-create first production with its own join code
-    let seasonCode, inserted = false;
-    while (!inserted) {
-      try {
-        seasonCode = generateJoinCode();
-        const seasonResult = await pool.query(
-          'INSERT INTO seasons (org_id, name, is_active, join_code) VALUES ($1, $2, TRUE, $3) RETURNING id, name, join_code',
-          [org.id, 'Production 1', seasonCode]
-        );
-        inserted = true;
-        res.status(201).json({ org, season: seasonResult.rows[0] });
-      } catch (e) {
-        if (e.code !== '23505') throw e; // retry only on unique violation
-      }
-    }
+    res.status(201).json({ org });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to create org.' });
@@ -691,6 +677,13 @@ app.post('/api/checkout/create-session', requireAuth('master'), async (req, res)
   if (!orgId || !productionName) return res.status(400).json({ error: 'orgId and productionName required.' });
 
   try {
+    // Derive base URL from the incoming request so Railway/production hosts work without APP_URL env var
+    const proto   = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+    const host    = req.headers['x-forwarded-host']  || req.headers.host;
+    const baseUrl = process.env.APP_URL
+      ? `https://${process.env.APP_URL}`
+      : `${proto}://${host}`;
+
     // Reuse existing Stripe customer if this user has paid before
     const userRow = await pool.query('SELECT stripe_customer_id FROM users WHERE id = $1', [req.session.userId]);
     const existingCustomer = userRow.rows[0]?.stripe_customer_id;
@@ -706,8 +699,8 @@ app.post('/api/checkout/create-session', requireAuth('master'), async (req, res)
         quantity: 1,
       }],
       mode: 'payment',
-      success_url: `${APP_URL}/payment-success.html?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:  `${APP_URL}/org-select.html?cancelled=1`,
+      success_url: `${baseUrl}/payment-success.html?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url:  `${baseUrl}/org-select.html?cancelled=1`,
       metadata: {
         org_id:          String(orgId),
         user_id:         String(req.session.userId),

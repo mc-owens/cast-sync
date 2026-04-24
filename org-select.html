@@ -430,8 +430,9 @@
       const res  = await fetch('/api/orgs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
       const data = await res.json();
       if (!res.ok) { errorEl.textContent = data.error; errorEl.classList.remove('d-none'); return; }
-      await fetch('/api/session/org', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orgId: data.org.id, seasonId: data.season.id }) });
-      window.location.href = 'master.html';
+      // Close modal and reload so the new org appears with its "Add Production" button
+      bootstrap.Modal.getInstance(document.getElementById('newOrgModal'))?.hide();
+      window.location.reload();
     });
 
     document.getElementById('create-season-btn').addEventListener('click', async () => {
