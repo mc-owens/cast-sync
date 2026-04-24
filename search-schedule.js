@@ -91,25 +91,61 @@ document.addEventListener('DOMContentLoaded', async () => {
   function renderBlock(piece, topPx, heightPx, dayIndex, startTime, endTime) {
     const dayWidth = grid.clientWidth / 7;
     const block    = document.createElement('div');
-    block.className         = 'block readonly-block';
-    block.dataset.pieceId   = piece.id;
-    block.dataset.pieceName = piece.name;
-    block.style.top         = `${topPx}px`;
-    block.style.height      = `${Math.max(heightPx, slotHeight)}px`;
-    block.style.left        = `${dayIndex * dayWidth}px`;
-    block.style.width       = `${dayWidth}px`;
-    block.style.background  = hexToRgba(piece.color, 0.65);
-    block.style.border      = `2px solid ${piece.color}`;
-    block.style.position    = 'absolute';
-    block.style.boxSizing   = 'border-box';
-    block.style.color       = '#000';
-    block.style.cursor      = 'pointer';
+    block.className           = 'block readonly-block';
+    block.dataset.pieceId     = piece.id;
+    block.dataset.pieceName   = piece.name;
+    block.dataset.dayIndex    = String(dayIndex);
+    block.dataset.startTime   = startTime;
+    block.dataset.endTime     = endTime;
+    block.style.top           = `${topPx}px`;
+    block.style.height        = `${Math.max(heightPx, slotHeight)}px`;
+    block.style.left          = `${dayIndex * dayWidth}px`;
+    block.style.width         = `${dayWidth}px`;
+    block.style.background    = hexToRgba(piece.color, 0.65);
+    block.style.border        = `2px solid ${piece.color}`;
+    block.style.position      = 'absolute';
+    block.style.boxSizing     = 'border-box';
+    block.style.color         = '#000';
+    block.style.cursor        = 'pointer';
     block.innerHTML = `
       <span style="font-size:11px;font-weight:bold;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${piece.name}</span>
       <span style="font-size:10px;display:block;opacity:0.8;">${startTime} – ${endTime}</span>`;
 
     block.addEventListener('click', () => showAvailability(block));
     grid.appendChild(block);
+  }
+
+  // Split overlapping blocks in the same day into side-by-side lanes
+  function repositionBlocks() {
+    const dayWidth = grid.clientWidth / 7;
+    DAYS.forEach((day, di) => {
+      const els = Array.from(document.querySelectorAll('.readonly-block'))
+        .filter(el => el.dataset.dayIndex === String(di));
+      if (els.length === 0) return;
+
+      const blocks = els.map(el => ({
+        el,
+        start: timeStringToMinutes(el.dataset.startTime),
+        end:   timeStringToMinutes(el.dataset.endTime),
+        lane:  0,
+      })).sort((a, b) => a.start - b.start);
+
+      // Greedy lane assignment (same sweep-line as master schedule)
+      const laneEnds = [];
+      blocks.forEach(b => {
+        let lane = laneEnds.findIndex(e => e <= b.start);
+        if (lane === -1) { lane = laneEnds.length; laneEnds.push(b.end); }
+        else laneEnds[lane] = b.end;
+        b.lane = lane;
+      });
+
+      const laneCount = laneEnds.length;
+      const laneW     = dayWidth / laneCount;
+      blocks.forEach(b => {
+        b.el.style.left  = `${di * dayWidth + b.lane * laneW}px`;
+        b.el.style.width = `${laneW}px`;
+      });
+    });
   }
 
   // ── Format piece schedule into clean title string ─────────────────────────────
@@ -377,6 +413,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       const dayIndex = DAYS.indexOf(b.day);
       renderBlock(piece, topPx, btmPx - topPx, dayIndex, b.start_time, b.end_time);
     });
+
+    repositionBlocks();
 
   } catch (err) {
     console.error(err);
