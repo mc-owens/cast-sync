@@ -69,39 +69,43 @@
 
     /* Sections */
     .section { padding: 80px 0; }
-    .section-label { font-size: 11px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; color: var(--gold); margin-bottom: 12px; }
+    .section-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+    .section-label::before { content: ''; display: inline-block; width: 24px; height: 1.5px; background: var(--gold); flex-shrink: 0; }
     .section-title { font-family: 'Playfair Display', Georgia, serif; font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 700; letter-spacing: -.3px; margin-bottom: 16px; }
     .section-sub { color: var(--muted); font-size: 1rem; max-width: 540px; line-height: 1.6; }
 
     .step-num { width: 36px; height: 36px; border-radius: 50%; background: var(--gold); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
-    .step-card { display: flex; gap: 20px; padding: 28px; background: #f9fafb; border-radius: 12px; border: 1px solid var(--border); }
+    .step-card { display: flex; gap: 20px; padding: 28px; background: #fff; border-radius: 12px; border: 1px solid var(--border); border-left: 3px solid var(--gold); transition: box-shadow .15s; }
+    .step-card:hover { box-shadow: 0 4px 16px rgba(196,148,58,.12); }
     .step-card h5 { font-weight: 700; margin-bottom: 6px; font-size: 15px; }
     .step-card p { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0; }
 
     /* Features */
     .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
-    .feature-card { padding: 28px; border: 1px solid var(--border); border-radius: 12px; }
+    .feature-card { padding: 28px; border: 1px solid var(--border); border-radius: 12px; background: #fff; transition: border-color .15s, box-shadow .15s; }
+    .feature-card:hover { border-color: rgba(196,148,58,.45); box-shadow: 0 4px 16px rgba(196,148,58,.09); }
     .feature-icon { font-size: 22px; margin-bottom: 12px; }
     .feature-card h5 { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
     .feature-card p { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0; }
 
     /* Pricing */
     .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; max-width: 780px; margin: 0 auto; }
-    .price-card { border: 1px solid var(--border); border-radius: 14px; padding: 32px; position: relative; }
-    .price-card.featured { border-color: var(--gold); border-width: 2px; }
+    .price-card { border: 1px solid var(--border); border-radius: 14px; padding: 32px; position: relative; background: #fff; }
+    .price-card.featured { border-color: var(--gold); border-width: 2px; background: #fffdf7; }
     .price-card .featured-badge { position: absolute; top: -13px; left: 50%; transform: translateX(-50%); background: var(--gold); color: #fff; font-size: 11px; font-weight: 700; padding: 3px 14px; border-radius: 99px; letter-spacing: .5px; white-space: nowrap; }
     .price-card h4 { font-weight: 800; font-size: 17px; margin-bottom: 6px; }
-    .price-card .price { font-size: 2.4rem; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+    .price-card .price { font-size: 2.4rem; font-weight: 800; letter-spacing: -1px; line-height: 1; color: var(--gold); }
     .price-card .price-sub { color: var(--muted); font-size: 13px; margin-top: 4px; margin-bottom: 20px; }
     .price-card ul { list-style: none; padding: 0; margin: 0 0 24px; }
     .price-card ul li { font-size: 14px; color: #374151; padding: 6px 0; border-bottom: 1px solid #f3f4f6; display: flex; gap: 8px; align-items: flex-start; }
     .price-card ul li:last-child { border-bottom: none; }
-    .check { color: #16a34a; font-weight: 700; flex-shrink: 0; }
+    .check { color: var(--gold); font-weight: 700; flex-shrink: 0; }
 
     /* FAQ */
     .faq-item { border-bottom: 1px solid var(--border); padding: 20px 0; }
     .faq-item:first-child { border-top: 1px solid var(--border); }
     .faq-q { font-weight: 700; font-size: 15px; cursor: pointer; display: flex; justify-content: space-between; gap: 16px; }
+    .faq-q:hover { color: var(--gold); }
     .faq-a { color: var(--muted); font-size: 14px; line-height: 1.6; margin-top: 10px; max-width: 640px; }
 
     /* CTA band — dark stage, matching hero */
@@ -174,13 +178,13 @@
   <!-- Hero -->
   <section class="hero">
 
-    <!-- Hero video — ping-pong loop, muted, decorative -->
+    <!-- Hero video — mirror ping-pong loop, muted, decorative -->
     <div class="hero-video-wrap" aria-hidden="true">
       <video class="hero-video" src="hero-video.mp4" muted playsinline preload="auto"
              disablepictureinpicture controlslist="nodownload nofullscreen noremoteplayback"
              x-webkit-airplay="deny"></video>
-      <!-- transparent overlay blocks browser's native video hover UI -->
-      <div style="position:absolute;inset:0;"></div>
+      <!-- explicit pointer-events:auto so this overlay actually intercepts browser's native video UI -->
+      <div style="position:absolute;inset:0;pointer-events:auto;"></div>
     </div>
 
     <div class="container" style="position:relative;z-index:1;">
@@ -388,56 +392,28 @@
       icon.textContent     = open ? '+' : '−';
     }
 
-    // Hero video ping-pong — forward via native play(), backward via rAF stepping
+    // Hero video mirror ping-pong — plays forward (normal), then forward again mirrored.
+    // Both passes use native play() so both directions are perfectly smooth.
     (function () {
       const vid = document.querySelector('.hero-video');
       if (!vid) return;
       vid.muted = true;
 
-      let reversing = false;
-      let lastTs    = null;
+      let mirrored = false;
 
-      // Native forward playback — smooth, no manual seeking needed
-      function playForward() {
-        reversing = false;
-        lastTs    = null;
+      vid.addEventListener('ended', () => {
+        mirrored = !mirrored;
+        vid.style.transform = mirrored ? 'scaleX(-1)' : 'scaleX(1)';
+        vid.currentTime = 0;
+        vid.play().catch(() => {});
+      });
+
+      function init() {
+        vid.style.transform = 'scaleX(1)';
         vid.currentTime = 0;
         vid.play().catch(() => {});
       }
 
-      // Manual reverse: step currentTime backward each rAF tick at ~1x speed
-      function stepBack(ts) {
-        if (!reversing) return;
-        if (lastTs !== null) {
-          const elapsed = Math.min((ts - lastTs) / 1000, 0.05);
-          vid.currentTime = Math.max(0, vid.currentTime - elapsed);
-          if (vid.currentTime <= 0) { playForward(); return; }
-        }
-        lastTs = ts;
-        requestAnimationFrame(stepBack);
-      }
-
-      // Switch to reverse when forward play reaches the end
-      vid.addEventListener('timeupdate', () => {
-        if (!reversing && vid.duration && vid.currentTime >= vid.duration - 0.15) {
-          vid.pause();
-          reversing = true;
-          lastTs    = null;
-          requestAnimationFrame(stepBack);
-        }
-      });
-
-      // Also catch the native 'ended' event as a fallback
-      vid.addEventListener('ended', () => {
-        if (!reversing) {
-          vid.pause();
-          reversing = true;
-          lastTs    = null;
-          requestAnimationFrame(stepBack);
-        }
-      });
-
-      function init() { playForward(); }
       if (vid.readyState >= 3) { init(); }
       else { vid.addEventListener('canplay', init, { once: true }); }
     })();
