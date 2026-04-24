@@ -20,6 +20,11 @@
     <h4 class="mb-4 fw-semibold">Log In</h4>
 
     <div id="error-msg" class="alert alert-danger d-none"></div>
+    <div id="unverified-msg" class="alert alert-warning d-none">
+      <strong>Email not verified.</strong> Check your inbox for a verification link.
+      <a href="#" id="resend-link" style="text-decoration:underline;color:inherit;font-weight:600;margin-left:6px;">Resend</a>
+      <span id="resend-sent" style="margin-left:6px;display:none;">✓ Sent!</span>
+    </div>
     <div id="reset-success-msg" class="alert alert-success d-none">Password updated — you can now log in.</div>
     <div id="deleted-msg" class="alert alert-info d-none">Your account has been deleted.</div>
 
@@ -83,8 +88,23 @@
         const data = await res.json();
 
         if (!res.ok) {
-          errorEl.textContent = data.error;
-          errorEl.classList.remove('d-none');
+          if (data.unverified) {
+            document.getElementById('unverified-msg').classList.remove('d-none');
+            // Wire up resend link with the email from the response
+            const resendLink = document.getElementById('resend-link');
+            resendLink.onclick = async (ev) => {
+              ev.preventDefault();
+              await fetch('/api/auth/resend-verification', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: data.email }),
+              });
+              resendLink.style.display = 'none';
+              document.getElementById('resend-sent').style.display = '';
+            };
+          } else {
+            errorEl.textContent = data.error;
+            errorEl.classList.remove('d-none');
+          }
           return;
         }
 

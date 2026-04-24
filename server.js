@@ -24,6 +24,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { Resend }     = require('resend');
 const crypto         = require('crypto');
 const Stripe         = require('stripe');
+const rateLimit      = require('express-rate-limit');
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? Stripe(process.env.STRIPE_SECRET_KEY)
@@ -217,22 +218,61 @@ app.get('/auth/google/callback',
 
 // ── Auth routes ───────────────────────────────────────────────────────────────
 
-app.post('/api/auth/signup', async (req, res) => {
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,                   // 10 attempts per window
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message: { error: 'Too many attempts. Please wait 15 minutes and try again.' },
+});
+
+app.post('/api/auth/signup', authLimiter, async (req, res) => {
   const { email, password, masterCode } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
   if (password.length < 6)  return res.status(400).json({ error: 'Password must be at least 6 characters.' });
   const role = masterCode === process.env.MASTER_CODE ? 'master' : 'auditionee';
   try {
-    const hash   = await bcrypt.hash(password, 12);
+    const hash  = await bcrypt.hash(password, 12);
+    const token = crypto.randomBytes(32).toString('hex');
+    // email_verified defaults TRUE in schema — explicitly set FALSE for new email signups
     const result = await pool.query(
-      'INSERT INTO users (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id, email, role',
-      [email.toLowerCase().trim(), hash, role]
+      `INSERT INTO users (email, password_hash, role, email_verified, verification_token)
+       VALUES ($1, $2, $3, FALSE, $4) RETURNING id, email, role`,
+      [email.toLowerCase().trim(), hash, role, token]
     );
     const user = result.rows[0];
-    req.session.userId = user.id;
-    req.session.role   = user.role;
-    req.session.email  = user.email;
-    res.status(201).json({ id: user.id, email: user.email, role: user.role });
+
+    if (!emailEnabled) {
+      // No email configured (local dev) — auto-verify and log in
+      await pool.query('UPDATE users SET email_verified = TRUE, verification_token = NULL WHERE id = $1', [user.id]);
+      req.session.userId = user.id;
+      req.session.role   = user.role;
+      req.session.email  = user.email;
+      return res.status(201).json({ id: user.id, email: user.email, role: user.role });
+    }
+
+    // Send verification email
+    const verifyUrl = `${APP_URL}/verify-email.html?token=${token}`;
+    resend.emails.send({
+      from:    FROM_EMAIL,
+      to:      user.email,
+      subject: 'Verify your CastSync email',
+      html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
+        <h2 style="margin-bottom:4px;">Welcome to CastSync!</h2>
+        <p style="color:#555;">Click the button below to verify your email and activate your account.</p>
+        <p style="margin:28px 0;">
+          <a href="${verifyUrl}"
+             style="background:#111;color:#fff;padding:11px 26px;border-radius:7px;text-decoration:none;font-weight:600;font-size:15px;">
+            Verify Email
+          </a>
+        </p>
+        <p style="color:#9ca3af;font-size:12px;">
+          This link expires in 24 hours. If you didn't sign up for CastSync, you can ignore this email.
+        </p>
+      </div>`,
+    }).catch(err => console.error('Verification email error:', err.message));
+
+    res.status(201).json({ needsVerification: true, email: user.email });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'An account with that email already exists.' });
     console.error('Signup error:', err.message);
@@ -240,15 +280,25 @@ app.post('/api/auth/signup', async (req, res) => {
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
   try {
-    const result = await pool.query('SELECT id, email, password_hash, role, is_director FROM users WHERE email = $1', [email.toLowerCase().trim()]);
-    const user   = result.rows[0];
+    const result = await pool.query(
+      'SELECT id, email, password_hash, role, is_director, email_verified FROM users WHERE email = $1',
+      [email.toLowerCase().trim()]
+    );
+    const user = result.rows[0];
     if (!user || !user.password_hash) return res.status(401).json({ error: 'Incorrect email or password.' });
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) return res.status(401).json({ error: 'Incorrect email or password.' });
+    if (!user.email_verified) {
+      return res.status(403).json({
+        error: 'Please verify your email before logging in. Check your inbox for a verification link.',
+        unverified: true,
+        email: user.email,
+      });
+    }
     req.session.userId     = user.id;
     req.session.role       = user.role;
     req.session.email      = user.email;
@@ -263,6 +313,73 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/logout', (req, res) => {
   req.session.destroy(() => res.json({ message: 'Logged out.' }));
+});
+
+// GET /api/auth/verify-email?token=xxx — validate email verification token, auto-login
+app.get('/api/auth/verify-email', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ error: 'Token required.' });
+  try {
+    const result = await pool.query(
+      `UPDATE users SET email_verified = TRUE, verification_token = NULL
+       WHERE verification_token = $1
+       RETURNING id, email, role, is_director`,
+      [token]
+    );
+    if (!result.rows.length) {
+      return res.status(400).json({ error: 'This verification link is invalid or has already been used.' });
+    }
+    const user = result.rows[0];
+    req.session.userId     = user.id;
+    req.session.role       = user.role;
+    req.session.email      = user.email;
+    req.session.isDirector = user.is_director || user.role === 'master';
+    req.session.mode       = (user.role === 'master' || user.is_director) ? 'director' : 'auditionee';
+    res.json({ ok: true, role: user.role, isDirector: req.session.isDirector });
+  } catch (err) {
+    console.error('Verify email error:', err.message);
+    res.status(500).json({ error: 'Verification failed. Please try again.' });
+  }
+});
+
+// POST /api/auth/resend-verification — resend the verification email
+app.post('/api/auth/resend-verification', authLimiter, async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required.' });
+  if (!emailEnabled) return res.status(503).json({ error: 'Email is not configured.' });
+  try {
+    const token = crypto.randomBytes(32).toString('hex');
+    const result = await pool.query(
+      `UPDATE users SET verification_token = $1
+       WHERE email = $2 AND email_verified = FALSE
+       RETURNING id`,
+      [token, email.toLowerCase().trim()]
+    );
+    // Always return ok — don't reveal whether email exists
+    if (result.rows.length) {
+      const verifyUrl = `${APP_URL}/verify-email.html?token=${token}`;
+      resend.emails.send({
+        from:    FROM_EMAIL,
+        to:      email.toLowerCase().trim(),
+        subject: 'Verify your CastSync email',
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
+          <h2 style="margin-bottom:4px;">Verify your email</h2>
+          <p style="color:#555;">Click the button below to verify your email and access CastSync.</p>
+          <p style="margin:28px 0;">
+            <a href="${verifyUrl}"
+               style="background:#111;color:#fff;padding:11px 26px;border-radius:7px;text-decoration:none;font-weight:600;font-size:15px;">
+              Verify Email
+            </a>
+          </p>
+          <p style="color:#9ca3af;font-size:12px;">This link expires in 24 hours.</p>
+        </div>`,
+      }).catch(err => console.error('Resend verification error:', err.message));
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Resend verification error:', err.message);
+    res.status(500).json({ error: 'Could not send verification email.' });
+  }
 });
 
 // DELETE /api/auth/account — permanently delete the logged-in user's account
@@ -2058,6 +2175,19 @@ async function runMigrations() {
     `);
     console.log('Migration step 9 (users.plan_type / plan_expires_at) complete.');
   } catch (err) { console.error('Migration step 9 error:', err.message); }
+
+  // Step 10: email verification columns on users
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT TRUE;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN verification_token VARCHAR(100);
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 10 (email_verified / verification_token) complete.');
+  } catch (err) { console.error('Migration step 10 error:', err.message); }
 
   console.log('All migrations complete.');
 }

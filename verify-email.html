@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verify Email — CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="logo.png" type="image/png">
+</head>
+<body>
+
+  <nav class="navbar app-nav">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="index.html">
+        <img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync
+      </a>
+    </div>
+  </nav>
+
+  <div class="container" style="max-width:420px;margin-top:100px;text-align:center;">
+
+    <!-- Loading state -->
+    <div id="view-loading">
+      <div class="spinner-border text-secondary mb-3" role="status"></div>
+      <p class="text-muted">Verifying your email…</p>
+    </div>
+
+    <!-- Success state -->
+    <div id="view-success" style="display:none;">
+      <div style="font-size:48px;margin-bottom:16px;">✓</div>
+      <h4 class="fw-semibold mb-2">Email verified!</h4>
+      <p class="text-muted mb-4" style="font-size:14px;">Your account is active. Taking you to your dashboard…</p>
+      <div class="spinner-border spinner-border-sm text-secondary" role="status"></div>
+    </div>
+
+    <!-- Error state -->
+    <div id="view-error" style="display:none;">
+      <div style="font-size:48px;margin-bottom:16px;">✕</div>
+      <h4 class="fw-semibold mb-2">Link expired or already used</h4>
+      <p class="text-muted mb-4" style="font-size:14px;" id="error-msg"></p>
+      <div id="resend-section">
+        <p class="text-muted" style="font-size:13px;">Enter your email to get a new verification link.</p>
+        <div class="d-flex gap-2 justify-content-center mb-2">
+          <input type="email" class="form-control" id="resend-email" placeholder="your@email.com" style="max-width:260px;" />
+          <button class="btn btn-dark" id="resend-btn">Resend</button>
+        </div>
+        <div id="resend-success" class="alert alert-success d-none mt-2" style="font-size:13px;">
+          Sent! Check your inbox.
+        </div>
+        <div id="resend-error" class="alert alert-danger d-none mt-2" style="font-size:13px;"></div>
+      </div>
+      <p class="mt-3"><a href="login.html" class="text-muted" style="font-size:13px;">Back to login</a></p>
+    </div>
+
+  </div>
+
+  <script>
+    const token = new URLSearchParams(window.location.search).get('token');
+
+    if (!token) {
+      show('error');
+      document.getElementById('error-msg').textContent = 'No verification token found in this link.';
+    } else {
+      fetch(`/api/auth/verify-email?token=${encodeURIComponent(token)}`)
+        .then(r => r.json().then(d => ({ ok: r.ok, ...d })))
+        .then(data => {
+          if (data.ok) {
+            show('success');
+            // Redirect after 2 seconds to the right place
+            setTimeout(() => {
+              if (data.role === 'master' || data.isDirector) {
+                window.location.href = 'org-select.html?tour=1';
+              } else {
+                window.location.href = 'auditionForm.html';
+              }
+            }, 2000);
+          } else {
+            show('error');
+            document.getElementById('error-msg').textContent =
+              data.error || 'This verification link is invalid or has already been used.';
+          }
+        })
+        .catch(() => {
+          show('error');
+          document.getElementById('error-msg').textContent = 'Could not connect to the server. Please try again.';
+        });
+    }
+
+    function show(view) {
+      document.getElementById('view-loading').style.display = 'none';
+      document.getElementById('view-success').style.display = view === 'success' ? '' : 'none';
+      document.getElementById('view-error').style.display   = view === 'error'   ? '' : 'none';
+    }
+
+    document.getElementById('resend-btn').addEventListener('click', async () => {
+      const email     = document.getElementById('resend-email').value.trim();
+      const btn       = document.getElementById('resend-btn');
+      const successEl = document.getElementById('resend-success');
+      const errorEl   = document.getElementById('resend-error');
+      successEl.classList.add('d-none');
+      errorEl.classList.add('d-none');
+      if (!email) return;
+
+      btn.disabled    = true;
+      btn.textContent = 'Sending…';
+      try {
+        const res  = await fetch('/api/auth/resend-verification', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errorEl.textContent = data.error || 'Could not send email.';
+          errorEl.classList.remove('d-none');
+        } else {
+          successEl.classList.remove('d-none');
+          btn.textContent = 'Sent ✓';
+        }
+      } catch {
+        errorEl.textContent = 'Could not connect to server.';
+        errorEl.classList.remove('d-none');
+        btn.disabled    = false;
+        btn.textContent = 'Resend';
+      }
+    });
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

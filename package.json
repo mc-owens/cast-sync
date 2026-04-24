@@ -21,6 +21,7 @@
     "passport-google-oauth20": "^2.0.0",
     "pg": "^8.11.3",
     "resend": "^6.12.2",
-    "stripe": "^22.0.2"
+    "stripe": "^22.0.2",
+    "express-rate-limit": "^7.0.0"
   }
 }

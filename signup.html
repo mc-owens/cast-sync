@@ -66,6 +66,19 @@
     <p class="mt-3 text-center" style="font-size:14px;">
       Already have an account? <a href="login.html">Log in</a>
     </p>
+
+    <!-- Shown after successful signup that needs verification -->
+    <div id="check-email-view" style="display:none;text-align:center;margin-top:60px;">
+      <div style="font-size:44px;margin-bottom:16px;">✉</div>
+      <h4 class="fw-semibold mb-2">Check your email</h4>
+      <p class="text-muted" style="font-size:14px;" id="check-email-addr"></p>
+      <p class="text-muted" style="font-size:13px;">Click the verification link we just sent to activate your account.</p>
+      <p class="text-muted mt-3" style="font-size:12px;">
+        Didn't get it? Check spam, or
+        <a href="#" id="resend-link" style="color:#111;">resend the email</a>.
+      </p>
+      <div id="resend-ok" class="alert alert-success d-none mt-2" style="font-size:13px;">Sent! Check your inbox.</div>
+    </div>
   </div>
 
   <script>
@@ -109,6 +122,24 @@
           return;
         }
 
+        if (data.needsVerification) {
+          // Hide form, show "check email" screen
+          document.getElementById('signup-form').style.display   = 'none';
+          document.getElementById('google-section').style.display = 'none';
+          document.getElementById('role-badge').style.display     = 'none';
+          document.getElementById('check-email-view').style.display = '';
+          document.getElementById('check-email-addr').textContent =
+            `We sent a link to ${data.email}`;
+          document.getElementById('resend-link').addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            await fetch('/api/auth/resend-verification', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: data.email }),
+            });
+            document.getElementById('resend-ok').classList.remove('d-none');
+          });
+          return;
+        }
         if (data.role === 'master')     window.location.href = 'org-select.html?tour=1';
         if (data.role === 'auditionee') window.location.href = 'auditionForm.html';
 
