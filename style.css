@@ -79,56 +79,58 @@ body {
   display: flex;
   flex-direction: column;
   width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07), 0 0 0 1px var(--border);
 }
 
 .day-header-row {
   display: grid;
-  grid-template-columns: 80px repeat(7, 1fr);
+  grid-template-columns: 72px repeat(7, 1fr);
   width: 100%;
-  background: #f7f7f7;
-  border: 1px solid #323232;
-  border-bottom: 1px solid #323232;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
   z-index: 5;
   position: relative;
 }
 
 .day-header {
   text-align: center;
-  font-weight: bold;
-  height: 40px;
-  line-height: 40px;
-  border-left: 1px solid #ddd;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: .3px;
+  color: var(--muted);
+  height: 36px;
+  line-height: 36px;
+  border-left: 1px solid var(--border);
+  text-transform: uppercase;
 }
 
 .schedule-container {
   display: grid;
-  grid-template-columns: 80px 1fr;
-  border: 1px solid #323232;
-  border-top: none;
-  border-bottom: 3px solid #323232;
+  grid-template-columns: 72px 1fr;
   background: white;
   width: 100%;
 }
 
 .time-column {
-  background: #f4f4f4;
-  border-right: 1px solid #323232;
+  background: #fafafa;
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid #323232;
 }
 
 .time-label {
   height: 50px;
   text-align: right;
-  padding-right: 8px;
-  color: #444;
-  font-size: 11px;
-  border-bottom: 1px solid #eee;
+  padding-right: 10px;
+  color: #aaa;
+  font-size: 10.5px;
+  letter-spacing: .2px;
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
-  padding-top: 2px;
+  padding-top: 3px;
 }
 
 .grid {
@@ -138,27 +140,28 @@ body {
 }
 
 .day-column {
-  border-right: 1px solid #eee;
+  border-right: 1px solid #f0f0f0;
   position: relative;
 }
 
 .time-slot {
   height: 12.5px;
-  border-bottom: 1px solid #f2f2f2;
+  border-bottom: 1px solid #f7f7f7;
   box-sizing: border-box;
 }
 
 .hour-line {
-  border-bottom: 2px solid #ccc;
+  border-bottom: 1px solid #e8e8e8;
 }
 
 .block {
   position: absolute;
-  background: rgba(100, 181, 246, 0.6);
-  border: 1px solid #2196f3;
-  border-radius: 4px;
-  color: #000;
-  font-size: 12px;
+  background: rgba(37, 99, 235, 0.13);
+  border: 1.5px solid rgba(37, 99, 235, 0.45);
+  border-radius: 5px;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 500;
   padding: 2px 6px;
   cursor: move;
   box-sizing: border-box;
@@ -166,7 +169,7 @@ body {
 
 .master-block.room-conflict {
   border: 2px solid #dc3545 !important;
-  box-shadow: 0 0 0 2px rgba(220,53,69,0.25);
+  box-shadow: 0 0 0 2px rgba(220,53,69,0.18);
 }
 
 .resize-handle {
@@ -183,11 +186,14 @@ body {
 .delete-btn {
   position: absolute;
   top: 2px;
-  right: 2px;
+  right: 4px;
   font-size: 10px;
   cursor: pointer;
-  background: white;
-  border: 1px solid #ccc;
-  border-radius: 3px;
-  padding: 1px 3px;
+  color: rgba(0, 0, 0, 0.38);
+  background: none;
+  border: none;
+  padding: 0;
+  line-height: 1;
+  font-weight: 700;
 }
+.delete-btn:hover { color: rgba(0,0,0,0.7); }
