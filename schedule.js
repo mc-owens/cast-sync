@@ -80,6 +80,7 @@ days.forEach(day => {
       currentBlock.style.left = `${leftPos}px`;
       currentBlock.style.top = `${startSlot * slotHeight}px`;
       currentBlock.style.height = `${slotHeight}px`;
+      currentBlock.style.width = `${dayWidth}px`;
       currentBlock.innerHTML = `
         <span class="time-label-text"></span>
         <span class="delete-btn">✕</span>

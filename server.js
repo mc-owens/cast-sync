@@ -28,6 +28,7 @@ const Stripe         = require('stripe');
 const stripe = process.env.STRIPE_SECRET_KEY
   ? Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
+console.log('[startup] Stripe:', stripe ? 'configured ✓' : 'NOT configured — STRIPE_SECRET_KEY missing');
 
 const APP_URL = process.env.APP_URL
   ? `https://${process.env.APP_URL}`
