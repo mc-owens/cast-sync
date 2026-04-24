@@ -69,8 +69,7 @@
 
     /* Sections */
     .section { padding: 80px 0; }
-    .section-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
-    .section-label::before { content: ''; display: inline-block; width: 24px; height: 1.5px; background: var(--gold); flex-shrink: 0; }
+    .section-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); margin-bottom: 14px; }
     .section-title { font-family: 'Playfair Display', Georgia, serif; font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 700; letter-spacing: -.3px; margin-bottom: 16px; }
     .section-sub { color: var(--muted); font-size: 1rem; max-width: 540px; line-height: 1.6; }
 
@@ -80,10 +79,12 @@
     .step-card h5 { font-weight: 700; margin-bottom: 6px; font-size: 15px; }
     .step-card p { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0; }
 
-    /* Features */
-    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
-    .feature-card { padding: 28px; border: 1px solid var(--border); border-radius: 12px; background: #fff; transition: border-color .15s, box-shadow .15s; }
-    .feature-card:hover { border-color: rgba(196,148,58,.45); box-shadow: 0 4px 16px rgba(196,148,58,.09); }
+    /* Features — dark section */
+    #features .section-label { color: var(--gold); }
+    #features .section-title { color: #fff; }
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+    .feature-card { padding: 28px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: #fff; transition: border-color .15s, box-shadow .15s, transform .15s; }
+    .feature-card:hover { border-color: rgba(196,148,58,.5); box-shadow: 0 8px 28px rgba(196,148,58,.15); transform: translateY(-2px); }
     .feature-icon { font-size: 22px; margin-bottom: 12px; }
     .feature-card h5 { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
     .feature-card p { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0; }
@@ -170,7 +171,7 @@
       </div>
       <div class="d-flex gap-2">
         <a href="login.html" class="btn-outline-brand" style="padding:9px 18px;font-size:14px;">Log in</a>
-        <a href="signup.html" class="btn-brand" style="padding:9px 18px;font-size:14px;">Get started</a>
+        <a href="role-select.html" class="btn-brand" style="padding:9px 18px;font-size:14px;">Get started</a>
       </div>
     </div>
   </nav>
@@ -192,7 +193,7 @@
       <h1>Auditions, organized.<br><em>Casting, done.</em></h1>
       <p class="lead">CastSync replaces spreadsheets and email chains with a single tool — collect availability, schedule rehearsals, build your cast, and notify everyone automatically.</p>
       <div class="d-flex gap-3 justify-content-center flex-wrap">
-        <a href="signup.html" class="btn-stage">Get started →</a>
+        <a href="role-select.html" class="btn-stage">Get started →</a>
         <a href="login.html" class="btn-ghost">Log in</a>
       </div>
     </div>
@@ -237,7 +238,7 @@
   </section>
 
   <!-- Features -->
-  <section class="section" style="background:#f9fafb;" id="features">
+  <section class="section" style="background:#0e0e0e;" id="features">
     <div class="container">
       <div class="text-center mb-5">
         <div class="section-label">Features</div>
@@ -309,7 +310,7 @@
             <li><span class="check">✓</span> Email cast results</li>
             <li><span class="check">✓</span> No expiry — use it at your own pace</li>
           </ul>
-          <a href="signup.html" class="btn-outline-brand w-100 text-center">Get started</a>
+          <a href="role-select.html" class="btn-outline-brand w-100 text-center">Get started</a>
         </div>
         <div class="price-card featured">
           <div class="featured-badge">BEST VALUE</div>
@@ -323,7 +324,7 @@
             <li><span class="check">✓</span> Priority support</li>
             <li><span class="check">✓</span> Saves $80+ if you run 4+ shows</li>
           </ul>
-          <a href="signup.html" class="btn-brand w-100 text-center">Get started</a>
+          <a href="role-select.html" class="btn-brand w-100 text-center">Get started</a>
         </div>
       </div>
       <p class="text-center text-muted mt-4" style="font-size:13px;">Student organization or nonprofit? <a href="mailto:support@cast-sync.com">Contact us</a> for a discount.</p>
@@ -362,7 +363,7 @@
     <div class="container">
       <h2>Ready to run a cleaner audition?</h2>
       <p>Join directors who've already replaced their spreadsheets with CastSync.</p>
-      <a href="signup.html" class="btn-white">Get started →</a>
+      <a href="role-select.html" class="btn-white">Get started →</a>
     </div>
   </section>
 
@@ -375,7 +376,7 @@
       </div>
       <div class="d-flex gap-4 flex-wrap">
         <a href="login.html">Log in</a>
-        <a href="signup.html">Sign up</a>
+        <a href="role-select.html">Sign up</a>
         <a href="terms.html">Terms</a>
         <a href="privacy.html">Privacy</a>
         <a href="mailto:support@cast-sync.com">Contact</a>
