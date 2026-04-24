@@ -677,11 +677,11 @@ app.post('/api/checkout/create-session', requireAuth('master'), async (req, res)
   if (!orgId || !productionName) return res.status(400).json({ error: 'orgId and productionName required.' });
 
   try {
-    // Derive base URL from the incoming request so Railway/production hosts work without APP_URL env var
+    // Derive base URL — strip any protocol the user may have included in APP_URL
     const proto   = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
     const host    = req.headers['x-forwarded-host']  || req.headers.host;
     const baseUrl = process.env.APP_URL
-      ? `https://${process.env.APP_URL}`
+      ? `https://${process.env.APP_URL.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
       : `${proto}://${host}`;
 
     // Reuse existing Stripe customer if this user has paid before
@@ -1445,7 +1445,12 @@ app.post('/api/billing/portal', requireAuth('master'), async (req, res) => {
     const customerId = result.rows[0]?.stripe_customer_id;
     if (!customerId) return res.status(404).json({ error: 'No billing account found yet — complete a purchase first.' });
 
-    const returnUrl = process.env.APP_URL ? `https://${process.env.APP_URL}/account.html` : 'http://localhost:3000/account.html';
+    const proto2     = req.headers['x-forwarded-proto'] || 'https';
+    const host2      = req.headers['x-forwarded-host']  || req.headers.host;
+    const baseUrl2   = process.env.APP_URL
+      ? `https://${process.env.APP_URL.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
+      : `${proto2}://${host2}`;
+    const returnUrl  = `${baseUrl2}/account.html`;
     const portalSession = await stripe.billingPortal.sessions.create({
       customer:   customerId,
       return_url: returnUrl,
