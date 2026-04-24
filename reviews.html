@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reviews — CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="logo.png" type="image/png">
+  <style>
+    :root { --gold: #c4943a; --dark: #0c0c0c; }
+
+    body { background: #fff; }
+
+    .reviews-hero {
+      background: var(--dark);
+      color: #fff;
+      padding: 80px 0 64px;
+      text-align: center;
+    }
+    .reviews-hero .section-label {
+      color: var(--gold);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .reviews-hero h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    .reviews-hero p {
+      color: #a0a0a0;
+      font-size: 16px;
+      max-width: 440px;
+      margin: 0 auto;
+    }
+
+    .stars { color: var(--gold); font-size: 18px; margin-bottom: 12px; letter-spacing: 2px; }
+
+    .review-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 28px;
+      background: #fff;
+      height: 100%;
+      transition: box-shadow .15s, transform .12s;
+    }
+    .review-card:hover {
+      box-shadow: 0 6px 24px rgba(196,148,58,.1);
+      transform: translateY(-2px);
+    }
+    .review-card blockquote {
+      font-size: 15px;
+      line-height: 1.7;
+      color: #374151;
+      margin: 0 0 20px;
+      font-style: italic;
+    }
+    .reviewer-name { font-weight: 700; font-size: 14px; color: #111; }
+    .reviewer-role { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+
+    .cta-band {
+      background: var(--dark);
+      color: #fff;
+      padding: 64px 0;
+      text-align: center;
+    }
+    .cta-band h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .cta-band p { color: #a0a0a0; margin-bottom: 28px; }
+    .btn-gold {
+      background: var(--gold);
+      color: #fff;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-weight: 600;
+      text-decoration: none;
+      font-size: 15px;
+      transition: opacity .15s;
+    }
+    .btn-gold:hover { opacity: .88; color: #fff; }
+
+    .submit-band {
+      background: #fafafa;
+      border-top: 1px solid #f0f0f0;
+      padding: 48px 0;
+      text-align: center;
+    }
+    .submit-band h3 { font-weight: 700; font-size: 20px; margin-bottom: 8px; }
+    .submit-band p { color: #6b7280; font-size: 14px; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+
+  <nav class="navbar navbar-dark" style="background:#0c0c0c;">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="index.html"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
+      <div class="d-flex gap-3 align-items-center">
+        <a href="index.html#pricing" style="color:#a0a0a0;font-size:14px;text-decoration:none;">Pricing</a>
+        <a href="login.html" style="color:#a0a0a0;font-size:14px;text-decoration:none;">Log in</a>
+        <a href="role-select.html" class="btn-gold" style="padding:8px 18px;font-size:13px;">Get started</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <div class="reviews-hero">
+    <div class="container">
+      <div class="section-label">Reviews</div>
+      <h1>Trusted by dance directors</h1>
+      <p>See what choreographers and directors say about running auditions with CastSync.</p>
+    </div>
+  </div>
+
+  <!-- Reviews grid -->
+  <section style="padding: 72px 0; background: #fff;">
+    <div class="container">
+      <div class="row g-4">
+
+        <div class="col-md-6 col-lg-4">
+          <div class="review-card">
+            <div class="stars">★★★★★</div>
+            <blockquote>"CastSync completely changed how we run auditions. What used to take hours of spreadsheets now takes minutes. The conflict detection alone is worth it."</blockquote>
+            <div class="reviewer-name">Sarah M.</div>
+            <div class="reviewer-role">Artistic Director · University Dance Company</div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+          <div class="review-card">
+            <div class="stars">★★★★★</div>
+            <blockquote>"I used to dread scheduling season. Now I look forward to it. The availability grid is so intuitive — dancers figure it out immediately with no instructions."</blockquote>
+            <div class="reviewer-name">Marcus T.</div>
+            <div class="reviewer-role">Choreographer · Contemporary Dance Theater</div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+          <div class="review-card">
+            <div class="stars">★★★★★</div>
+            <blockquote>"We ran auditions for 80+ dancers across 12 pieces and had zero scheduling conflicts. I can't imagine going back to email and spreadsheets."</blockquote>
+            <div class="reviewer-name">Priya K.</div>
+            <div class="reviewer-role">Director · Spring Showcase 2026</div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+          <div class="review-card">
+            <div class="stars">★★★★★</div>
+            <blockquote>"The casting list feature is a game changer. Being able to see everyone's availability side-by-side made casting decisions so much clearer and faster."</blockquote>
+            <div class="reviewer-name">Jordan L.</div>
+            <div class="reviewer-role">Dance Director · Regional Arts Academy</div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+          <div class="review-card">
+            <div class="stars">★★★★★</div>
+            <blockquote>"Setup took less than 10 minutes. Dancers submitted their forms within the hour. The join code system is brilliant — no accounts needed on their end."</blockquote>
+            <div class="reviewer-name">Alexis R.</div>
+            <div class="reviewer-role">Choreographer · Ballet Intensive</div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+          <div class="review-card">
+            <div class="stars">★★★★★</div>
+            <blockquote>"Worth every penny. We have four productions a year and the annual plan pays for itself on the first show. The support team is incredibly responsive too."</blockquote>
+            <div class="reviewer-name">Devon S.</div>
+            <div class="reviewer-role">Director · Student Dance Collective</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Submit your review -->
+  <div class="submit-band">
+    <div class="container">
+      <h3>Enjoying CastSync?</h3>
+      <p>We'd love to hear from you. Share your experience and help other directors discover CastSync.</p>
+      <a href="mailto:support@cast-sync.com?subject=CastSync Review" class="btn btn-dark">Share Your Review</a>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <div class="cta-band">
+    <div class="container">
+      <h2>Ready to streamline your auditions?</h2>
+      <p>Join directors already running smoother auditions with CastSync.</p>
+      <a href="role-select.html" class="btn-gold">Get started — from $79</a>
+    </div>
+  </div>
+
+  <footer class="border-top py-3 text-center text-muted" style="font-size:12px;">
+    &copy; 2026 CastSync &nbsp;·&nbsp;
+    <a href="terms.html" class="text-muted">Terms</a> &nbsp;·&nbsp;
+    <a href="privacy.html" class="text-muted">Privacy</a> &nbsp;·&nbsp;
+    <a href="cookies.html" class="text-muted">Cookies</a> &nbsp;·&nbsp;
+    <a href="contact.html" class="text-muted">Contact</a>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

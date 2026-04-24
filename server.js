@@ -1515,6 +1515,33 @@ app.delete('/api/master-blocks/:id', requireAuth('master'), async (req, res) => 
   }
 });
 
+// ── Contact form ──────────────────────────────────────────────────────────────
+
+// POST /api/contact — log contact form submission; email when Resend is configured
+app.post('/api/contact', async (req, res) => {
+  const { name, email, subject, message } = req.body;
+  if (!name || !email || !message) return res.status(400).json({ error: 'Name, email, and message are required.' });
+
+  console.log(`[CONTACT] From: ${name} <${email}> | Subject: ${subject}\n${message}`);
+
+  if (emailEnabled) {
+    try {
+      await resend.emails.send({
+        from:    'CastSync Contact <noreply@cast-sync.com>',
+        to:      'support@cast-sync.com',
+        replyTo: email,
+        subject: `[CastSync Contact] ${subject || 'New message'}`,
+        text:    `Name: ${name}\nEmail: ${email}\nSubject: ${subject}\n\n${message}`,
+      });
+    } catch (err) {
+      console.error('Contact email error:', err.message);
+      // Still return success — message was logged
+    }
+  }
+
+  res.json({ ok: true });
+});
+
 // ── Billing portal ────────────────────────────────────────────────────────────
 
 // POST /api/billing/portal — create a Stripe Customer Portal session
