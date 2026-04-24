@@ -514,5 +514,12 @@
     })();
   </script>
 
+  <script src="tour.js"></script>
+  <script>
+    if (new URLSearchParams(window.location.search).has('tour')) {
+      setTimeout(() => CastSyncTour.startOnboarding(), 600);
+    }
+  </script>
+
 </body>
 </html>
