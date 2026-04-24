@@ -280,6 +280,13 @@
       if (step.nextPage) {
         save({ page: step.nextPage.replace('.html', ''), step: 0 });
         window.location.href = step.nextPage;
+      } else if (_page === 'org-select') {
+        // Onboarding complete — clear state but don't mark done yet.
+        // The workspace tour starts automatically when they enter their first production.
+        clear();
+        document.getElementById('tour-ring')?.remove();
+        document.getElementById('tour-overlay')?.remove();
+        document.getElementById('tour-tip')?.remove();
       } else {
         end();
       }
