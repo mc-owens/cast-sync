@@ -176,7 +176,11 @@
 
     <!-- Hero video — ping-pong loop, muted, decorative -->
     <div class="hero-video-wrap" aria-hidden="true">
-      <video class="hero-video" src="hero-video.mp4" muted playsinline preload="auto"></video>
+      <video class="hero-video" src="hero-video.mp4" muted playsinline preload="auto"
+             disablepictureinpicture controlslist="nodownload nofullscreen noremoteplayback"
+             x-webkit-airplay="deny"></video>
+      <!-- transparent overlay blocks browser's native video hover UI -->
+      <div style="position:absolute;inset:0;"></div>
     </div>
 
     <div class="container" style="position:relative;z-index:1;">
@@ -384,36 +388,58 @@
       icon.textContent     = open ? '+' : '−';
     }
 
-    // Hero video ping-pong (slowly forward then backward, forever)
+    // Hero video ping-pong — forward via native play(), backward via rAF stepping
     (function () {
       const vid = document.querySelector('.hero-video');
       if (!vid) return;
       vid.muted = true;
 
-      let dir = 1, lastTs = null;
-      const SPEED  = 0.18; // slow-mo: video-seconds advanced per real-second
-      const MARGIN = 0.08; // reverse this close to each end for an immediate turnaround
+      let reversing = false;
+      let lastTs    = null;
 
-      function tick(ts) {
-        if (lastTs !== null && vid.duration) {
-          const delta = Math.min((ts - lastTs) / 1000, 0.05);
-          let t = vid.currentTime + dir * delta * SPEED;
-          if (t >= vid.duration - MARGIN) { t = vid.duration - MARGIN; dir = -1; }
-          else if (t <= MARGIN)           { t = MARGIN;                dir =  1; }
-          vid.currentTime = t;
+      // Native forward playback — smooth, no manual seeking needed
+      function playForward() {
+        reversing = false;
+        lastTs    = null;
+        vid.currentTime = 0;
+        vid.play().catch(() => {});
+      }
+
+      // Manual reverse: step currentTime backward each rAF tick at ~1x speed
+      function stepBack(ts) {
+        if (!reversing) return;
+        if (lastTs !== null) {
+          const elapsed = Math.min((ts - lastTs) / 1000, 0.05);
+          vid.currentTime = Math.max(0, vid.currentTime - elapsed);
+          if (vid.currentTime <= 0) { playForward(); return; }
         }
         lastTs = ts;
-        requestAnimationFrame(tick);
+        requestAnimationFrame(stepBack);
       }
 
-      function start() {
-        vid.pause(); // browser must not play on its own
-        vid.currentTime = MARGIN;
-        requestAnimationFrame(tick);
-      }
+      // Switch to reverse when forward play reaches the end
+      vid.addEventListener('timeupdate', () => {
+        if (!reversing && vid.duration && vid.currentTime >= vid.duration - 0.15) {
+          vid.pause();
+          reversing = true;
+          lastTs    = null;
+          requestAnimationFrame(stepBack);
+        }
+      });
 
-      if (vid.readyState >= 1) { start(); }
-      else { vid.addEventListener('loadedmetadata', start, { once: true }); }
+      // Also catch the native 'ended' event as a fallback
+      vid.addEventListener('ended', () => {
+        if (!reversing) {
+          vid.pause();
+          reversing = true;
+          lastTs    = null;
+          requestAnimationFrame(stepBack);
+        }
+      });
+
+      function init() { playForward(); }
+      if (vid.readyState >= 3) { init(); }
+      else { vid.addEventListener('canplay', init, { once: true }); }
     })();
   </script>
 
