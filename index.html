@@ -391,12 +391,12 @@
       vid.muted = true;
 
       let dir = 1, lastTs = null;
-      const SPEED  = 0.32; // video-seconds per real-second
-      const MARGIN = 0.5;  // reverse this many seconds before each end (avoids end-of-file stutter)
+      const SPEED  = 0.18; // slow-mo: video-seconds advanced per real-second
+      const MARGIN = 0.08; // reverse this close to each end for an immediate turnaround
 
       function tick(ts) {
         if (lastTs !== null && vid.duration) {
-          const delta = Math.min((ts - lastTs) / 1000, 0.05); // cap so tab-switch doesn't jump
+          const delta = Math.min((ts - lastTs) / 1000, 0.05);
           let t = vid.currentTime + dir * delta * SPEED;
           if (t >= vid.duration - MARGIN) { t = vid.duration - MARGIN; dir = -1; }
           else if (t <= MARGIN)           { t = MARGIN;                dir =  1; }
