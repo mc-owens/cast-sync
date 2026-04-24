@@ -670,11 +670,27 @@ app.get('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => {
 
 // ── Stripe routes ─────────────────────────────────────────────────────────────
 
+// GET /api/subscription — return current user's plan status
+app.get('/api/subscription', requireAuth('master'), async (req, res) => {
+  try {
+    const row = await pool.query(
+      'SELECT plan_type, plan_expires_at FROM users WHERE id = $1',
+      [req.session.userId]
+    );
+    const { plan_type, plan_expires_at } = row.rows[0] || {};
+    const isAnnualActive = plan_type === 'annual' && plan_expires_at && new Date(plan_expires_at) > new Date();
+    res.json({ planType: plan_type || 'none', planExpiresAt: plan_expires_at || null, isAnnualActive });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not fetch subscription.' });
+  }
+});
+
 // POST /api/checkout/create-session — start Stripe checkout for a new production
 app.post('/api/checkout/create-session', requireAuth('master'), async (req, res) => {
   if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
-  const { orgId, productionName } = req.body;
-  if (!orgId || !productionName) return res.status(400).json({ error: 'orgId and productionName required.' });
+  const { orgId, productionName, plan } = req.body;
+  if (!orgId || !productionName || !plan) return res.status(400).json({ error: 'orgId, productionName and plan required.' });
+  if (!['payasyougo', 'annual'].includes(plan)) return res.status(400).json({ error: 'Invalid plan.' });
 
   try {
     // Derive base URL — strip any protocol the user may have included in APP_URL
@@ -688,23 +704,29 @@ app.post('/api/checkout/create-session', requireAuth('master'), async (req, res)
     const userRow = await pool.query('SELECT stripe_customer_id FROM users WHERE id = $1', [req.session.userId]);
     const existingCustomer = userRow.rows[0]?.stripe_customer_id;
 
+    const unitAmount   = plan === 'annual' ? 24900 : 7900; // $249 or $79
+    const productLabel = plan === 'annual'
+      ? 'CastSync Annual Pass — Unlimited Productions'
+      : `CastSync Production — ${productionName}`;
+
     const sessionParams = {
       payment_method_types: ['card'],
       line_items: [{
         price_data: {
           currency: 'usd',
-          unit_amount: 8000, // $80.00
-          product_data: { name: `CastSync Production — ${productionName}` },
+          unit_amount: unitAmount,
+          product_data: { name: productLabel },
         },
         quantity: 1,
       }],
       mode: 'payment',
       success_url: `${baseUrl}/payment-success.html?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url:  `${baseUrl}/org-select.html?cancelled=1`,
+      cancel_url:  `${baseUrl}/plan-select.html?orgId=${orgId}&cancelled=1`,
       metadata: {
         org_id:          String(orgId),
         user_id:         String(req.session.userId),
         production_name: productionName,
+        plan:            plan,
       },
     };
     if (existingCustomer) sessionParams.customer = existingCustomer;
@@ -729,7 +751,23 @@ app.get('/api/checkout/complete', requireAuth('master'), async (req, res) => {
       return res.status(402).json({ error: 'Payment not completed.' });
     }
 
-    const { org_id, production_name } = session.metadata;
+    const { org_id, production_name, plan } = session.metadata;
+
+    // Activate annual plan if applicable
+    if (plan === 'annual') {
+      await pool.query(
+        `UPDATE users SET plan_type = 'annual', plan_expires_at = NOW() + INTERVAL '1 year' WHERE id = $1`,
+        [req.session.userId]
+      );
+    }
+
+    // Persist Stripe customer ID so the billing portal can look them up later
+    if (session.customer) {
+      await pool.query(
+        'UPDATE users SET stripe_customer_id = $1 WHERE id = $2 AND stripe_customer_id IS NULL',
+        [session.customer, req.session.userId]
+      );
+    }
 
     // Idempotent: if this session already created a season, just return it
     const existing = await pool.query(
@@ -744,7 +782,7 @@ app.get('/api/checkout/complete', requireAuth('master'), async (req, res) => {
       const seaR = await pool.query('SELECT name FROM seasons WHERE id = $1', [s.id]);
       req.session.orgName    = orgR.rows[0]?.name;
       req.session.seasonName = seaR.rows[0]?.name;
-      return res.json({ seasonId: s.id });
+      return res.json({ seasonId: s.id, plan: plan || 'payasyougo' });
     }
 
     // Create the season
@@ -763,14 +801,6 @@ app.get('/api/checkout/complete', requireAuth('master'), async (req, res) => {
       }
     }
 
-    // Persist Stripe customer ID so the billing portal can look them up later
-    if (session.customer) {
-      await pool.query(
-        'UPDATE users SET stripe_customer_id = $1 WHERE id = $2 AND stripe_customer_id IS NULL',
-        [session.customer, req.session.userId]
-      );
-    }
-
     req.session.orgId      = parseInt(org_id);
     req.session.seasonId   = row.id;
     const orgR = await pool.query('SELECT name FROM orgs WHERE id = $1', [org_id]);
@@ -778,7 +808,7 @@ app.get('/api/checkout/complete', requireAuth('master'), async (req, res) => {
     req.session.seasonName = row.name;
     req.session.roomCount  = 1;
 
-    res.json({ seasonId: row.id });
+    res.json({ seasonId: row.id, plan: plan || 'payasyougo' });
   } catch (err) {
     console.error('Checkout complete error:', err.message);
     res.status(500).json({ error: 'Could not finalize production.' });
@@ -805,17 +835,33 @@ app.post('/api/stripe/webhook', async (req, res) => {
     const session = event.data.object;
     if (session.payment_status !== 'paid') return res.json({ received: true });
 
-    const { org_id, production_name } = session.metadata;
+    const { org_id, production_name, plan, user_id } = session.metadata;
     const sessionId = session.id;
 
-    // Idempotent — skip if already created by /api/checkout/complete
-    const existing = await pool.query(
-      'SELECT id FROM seasons WHERE stripe_session_id = $1',
-      [sessionId]
-    );
-    if (existing.rows.length > 0) return res.json({ received: true });
-
     try {
+      // Activate annual plan if applicable
+      if (plan === 'annual' && user_id) {
+        await pool.query(
+          `UPDATE users SET plan_type = 'annual', plan_expires_at = NOW() + INTERVAL '1 year' WHERE id = $1`,
+          [user_id]
+        );
+      }
+
+      // Persist Stripe customer ID
+      if (user_id && session.customer) {
+        await pool.query(
+          'UPDATE users SET stripe_customer_id = $1 WHERE id = $2 AND stripe_customer_id IS NULL',
+          [session.customer, user_id]
+        );
+      }
+
+      // Idempotent — skip season creation if already handled by /api/checkout/complete
+      const existing = await pool.query(
+        'SELECT id FROM seasons WHERE stripe_session_id = $1',
+        [sessionId]
+      );
+      if (existing.rows.length > 0) return res.json({ received: true });
+
       let inserted = false;
       while (!inserted) {
         try {
@@ -829,17 +875,9 @@ app.post('/api/stripe/webhook', async (req, res) => {
           if (e.code !== '23505') throw e;
         }
       }
-      // Persist Stripe customer ID
-      const userId = session.metadata?.user_id;
-      if (userId && session.customer) {
-        await pool.query(
-          'UPDATE users SET stripe_customer_id = $1 WHERE id = $2 AND stripe_customer_id IS NULL',
-          [session.customer, userId]
-        );
-      }
-      console.log(`Webhook: created production "${production_name}" for org ${org_id}`);
+      console.log(`Webhook: created production "${production_name}" for org ${org_id} (plan: ${plan || 'payasyougo'})`);
     } catch (err) {
-      console.error('Webhook season creation error:', err.message);
+      console.error('Webhook error:', err.message);
     }
   }
 
@@ -857,6 +895,48 @@ app.post('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => 
         const code = generateJoinCode();
         const result = await pool.query(
           'INSERT INTO seasons (org_id, name, is_active, join_code) VALUES ($1, $2, TRUE, $3) RETURNING id, name, join_code',
+          [req.params.orgId, name.trim(), code]
+        );
+        row = result.rows[0];
+        inserted = true;
+      } catch (e) {
+        if (e.code !== '23505') throw e;
+      }
+    }
+    res.status(201).json(row);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to create production.' });
+  }
+});
+
+// POST /api/orgs/:orgId/seasons/free — create a production without payment (annual plan only)
+app.post('/api/orgs/:orgId/seasons/free', requireAuth('master'), async (req, res) => {
+  try {
+    const planRow = await pool.query(
+      'SELECT plan_type, plan_expires_at FROM users WHERE id = $1',
+      [req.session.userId]
+    );
+    const { plan_type, plan_expires_at } = planRow.rows[0] || {};
+    const hasAnnual = plan_type === 'annual' && plan_expires_at && new Date(plan_expires_at) > new Date();
+    if (!hasAnnual) return res.status(403).json({ error: 'An active annual plan is required.' });
+
+    // Verify membership in this org
+    const memberCheck = await pool.query(
+      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
+      [req.params.orgId, req.session.userId]
+    );
+    if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
+
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Production name is required.' });
+
+    let row, inserted = false;
+    while (!inserted) {
+      try {
+        const code = generateJoinCode();
+        const result = await pool.query(
+          'INSERT INTO seasons (org_id, name, is_active, join_code) VALUES ($1,$2,TRUE,$3) RETURNING id, name, join_code',
           [req.params.orgId, name.trim(), code]
         );
         row = result.rows[0];
@@ -1876,6 +1956,19 @@ async function runMigrations() {
     `);
     console.log('Migration step 8 (users.stripe_customer_id) complete.');
   } catch (err) { console.error('Migration step 8 error:', err.message); }
+
+  // Step 9: plan_type + plan_expires_at on users (annual subscription)
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN plan_type VARCHAR(20) NOT NULL DEFAULT 'none';
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN plan_expires_at TIMESTAMP;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 9 (users.plan_type / plan_expires_at) complete.');
+  } catch (err) { console.error('Migration step 9 error:', err.message); }
 
   console.log('All migrations complete.');
 }

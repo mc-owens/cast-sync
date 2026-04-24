@@ -24,7 +24,7 @@
 
     <div id="success-state" style="display:none;">
       <div style="font-size:48px;margin-bottom:16px;">🎭</div>
-      <h4 class="fw-semibold mb-2">Production Created!</h4>
+      <h4 class="fw-semibold mb-2" id="success-title">Production Created!</h4>
       <p class="text-muted mb-4" id="success-msg">Your production is ready. Taking you to the master schedule…</p>
       <a href="master.html" class="btn btn-dark">Go to Master Schedule</a>
     </div>
@@ -60,6 +60,11 @@
 
         document.getElementById('loading-state').style.display = 'none';
         document.getElementById('success-state').style.display = 'block';
+
+        if (data.plan === 'annual') {
+          document.getElementById('success-title').textContent = 'Annual Plan Activated!';
+          document.getElementById('success-msg').textContent   = 'Your first production is ready. Taking you to the master schedule…';
+        }
 
         // Redirect automatically after 2 seconds
         setTimeout(() => { window.location.href = 'master.html'; }, 2000);

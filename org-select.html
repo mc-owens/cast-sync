@@ -98,30 +98,6 @@
     </div>
   </div>
 
-  <!-- New production modal -->
-  <div class="modal fade" id="newSeasonModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title">New Production</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <div id="new-season-error" class="alert alert-danger d-none"></div>
-          <div class="mb-3">
-            <label class="form-label">Production Name</label>
-            <input type="text" class="form-control" id="new-season-name" placeholder="e.g. Spring Showcase 2027" />
-          </div>
-          <p class="text-muted mb-0" style="font-size:12px;">Each production is $80. You'll be taken to a secure checkout page to complete payment before the production is created.</p>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-dark" id="create-season-btn">Continue to Payment →</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Invite co-director modal -->
   <div class="modal fade" id="inviteModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -292,13 +268,10 @@
     // ── Event wiring ──────────────────────────────────────────────────────────
 
     function wireEvents() {
-      // + Production buttons
+      // + Production buttons → navigate to plan-select page
       document.querySelectorAll('.new-season-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-          selectedOrgId = btn.dataset.orgId;
-          document.getElementById('new-season-name').value = '';
-          document.getElementById('new-season-error').classList.add('d-none');
-          new bootstrap.Modal(document.getElementById('newSeasonModal')).show();
+          window.location.href = `plan-select.html?orgId=${btn.dataset.orgId}`;
         });
       });
 
@@ -433,33 +406,6 @@
       // Close modal and reload so the new org appears with its "Add Production" button
       bootstrap.Modal.getInstance(document.getElementById('newOrgModal'))?.hide();
       window.location.reload();
-    });
-
-    document.getElementById('create-season-btn').addEventListener('click', async () => {
-      const name    = document.getElementById('new-season-name').value.trim();
-      const errorEl = document.getElementById('new-season-error');
-      const btn     = document.getElementById('create-season-btn');
-      errorEl.classList.add('d-none');
-      if (!name) { errorEl.textContent = 'Name is required.'; errorEl.classList.remove('d-none'); return; }
-
-      btn.disabled    = true;
-      btn.textContent = 'Redirecting to payment…';
-
-      const res  = await fetch('/api/checkout/create-session', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: selectedOrgId, productionName: name }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        errorEl.textContent = data.error || 'Could not start checkout.';
-        errorEl.classList.remove('d-none');
-        btn.disabled    = false;
-        btn.textContent = 'Create Production';
-        return;
-      }
-
-      window.location.href = data.url; // → Stripe hosted checkout
     });
 
     document.getElementById('confirm-delete-org-btn').addEventListener('click', async () => {
