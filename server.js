@@ -713,7 +713,7 @@ app.post('/api/checkout/create-session', requireAuth('master'), async (req, res)
     res.json({ url: session.url });
   } catch (err) {
     console.error('Stripe session error:', err.message);
-    res.status(500).json({ error: 'Could not start checkout.' });
+    res.status(500).json({ error: `Stripe error: ${err.message}` });
   }
 });
 
