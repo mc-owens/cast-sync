@@ -65,6 +65,15 @@
       </div>
     </div>
 
+    <div class="card mb-4 d-none" id="billing-card">
+      <div class="card-body">
+        <h6 class="fw-semibold mb-1">Billing</h6>
+        <p class="text-muted mb-3" style="font-size:13px;">View payment history, download receipts, and manage your payment method.</p>
+        <div id="billing-error" class="alert alert-danger d-none" style="font-size:13px;"></div>
+        <button class="btn btn-dark btn-sm" id="billing-portal-btn">Open Billing Portal →</button>
+      </div>
+    </div>
+
     <div class="card border-danger">
       <div class="card-body">
         <h6 class="fw-semibold text-danger mb-1">Delete Account</h6>
@@ -91,6 +100,10 @@
           await fetch('/api/auth/logout', { method: 'POST' });
           window.location.href = 'login.html';
         });
+        // Show billing card for directors/masters only
+        if (user.role === 'master' || user.mode === 'director') {
+          document.getElementById('billing-card').classList.remove('d-none');
+        }
         document.body.style.visibility = 'visible';
       } catch (e) { window.location.href = 'login.html'; }
     })();
@@ -118,6 +131,27 @@
       document.getElementById('pw-current').value = '';
       document.getElementById('pw-new').value = '';
       document.getElementById('pw-confirm').value = '';
+    });
+
+    // Billing portal
+    document.getElementById('billing-portal-btn').addEventListener('click', async () => {
+      const btn    = document.getElementById('billing-portal-btn');
+      const errEl  = document.getElementById('billing-error');
+      errEl.classList.add('d-none');
+      btn.disabled    = true;
+      btn.textContent = 'Opening…';
+      try {
+        const res  = await fetch('/api/billing/portal', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) { errEl.textContent = data.error; errEl.classList.remove('d-none'); return; }
+        window.location.href = data.url;
+      } catch (e) {
+        errEl.textContent = 'Could not open billing portal. Try again.';
+        errEl.classList.remove('d-none');
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = 'Open Billing Portal →';
+      }
     });
 
     // Delete account

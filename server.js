@@ -690,7 +690,11 @@ app.post('/api/checkout/create-session', requireAuth('master'), async (req, res)
   if (!orgId || !productionName) return res.status(400).json({ error: 'orgId and productionName required.' });
 
   try {
-    const session = await stripe.checkout.sessions.create({
+    // Reuse existing Stripe customer if this user has paid before
+    const userRow = await pool.query('SELECT stripe_customer_id FROM users WHERE id = $1', [req.session.userId]);
+    const existingCustomer = userRow.rows[0]?.stripe_customer_id;
+
+    const sessionParams = {
       payment_method_types: ['card'],
       line_items: [{
         price_data: {
@@ -708,7 +712,10 @@ app.post('/api/checkout/create-session', requireAuth('master'), async (req, res)
         user_id:         String(req.session.userId),
         production_name: productionName,
       },
-    });
+    };
+    if (existingCustomer) sessionParams.customer = existingCustomer;
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
     res.json({ url: session.url });
   } catch (err) {
     console.error('Stripe session error:', err.message);
@@ -760,6 +767,14 @@ app.get('/api/checkout/complete', requireAuth('master'), async (req, res) => {
       } catch (e) {
         if (e.code !== '23505') throw e;
       }
+    }
+
+    // Persist Stripe customer ID so the billing portal can look them up later
+    if (session.customer) {
+      await pool.query(
+        'UPDATE users SET stripe_customer_id = $1 WHERE id = $2 AND stripe_customer_id IS NULL',
+        [session.customer, req.session.userId]
+      );
     }
 
     req.session.orgId      = parseInt(org_id);
@@ -819,6 +834,14 @@ app.post('/api/stripe/webhook', async (req, res) => {
         } catch (e) {
           if (e.code !== '23505') throw e;
         }
+      }
+      // Persist Stripe customer ID
+      const userId = session.metadata?.user_id;
+      if (userId && session.customer) {
+        await pool.query(
+          'UPDATE users SET stripe_customer_id = $1 WHERE id = $2 AND stripe_customer_id IS NULL',
+          [session.customer, userId]
+        );
       }
       console.log(`Webhook: created production "${production_name}" for org ${org_id}`);
     } catch (err) {
@@ -1418,6 +1441,28 @@ app.delete('/api/master-blocks/:id', requireAuth('master'), async (req, res) => 
   }
 });
 
+// ── Billing portal ────────────────────────────────────────────────────────────
+
+// POST /api/billing/portal — create a Stripe Customer Portal session
+app.post('/api/billing/portal', requireAuth('master'), async (req, res) => {
+  if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
+  try {
+    const result = await pool.query('SELECT stripe_customer_id FROM users WHERE id = $1', [req.session.userId]);
+    const customerId = result.rows[0]?.stripe_customer_id;
+    if (!customerId) return res.status(404).json({ error: 'No billing account found yet — complete a purchase first.' });
+
+    const returnUrl = process.env.APP_URL ? `https://${process.env.APP_URL}/account.html` : 'http://localhost:3000/account.html';
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer:   customerId,
+      return_url: returnUrl,
+    });
+    res.json({ url: portalSession.url });
+  } catch (err) {
+    console.error('Billing portal error:', err.message);
+    res.status(500).json({ error: 'Could not open billing portal.' });
+  }
+});
+
 // ── Room count routes ─────────────────────────────────────────────────────────
 
 // GET /api/season/room-count — return current season's room count
@@ -1822,6 +1867,16 @@ async function runMigrations() {
     `);
     console.log('Migration step 7 (pieces.room) complete.');
   } catch (err) { console.error('Migration step 7 error:', err.message); }
+
+  // Step 8: stripe_customer_id on users (billing portal)
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN stripe_customer_id VARCHAR(100);
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 8 (users.stripe_customer_id) complete.');
+  } catch (err) { console.error('Migration step 8 error:', err.message); }
 
   console.log('All migrations complete.');
 }
