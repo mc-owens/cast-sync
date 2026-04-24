@@ -1,5 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,700&display=swap');
 
+/* === PASSWORD TOGGLE === */
+.pw-wrap { position: relative; }
+.pw-wrap .form-control { padding-right: 40px; }
+.pw-eye {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; padding: 2px 4px; cursor: pointer;
+  color: #9ca3af; line-height: 1; display: flex; align-items: center;
+}
+.pw-eye:hover { color: #6b7280; }
+
 /* === GLOBAL === */
 :root {
   --brand: #111111;
