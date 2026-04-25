@@ -2200,6 +2200,7 @@ Sentry.setupExpressErrorHandler(app);
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`[startup] APP_URL resolved to: ${APP_URL}`);
   if (!process.env.GOOGLE_CLIENT_ID) console.log('  → Google OAuth not configured');
   if (!emailEnabled)                  console.log('  → Email not configured (set RESEND_API_KEY)');
   await runMigrations();
