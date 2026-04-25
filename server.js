@@ -478,7 +478,10 @@ app.post('/api/auth/reset-password', async (req, res) => {
       'UPDATE users SET password_hash=$1, reset_token=NULL, reset_token_expires=NULL, email_verified=TRUE WHERE id=$2',
       [hash, result.rows[0].id]
     );
-    res.json({ message: 'Password updated.' });
+    // Destroy any existing session so the user logs in fresh as the correct account
+    req.session.destroy(() => {
+      res.json({ message: 'Password updated.' });
+    });
   } catch (err) {
     console.error('Reset password error:', err.message);
     res.status(500).json({ error: 'Could not reset password.' });
