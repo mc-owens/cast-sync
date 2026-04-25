@@ -6,11 +6,6 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://www.cast-sync.com/reviews.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://www.cast-sync.com/login.html</loc>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>

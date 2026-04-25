@@ -13,6 +13,7 @@ Disallow: /plan-select.html
 Disallow: /account.html
 Disallow: /payment-success.html
 Disallow: /verify-email.html
+Disallow: /reviews.html
 Disallow: /api/
 
 Sitemap: https://www.cast-sync.com/sitemap.xml

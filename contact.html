@@ -5,77 +5,174 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Contact — CastSync</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,700&display=swap" rel="stylesheet">
   <link rel="icon" href="logo.png" type="image/png">
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-TYZB1PQQG9"></script>
   <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-TYZB1PQQG9');</script>
+  <style>
+    :root { --gold: #c4943a; --brand: #111; --muted: #6b7280; --border: #e5e7eb; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; margin: 0; }
+
+    /* Nav */
+    .top-nav { background: #fff; border-bottom: 1px solid var(--border); padding: 14px 0; position: sticky; top: 0; z-index: 100; }
+    .top-nav .brand { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; font-size: 20px; color: #111; text-decoration: none; }
+    .top-nav .nav-links a { color: var(--muted); text-decoration: none; font-size: 14px; margin-left: 28px; }
+    .top-nav .nav-links a:hover { color: #111; }
+    .btn-brand { background: var(--brand); color: #fff; border: none; padding: 9px 20px; border-radius: 8px; font-weight: 600; font-size: 14px; text-decoration: none; display: inline-block; transition: opacity .15s; }
+    .btn-brand:hover { opacity: .85; color: #fff; }
+    .btn-outline-brand { background: transparent; color: var(--brand); border: 1.5px solid var(--brand); padding: 8px 18px; border-radius: 8px; font-weight: 600; font-size: 14px; text-decoration: none; display: inline-block; }
+    .btn-outline-brand:hover { background: #f3f4f6; color: var(--brand); }
+
+    /* Hero */
+    .hero {
+      background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(196,148,58,.20) 0%, transparent 60%), #0c0c0c;
+      color: #fff;
+      padding: 72px 0 64px;
+      text-align: center;
+    }
+    .hero-label { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--gold); margin-bottom: 14px; }
+    .hero h1 { font-family: 'Playfair Display', Georgia, serif; font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; letter-spacing: -.3px; margin-bottom: 14px; }
+    .hero p { color: rgba(255,255,255,.62); font-size: 1rem; margin: 0; }
+
+    /* Form section */
+    .form-section { padding: 72px 0 80px; background: #fff; }
+    .form-control, .form-select {
+      border: 1.5px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 14px;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .form-control:focus, .form-select:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 3px rgba(196,148,58,.12);
+      outline: none;
+    }
+    .form-label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    .btn-submit {
+      background: var(--gold); color: #fff; border: none;
+      padding: 13px 28px; border-radius: 8px; font-weight: 700; font-size: 15px;
+      width: 100%; cursor: pointer; transition: background .15s;
+      letter-spacing: .2px;
+    }
+    .btn-submit:hover { background: #b5872a; }
+    .btn-submit:disabled { opacity: .6; cursor: not-allowed; }
+
+    /* Info strip */
+    .info-strip { display: flex; gap: 48px; flex-wrap: wrap; margin-top: 40px; padding-top: 40px; border-top: 1px solid var(--border); }
+    .info-item .label { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--gold); margin-bottom: 6px; }
+    .info-item .value { font-size: 14px; color: #374151; }
+    .info-item a { color: #374151; text-decoration: none; }
+    .info-item a:hover { color: #111; }
+
+    /* Footer */
+    footer { padding: 36px 0; border-top: 1px solid var(--border); }
+    footer .footer-brand { font-family: 'Playfair Display', Georgia, serif; font-weight: 700; font-size: 17px; }
+    footer a { color: var(--muted); text-decoration: none; font-size: 13px; }
+    footer a:hover { color: #111; }
+  </style>
 </head>
 <body>
 
-  <nav class="navbar navbar-dark bg-dark">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="index.html"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
+  <!-- Nav -->
+  <nav class="top-nav">
+    <div class="container d-flex align-items-center justify-content-between">
+      <a class="brand" href="index.html">CastSync</a>
+      <div class="nav-links d-none d-md-block">
+        <a href="index.html#how-it-works">How it works</a>
+        <a href="index.html#pricing">Pricing</a>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="login.html" class="btn-outline-brand">Log in</a>
+        <a href="role-select.html" class="btn-brand">Get started</a>
+      </div>
     </div>
   </nav>
 
-  <div class="container" style="max-width:560px;margin-top:64px;margin-bottom:80px;">
-    <h2 class="fw-semibold mb-1">Contact Us</h2>
-    <p class="text-muted mb-5" style="font-size:14px;">We typically respond within one business day.</p>
-
-    <div id="form-wrap">
-      <div id="success-msg" class="alert alert-success d-none">Message sent — we'll be in touch soon.</div>
-      <div id="error-msg" class="alert alert-danger d-none"></div>
-
-      <form id="contact-form">
-        <div class="row g-3 mb-3">
-          <div class="col-sm-6">
-            <label class="form-label">Name</label>
-            <input type="text" class="form-control" id="c-name" required placeholder="Your name" />
-          </div>
-          <div class="col-sm-6">
-            <label class="form-label">Email</label>
-            <input type="email" class="form-control" id="c-email" required placeholder="you@example.com" />
-          </div>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Subject</label>
-          <select class="form-select" id="c-subject">
-            <option value="General question">General question</option>
-            <option value="Technical issue">Technical issue</option>
-            <option value="Billing">Billing</option>
-            <option value="Director access code">Director access code request</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-        <div class="mb-4">
-          <label class="form-label">Message</label>
-          <textarea class="form-control" id="c-message" rows="5" required placeholder="How can we help?"></textarea>
-        </div>
-        <button type="submit" class="btn btn-dark w-100" id="send-btn">Send Message</button>
-      </form>
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <p class="hero-label">Support</p>
+      <h1>Get in Touch</h1>
+      <p>Questions, feedback, or need a director access code? We're here.</p>
     </div>
+  </section>
 
-    <hr class="my-5">
+  <!-- Form -->
+  <section class="form-section">
+    <div class="container" style="max-width:580px;">
 
-    <div class="d-flex gap-4 flex-wrap">
-      <div>
-        <div class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;">Email</div>
-        <a href="mailto:support@cast-sync.com" style="font-size:14px;">support@cast-sync.com</a>
+      <div id="success-view" style="display:none;text-align:center;padding:48px 0;">
+        <div style="font-size:48px;margin-bottom:16px;">✓</div>
+        <h4 style="font-family:'Playfair Display',Georgia,serif;font-weight:700;margin-bottom:8px;">Message sent!</h4>
+        <p style="color:var(--muted);font-size:14px;">We'll get back to you within 1–2 business days.</p>
+        <a href="index.html" style="font-size:14px;color:#111;">← Back to home</a>
       </div>
+
+      <div id="form-view">
+        <div id="error-msg" class="alert alert-danger d-none mb-4" style="font-size:14px;"></div>
+
+        <form id="contact-form">
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label class="form-label">Name</label>
+              <input type="text" class="form-control" id="c-name" required placeholder="Your name" />
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label">Email</label>
+              <input type="email" class="form-control" id="c-email" required placeholder="you@example.com" />
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Subject</label>
+            <select class="form-select" id="c-subject">
+              <option value="General question">General question</option>
+              <option value="Technical issue">Technical issue</option>
+              <option value="Billing">Billing</option>
+              <option value="Director access code">Director access code request</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="mb-4">
+            <label class="form-label">Message</label>
+            <textarea class="form-control" id="c-message" rows="5" required placeholder="How can we help?"></textarea>
+          </div>
+          <button type="submit" class="btn-submit" id="send-btn">Send Message</button>
+        </form>
+
+        <div class="info-strip">
+          <div class="info-item">
+            <div class="label">Email</div>
+            <div class="value"><a href="mailto:support@cast-sync.com">support@cast-sync.com</a></div>
+          </div>
+          <div class="info-item">
+            <div class="label">Response time</div>
+            <div class="value">1–2 business days</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container d-flex flex-wrap justify-content-between align-items-center gap-3">
       <div>
-        <div class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;">Response time</div>
-        <div style="font-size:14px;">Within 1 business day</div>
+        <div class="footer-brand">CastSync</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">© 2026 CastSync. All rights reserved.</div>
+      </div>
+      <div class="d-flex gap-4 flex-wrap">
+        <a href="login.html">Log in</a>
+        <a href="role-select.html">Sign up</a>
+        <a href="terms.html">Terms</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="cookies.html">Cookies</a>
       </div>
     </div>
-  </div>
-
-  <footer class="border-top py-3 text-center text-muted" style="font-size:12px;">
-    &copy; 2026 CastSync &nbsp;·&nbsp;
-    <a href="terms.html" class="text-muted">Terms</a> &nbsp;·&nbsp;
-    <a href="privacy.html" class="text-muted">Privacy</a> &nbsp;·&nbsp;
-    <a href="cookies.html" class="text-muted">Cookies</a> &nbsp;·&nbsp;
-    <a href="contact.html" class="text-muted">Contact</a>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
@@ -84,7 +181,6 @@
       e.preventDefault();
       const btn     = document.getElementById('send-btn');
       const errorEl = document.getElementById('error-msg');
-      const successEl = document.getElementById('success-msg');
       errorEl.classList.add('d-none');
 
       const name    = document.getElementById('c-name').value.trim();
@@ -105,17 +201,16 @@
         if (!res.ok) {
           errorEl.textContent = data.error || 'Could not send message. Please email us directly.';
           errorEl.classList.remove('d-none');
+          btn.disabled    = false;
+          btn.textContent = 'Send Message';
         } else {
-          document.getElementById('contact-form').style.display = 'none';
-          successEl.classList.remove('d-none');
+          document.getElementById('form-view').style.display    = 'none';
+          document.getElementById('success-view').style.display = '';
         }
       } catch (err) {
         // Fallback: open mailto
         const mailto = `mailto:support@cast-sync.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(`Name: ${name}\nEmail: ${email}\n\n${message}`)}`;
         window.location.href = mailto;
-      } finally {
-        btn.disabled    = false;
-        btn.textContent = 'Send Message';
       }
     });
   </script>
