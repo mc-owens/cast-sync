@@ -6,7 +6,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const SLOT_HEIGHT = 12.5;
 
   // Touch device or narrow screen → mobile dropdown UI
-  const isMobile = ('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth < 1024;
+  const isMobile = window.innerWidth < 1024;
 
   if (isMobile) {
     window._mobileAvailUI = true;
