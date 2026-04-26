@@ -156,6 +156,28 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
           'INSERT INTO users (email, google_id, role) VALUES ($1, $2, $3) RETURNING id, email, role',
           [email, profile.id, 'auditionee']
         );
+        // Welcome email for new Google signups
+        if (emailEnabled) {
+          resend.emails.send({
+            from: 'CastSync <noreply@cast-sync.com>',
+            to:   email,
+            subject: 'Welcome to CastSync!',
+            html: `
+              <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#111;">
+                <div style="font-family:'Georgia',serif;font-size:22px;font-weight:700;margin-bottom:24px;">CastSync</div>
+                <p style="font-size:15px;line-height:1.6;">Welcome! Your account is all set up.</p>
+                <p style="font-size:14px;color:#6b7280;line-height:1.6;">You can now submit audition forms, view your cast results, and — if you have a director access code — manage your own productions.</p>
+                <div style="margin:28px 0;">
+                  <a href="${APP_URL}/auditionForm.html"
+                     style="background:#111111;color:#fff;padding:12px 24px;border-radius:8px;
+                            text-decoration:none;font-weight:600;font-size:14px;display:inline-block;">
+                    Get Started
+                  </a>
+                </div>
+                <p style="font-size:12px;color:#9ca3af;">Questions? Reply to this email or visit <a href="${APP_URL}/contact.html" style="color:#9ca3af;">cast-sync.com/contact</a>.</p>
+              </div>`,
+          }).catch(() => {}); // don't block login if email fails
+        }
         done(null, result.rows[0]);
       } catch (err) { done(err); }
     }
