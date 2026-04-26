@@ -664,20 +664,50 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/invite', requireAuth('master'), asy
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required.' });
   try {
+    // Verify the requester is the org owner
     const ownerCheck = await pool.query(
       'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2 AND role = $3',
       [req.params.orgId, req.session.userId, 'owner']
     );
     if (ownerCheck.rows.length === 0) return res.status(403).json({ error: 'Only the org owner can invite co-directors.' });
 
-    const userResult = await pool.query(
-      'SELECT id, role FROM users WHERE email = $1',
-      [email.toLowerCase().trim()]
+    // Get org + season names for the notification email
+    const infoResult = await pool.query(
+      `SELECT o.name AS org_name, s.name AS season_name
+       FROM orgs o JOIN seasons s ON s.id = $1 AND s.org_id = o.id
+       WHERE o.id = $2`,
+      [req.params.seasonId, req.params.orgId]
     );
-    if (userResult.rows.length === 0) return res.status(404).json({ error: 'No CastSync account found with that email. Ask them to sign up first.' });
+    const orgName    = infoResult.rows[0]?.org_name    || 'your organization';
+    const seasonName = infoResult.rows[0]?.season_name || 'a production';
 
-    const inviteeId   = userResult.rows[0].id;
-    const inviteeRole = userResult.rows[0].role;
+    // Get owner email for the notification
+    const ownerResult = await pool.query('SELECT email FROM users WHERE id = $1', [req.session.userId]);
+    const ownerEmail  = ownerResult.rows[0]?.email || 'A director';
+
+    const normalizedEmail = email.toLowerCase().trim();
+    let inviteeId;
+    let isNewUser = false;
+
+    // Look up existing user
+    const userResult = await pool.query('SELECT id, role FROM users WHERE email = $1', [normalizedEmail]);
+
+    if (userResult.rows.length > 0) {
+      // Existing user — promote to master if needed
+      inviteeId = userResult.rows[0].id;
+      if (userResult.rows[0].role !== 'master') {
+        await pool.query("UPDATE users SET role = 'master', is_director = TRUE WHERE id = $1", [inviteeId]);
+      }
+    } else {
+      // No account yet — create one so they can access director pages after setting a password
+      isNewUser = true;
+      const newUser = await pool.query(
+        `INSERT INTO users (email, role, is_director, email_verified)
+         VALUES ($1, 'master', TRUE, TRUE) RETURNING id`,
+        [normalizedEmail]
+      );
+      inviteeId = newUser.rows[0].id;
+    }
 
     // Add to season_members
     await pool.query(
@@ -685,12 +715,33 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/invite', requireAuth('master'), asy
       [req.params.seasonId, inviteeId, 'editor']
     );
 
-    // Auto-promote to master so they can access director pages without entering the access code
-    if (inviteeRole !== 'master') {
-      await pool.query(
-        "UPDATE users SET role = 'master', is_director = TRUE WHERE id = $1",
-        [inviteeId]
-      );
+    // Send notification email
+    if (emailEnabled) {
+      const actionURL   = isNewUser ? `${APP_URL}/forgot-password.html` : `${APP_URL}/login.html`;
+      const actionLabel = isNewUser ? 'Set Up Your Account' : 'Go to CastSync';
+      const bodyText    = isNewUser
+        ? `${ownerEmail} has invited you to join CastSync as a co-director for <strong>${seasonName}</strong> at <strong>${orgName}</strong>. Click below to set up your password and get started.`
+        : `${ownerEmail} has added you as a co-director for <strong>${seasonName}</strong> at <strong>${orgName}</strong> on CastSync. You now have full access to that production's scheduling and casting.`;
+
+      await resend.emails.send({
+        from: 'CastSync <noreply@cast-sync.com>',
+        to:   normalizedEmail,
+        subject: `You've been added as a co-director on CastSync`,
+        html: `
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#111;">
+            <div style="font-family:'Georgia',serif;font-size:22px;font-weight:700;margin-bottom:24px;">CastSync</div>
+            <p style="font-size:15px;line-height:1.6;">${bodyText}</p>
+            <p style="font-size:13px;color:#6b7280;margin-top:0;">You'll only see this production — not the owner's other work.</p>
+            <div style="margin:28px 0;">
+              <a href="${actionURL}"
+                 style="background:#111111;color:#fff;padding:12px 24px;border-radius:8px;
+                        text-decoration:none;font-weight:600;font-size:14px;display:inline-block;">
+                ${actionLabel}
+              </a>
+            </div>
+            <p style="font-size:12px;color:#9ca3af;">If you didn't expect this email, you can ignore it.</p>
+          </div>`,
+      });
     }
 
     res.json({ message: 'Co-director added to this production.' });
