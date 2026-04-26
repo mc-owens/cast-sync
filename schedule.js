@@ -1,17 +1,29 @@
 document.addEventListener("DOMContentLoaded", () => {
-    const startHour = 8; // 8 AM
-    const endHour = 23; // midnight
-    const increment = 15; // minutes
-    const slotHeight = 12.5; // pixels per 15-min slot
+  const DAYS        = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+  const START_HOUR  = 8;
+  const END_HOUR    = 23;
+  const INCREMENT   = 15;
+  const SLOT_HEIGHT = 12.5;
+
+  // Touch device or narrow screen → mobile dropdown UI
+  const isMobile = ('ontouchstart' in window || navigator.maxTouchPoints > 0) && window.innerWidth < 1024;
+
+  if (isMobile) {
+    window._mobileAvailUI = true;
+    initMobileUI();
+  } else {
+    initDesktopGrid();
+  }
+
+  // ─── Desktop drag grid ────────────────────────────────────────────────────
+  function initDesktopGrid() {
     const timeColumn = document.getElementById('time-column');
-    const grid = document.getElementById('grid');
-    const headerRow = document.getElementById('day-header-row');
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const grid       = document.getElementById('grid');
+    const headerRow  = document.getElementById('day-header-row');
 
     // Header row
-    const emptyHeader = document.createElement('div');
-    headerRow.appendChild(emptyHeader);
-    days.forEach(day => {
+    headerRow.appendChild(document.createElement('div'));
+    DAYS.forEach(day => {
       const header = document.createElement('div');
       header.className = 'day-header';
       header.textContent = day;
@@ -19,36 +31,31 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // Time column
-for (let h = startHour; h <= endHour; h++) {
-  const label = document.createElement('div');
-  label.className = 'time-label';
-  label.textContent = formatTime(h, 0);
-  timeColumn.appendChild(label);
-}
+    for (let h = START_HOUR; h <= END_HOUR; h++) {
+      const label = document.createElement('div');
+      label.className = 'time-label';
+      label.textContent = fmt(h, 0);
+      timeColumn.appendChild(label);
+    }
 
-// Grid columns
-days.forEach(day => {
-  const col = document.createElement('div');
-  col.className = 'day-column';
-  const totalSlots = ((endHour + 1 - startHour) * 60) / increment; // +1 to include 11 PM hour fully
-  for (let i = 0; i < totalSlots; i++) {
-    const slot = document.createElement('div');
-    slot.className = 'time-slot';
-    if (i % 4 === 3) slot.classList.add('hour-line'); // bold line at every full hour
-    slot.dataset.timeIndex = i;
-    col.appendChild(slot);
-  }
-  grid.appendChild(col);
-});
+    // Grid columns
+    DAYS.forEach(() => {
+      const col = document.createElement('div');
+      col.className = 'day-column';
+      const totalSlots = ((END_HOUR + 1 - START_HOUR) * 60) / INCREMENT;
+      for (let i = 0; i < totalSlots; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'time-slot';
+        if (i % 4 === 3) slot.classList.add('hour-line');
+        slot.dataset.timeIndex = i;
+        col.appendChild(slot);
+      }
+      grid.appendChild(col);
+    });
 
-    // Interaction logic
-    let isSelecting = false;
-    let startSlot = 0;
-    let currentBlock = null;
-    let currentDayColumn = null;
-    let isResizing = false;
-    let resizeDirection = null;
-    let offsetY = 0;
+    // Interaction
+    let isSelecting = false, startSlot = 0, currentBlock = null;
+    let isResizing = false, resizeDirection = null, offsetY = 0;
 
     grid.addEventListener('mousedown', e => {
       if (e.target.classList.contains('resize-handle')) {
@@ -57,120 +64,206 @@ days.forEach(day => {
         resizeDirection = e.target.classList.contains('resize-top') ? 'top' : 'bottom';
         return;
       }
-
       if (e.target.classList.contains('block')) {
         currentBlock = e.target;
         offsetY = e.offsetY;
         return;
       }
-
       const slot = e.target.closest('.time-slot');
       if (!slot) return;
-
       isSelecting = true;
-      currentDayColumn = slot.parentElement;
       startSlot = parseInt(slot.dataset.timeIndex);
-      const dayIndex = Array.from(grid.children).indexOf(currentDayColumn);
+      const dayIndex = Array.from(grid.children).indexOf(slot.parentElement);
       const dayWidth = grid.clientWidth / 7;
-      const leftPos = dayIndex * dayWidth;
-
       currentBlock = document.createElement('div');
       currentBlock.className = 'block';
       currentBlock.dataset.startIndex = startSlot;
-      currentBlock.style.left = `${leftPos}px`;
-      currentBlock.style.top = `${startSlot * slotHeight}px`;
-      currentBlock.style.height = `${slotHeight}px`;
-      currentBlock.style.width = `${dayWidth}px`;
-      currentBlock.innerHTML = `
-        <span class="time-label-text"></span>
-        <span class="delete-btn">✕</span>
-        <div class="resize-handle resize-top"></div>
-        <div class="resize-handle resize-bottom"></div>
-      `;
+      currentBlock.style.left   = `${dayIndex * dayWidth}px`;
+      currentBlock.style.top    = `${startSlot * SLOT_HEIGHT}px`;
+      currentBlock.style.height = `${SLOT_HEIGHT}px`;
+      currentBlock.style.width  = `${dayWidth}px`;
+      currentBlock.innerHTML = `<span class="time-label-text"></span><span class="delete-btn">✕</span><div class="resize-handle resize-top"></div><div class="resize-handle resize-bottom"></div>`;
       grid.appendChild(currentBlock);
-      updateBlockTimeLabel(currentBlock);
+      updateLabel(currentBlock);
     });
 
     grid.addEventListener('mousemove', e => {
       if (isSelecting && currentBlock) {
         const slot = e.target.closest('.time-slot');
         if (!slot) return;
-        const currentSlot = parseInt(slot.dataset.timeIndex);
-        const topSlot = Math.min(startSlot, currentSlot);
-        const heightSlots = Math.abs(currentSlot - startSlot) + 1;
-        currentBlock.style.top = `${topSlot * slotHeight}px`;
-        currentBlock.style.height = `${heightSlots * slotHeight}px`;
-        currentBlock.dataset.startIndex = topSlot;
-        updateBlockTimeLabel(currentBlock);
+        const cur = parseInt(slot.dataset.timeIndex);
+        const top = Math.min(startSlot, cur);
+        currentBlock.style.top    = `${top * SLOT_HEIGHT}px`;
+        currentBlock.style.height = `${(Math.abs(cur - startSlot) + 1) * SLOT_HEIGHT}px`;
+        currentBlock.dataset.startIndex = top;
+        updateLabel(currentBlock);
       }
-
       if (isResizing && currentBlock) {
         const rect = grid.getBoundingClientRect();
-        let y = e.clientY - rect.top;
-        y = Math.round(y / slotHeight) * slotHeight;
-        const blockTop = parseFloat(currentBlock.style.top);
-        const blockHeight = parseFloat(currentBlock.style.height);
-
+        let y = Math.round((e.clientY - rect.top) / SLOT_HEIGHT) * SLOT_HEIGHT;
+        const bTop = parseFloat(currentBlock.style.top);
+        const bH   = parseFloat(currentBlock.style.height);
         if (resizeDirection === 'top') {
-          const newTop = Math.min(y, blockTop + blockHeight - slotHeight);
-          const newHeight = blockHeight + (blockTop - newTop);
-          currentBlock.style.top = `${newTop}px`;
-          currentBlock.style.height = `${newHeight}px`;
-          currentBlock.dataset.startIndex = Math.round(newTop / slotHeight);
+          const newTop = Math.min(y, bTop + bH - SLOT_HEIGHT);
+          currentBlock.style.top    = `${newTop}px`;
+          currentBlock.style.height = `${bH + (bTop - newTop)}px`;
+          currentBlock.dataset.startIndex = Math.round(newTop / SLOT_HEIGHT);
         } else {
-          const newHeight = Math.max(y - blockTop, slotHeight);
-          currentBlock.style.height = `${newHeight}px`;
+          currentBlock.style.height = `${Math.max(y - bTop, SLOT_HEIGHT)}px`;
         }
-        updateBlockTimeLabel(currentBlock);
+        updateLabel(currentBlock);
       }
-
       if (currentBlock && !isResizing && !isSelecting && e.buttons === 1 && offsetY) {
         const rect = grid.getBoundingClientRect();
-        let y = e.clientY - rect.top - offsetY;
+        let y = Math.round((e.clientY - rect.top - offsetY) / SLOT_HEIGHT) * SLOT_HEIGHT;
         y = Math.max(0, Math.min(y, grid.clientHeight - parseFloat(currentBlock.style.height)));
-        y = Math.round(y / slotHeight) * slotHeight;
         currentBlock.style.top = `${y}px`;
-        currentBlock.dataset.startIndex = Math.round(y / slotHeight);
-        updateBlockTimeLabel(currentBlock);
+        currentBlock.dataset.startIndex = Math.round(y / SLOT_HEIGHT);
+        updateLabel(currentBlock);
       }
     });
 
     document.addEventListener('mouseup', () => {
-      isSelecting = false;
-      isResizing = false;
-      offsetY = 0;
-      currentBlock = null;
+      isSelecting = false; isResizing = false; offsetY = 0; currentBlock = null;
     });
 
     grid.addEventListener('click', e => {
-      if (e.target.classList.contains('delete-btn')) {
-        e.target.parentElement.remove();
-      }
+      if (e.target.classList.contains('delete-btn')) e.target.parentElement.remove();
     });
 
-    function formatTime(hour, minute) {
-      let ampm = hour >= 12 ? 'PM' : 'AM';
-      let hr = hour % 12;
-      if (hr === 0) hr = 12;
-      return `${hr}:${minute.toString().padStart(2, '0')} ${ampm}`;
+    function updateLabel(block) {
+      const si = parseInt(block.dataset.startIndex);
+      const ei = si + Math.round(parseFloat(block.style.height) / SLOT_HEIGHT);
+      block.querySelector('.time-label-text').textContent =
+        `${fmt2(si * INCREMENT + START_HOUR * 60)} - ${fmt2(ei * INCREMENT + START_HOUR * 60)}`;
+    }
+  }
+
+  // ─── Mobile dropdown UI ───────────────────────────────────────────────────
+  function initMobileUI() {
+    const wrapper = document.querySelector('.schedule-wrapper');
+    if (!wrapper) return;
+
+    // Build time option list: 8:00 AM → 11:45 PM in 15-min steps
+    const timeOpts = [];
+    for (let mins = START_HOUR * 60; mins <= END_HOUR * 60 + 45; mins += INCREMENT) {
+      timeOpts.push({ label: fmt2(mins), mins });
     }
 
-    function updateBlockTimeLabel(block) {
-      const startIndex = parseInt(block.dataset.startIndex);
-      const height = parseFloat(block.style.height);
-      const endIndex = startIndex + Math.round(height / slotHeight);
-
-      const startMinutes = startIndex * increment + startHour * 60;
-      const endMinutes = endIndex * increment + startHour * 60;
-
-      const startHour24 = Math.floor(startMinutes / 60);
-      const startMin = startMinutes % 60;
-      const endHour24 = Math.floor(endMinutes / 60);
-      const endMin = endMinutes % 60;
-
-      const label = block.querySelector('.time-label-text');
-      label.textContent = `${formatTime(startHour24, startMin)} - ${formatTime(endHour24, endMin)}`;
+    function makeSelect(defaultMins) {
+      const sel = document.createElement('select');
+      sel.className = 'form-select form-select-sm mob-time-select';
+      sel.style.cssText = 'width:auto;min-width:110px;font-size:13px;';
+      timeOpts.forEach(({ label, mins }) => {
+        const opt = document.createElement('option');
+        opt.value = mins;
+        opt.textContent = label;
+        if (mins === defaultMins) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      return sel;
     }
 
-  });
-  
+    function addSlot(slotsEl, fromMins, toMins) {
+      const row = document.createElement('div');
+      row.className = 'mob-slot';
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;';
+
+      const fromSel = makeSelect(fromMins ?? 9 * 60);   // default 9:00 AM
+      const toSel   = makeSelect(toMins   ?? 10 * 60);  // default 10:00 AM
+
+      const sep = document.createElement('span');
+      sep.textContent = 'to';
+      sep.style.cssText = 'font-size:13px;color:#6b7280;';
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.innerHTML = '&times;';
+      del.setAttribute('aria-label', 'Remove');
+      del.style.cssText = 'background:none;border:none;color:#9ca3af;font-size:22px;line-height:1;cursor:pointer;padding:0 2px;flex-shrink:0;';
+      del.addEventListener('click', () => row.remove());
+
+      row.appendChild(fromSel);
+      row.appendChild(sep);
+      row.appendChild(toSel);
+      row.appendChild(del);
+      slotsEl.appendChild(row);
+    }
+
+    // Replace wrapper contents with mobile UI
+    wrapper.innerHTML = '';
+    wrapper.style.cssText = 'box-shadow:none;border-radius:0;overflow:visible;border:none;';
+
+    const container = document.createElement('div');
+    container.id = 'mobile-availability';
+
+    DAYS.forEach(day => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:flex-start;padding:12px 0;border-bottom:1px solid #e5e7eb;';
+
+      const dayLabel = document.createElement('div');
+      dayLabel.style.cssText = 'width:96px;font-size:13px;font-weight:600;color:#374151;padding-top:7px;flex-shrink:0;';
+      dayLabel.textContent = day;
+
+      const right = document.createElement('div');
+      right.style.cssText = 'flex:1;min-width:0;';
+
+      const slotsEl = document.createElement('div');
+      slotsEl.className = 'mob-slots';
+      slotsEl.dataset.day = day;
+
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.textContent = '+ Add time';
+      addBtn.style.cssText = 'background:none;border:none;font-size:12px;font-weight:600;color:#c4943a;cursor:pointer;padding:4px 0;margin-top:2px;display:block;';
+      addBtn.addEventListener('click', () => addSlot(slotsEl));
+
+      right.appendChild(slotsEl);
+      right.appendChild(addBtn);
+      row.appendChild(dayLabel);
+      row.appendChild(right);
+      container.appendChild(row);
+    });
+
+    wrapper.appendChild(container);
+
+    // ── Public API used by app.js and auditionForm.html inline script ─────────
+    window._getMobileAvailability = () => {
+      const result = [];
+      container.querySelectorAll('.mob-slots').forEach(slotsEl => {
+        const day = slotsEl.dataset.day;
+        slotsEl.querySelectorAll('.mob-slot').forEach(slot => {
+          const sels = slot.querySelectorAll('.mob-time-select');
+          if (sels.length < 2) return;
+          const fromMins = parseInt(sels[0].value);
+          const toMins   = parseInt(sels[1].value);
+          if (isNaN(fromMins) || isNaN(toMins) || toMins <= fromMins) return;
+          result.push({ day, startMins: fromMins, endMins: toMins });
+        });
+      });
+      return result;
+    };
+
+    window._setMobileAvailability = (slots) => {
+      container.querySelectorAll('.mob-slots').forEach(el => el.innerHTML = '');
+      slots.forEach(({ day, startMins, endMins }) => {
+        const slotsEl = container.querySelector(`.mob-slots[data-day="${day}"]`);
+        if (slotsEl) addSlot(slotsEl, startMins, endMins);
+      });
+    };
+
+    window._clearMobileAvailability = () => {
+      container.querySelectorAll('.mob-slots').forEach(el => el.innerHTML = '');
+    };
+  }
+
+  // ─── Shared time formatting helpers ──────────────────────────────────────
+  function fmt(h, m) {
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const hr = h % 12 === 0 ? 12 : h % 12;
+    return `${hr}:${m.toString().padStart(2,'0')} ${ampm}`;
+  }
+  function fmt2(totalMins) {
+    return fmt(Math.floor(totalMins / 60), totalMins % 60);
+  }
+});

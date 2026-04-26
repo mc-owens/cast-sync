@@ -304,6 +304,14 @@
           const DRAFT_KEY = code => `castsync_draft_${code.toUpperCase()}`;
 
           function serializeBlocks() {
+            // Mobile: read from dropdown UI
+            if (window._mobileAvailUI && typeof window._getMobileAvailability === 'function') {
+              const toT = m => { const h=Math.floor(m/60),mn=m%60,ap=h>=12?'PM':'AM',hr=h%12||12; return `${hr}:${mn.toString().padStart(2,'0')} ${ap}`; };
+              return window._getMobileAvailability().map(({ day, startMins, endMins }) => ({
+                day, startTime: toT(startMins), endTime: toT(endMins),
+              }));
+            }
+            // Desktop: read from drag grid
             const SLOT_HEIGHT = 12.5, START_HOUR = 8, INCREMENT = 15;
             const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
             const gridEl = document.getElementById('grid');
@@ -342,12 +350,20 @@
           }
 
           function restoreAvailabilityBlocks(availability) {
+            const parseMins = str => { const [t,ap]=str.trim().split(' '); const [h,m]=t.split(':').map(Number); let hr=h; if(ap==='PM'&&hr!==12)hr+=12; if(ap==='AM'&&hr===12)hr=0; return hr*60+m; };
+            // Mobile: populate dropdown UI
+            if (window._mobileAvailUI && typeof window._setMobileAvailability === 'function') {
+              window._setMobileAvailability(availability.map(({ day, startTime, endTime }) => ({
+                day, startMins: parseMins(startTime), endMins: parseMins(endTime),
+              })));
+              return;
+            }
+            // Desktop: create blocks in drag grid
             const SLOT_HEIGHT = 12.5, START_HOUR = 8, INCREMENT = 15;
             const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
             const gridEl = document.getElementById('grid');
             gridEl.querySelectorAll('.block').forEach(b => b.remove());
             const dayWidth = gridEl.clientWidth / 7;
-            const parseMins = str => { const [t,ap]=str.trim().split(' '); const [h,m]=t.split(':').map(Number); let hr=h; if(ap==='PM'&&hr!==12)hr+=12; if(ap==='AM'&&hr===12)hr=0; return hr*60+m; };
             availability.forEach(({day, startTime, endTime}) => {
               const di = DAYS.indexOf(day); if(di===-1) return;
               const sM = parseMins(startTime), eM = parseMins(endTime);
