@@ -18,16 +18,16 @@
     }
 
     @media print {
-      /* Blocks use % positioning so they adapt correctly to any grid width.
-         Hide everything except the schedule — grid takes full page width. */
-      .app-nav, .legend-panel, #room-conflict-banner,
+      /* Hide chrome but keep the legend panel IN THE FLEX FLOW (visibility:hidden,
+         not display:none) so the grid keeps exactly the same width as on screen.
+         Blocks are % of grid width, so same width → correct alignment guaranteed. */
+      .app-nav, #room-conflict-banner,
       #update-btn, #update-alert, .btn-print,
       p.text-muted { display: none !important; }
+      .legend-panel { visibility: hidden; }
       body { visibility: visible !important; }
-      .container-fluid { padding: 0 12px !important; }
-      .d-flex.gap-4 { gap: 0 !important; }
-      .schedule-wrapper { page-break-inside: avoid; width: 100%; }
-      /* Ensure block colors print correctly */
+      .container-fluid { padding: 0 !important; }
+      .schedule-wrapper { page-break-inside: avoid; }
       .block { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>
