@@ -167,8 +167,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
-    // Placeholder blocks span one full day column each
-    document.querySelectorAll('.placeholder-block').forEach(block => {
+    // Placeholder + org overlay blocks span one full day column each
+    document.querySelectorAll('.placeholder-block, .org-overlay-block').forEach(block => {
       const di = DAYS.indexOf(block.dataset.day);
       if (di === -1) return;
       block.style.left  = `${di * dayWidth}px`;
@@ -282,6 +282,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Block rendering ───────────────────────────────────────────────────────────
 
+  function renderOrgBlock(block) {
+    const dayWidth = grid.clientWidth / 7;
+    const dayIndex = DAYS.indexOf(block.day);
+    if (dayIndex === -1) return;
+    const topPx    = timeStringToTopPx(block.start_time);
+    const btmPx    = timeStringToTopPx(block.end_time);
+    const heightPx = Math.max(btmPx - topPx, slotHeight);
+
+    const el = document.createElement('div');
+    el.className        = 'block org-overlay-block';
+    el.dataset.day      = block.day;
+    el.style.top        = `${topPx}px`;
+    el.style.height     = `${heightPx}px`;
+    el.style.left       = `${dayIndex * dayWidth}px`;
+    el.style.width      = `${dayWidth}px`;
+    el.style.background = 'repeating-linear-gradient(135deg,rgba(100,116,139,0.12),rgba(100,116,139,0.12) 5px,rgba(100,116,139,0.22) 5px,rgba(100,116,139,0.22) 10px)';
+    el.style.border     = '1px dashed #94a3b8';
+    el.style.position   = 'absolute';
+    el.style.boxSizing  = 'border-box';
+    el.style.zIndex     = '0';
+    el.style.pointerEvents = 'none';
+    el.innerHTML = `<span style="font-size:10px;color:#64748b;font-weight:600;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:2px 4px;">${block.season_name}: ${block.piece_name}</span>`;
+    grid.appendChild(el);
+  }
+
   function renderPlaceholder(dbId, label, topPx, heightPx, dayIndex) {
     const dayWidth = grid.clientWidth / 7;
     const block = document.createElement('div');
@@ -355,9 +380,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function loadBlocks() {
     try {
-      const [blocksRes, placeholdersRes] = await Promise.all([
+      const [blocksRes, placeholdersRes, orgBlocksRes] = await Promise.all([
         fetch('/api/master-blocks'),
         fetch('/api/schedule-placeholders'),
+        fetch('/api/master-blocks/org'),
       ]);
       if (blocksRes.ok) {
         const blocks = await blocksRes.json();
@@ -378,6 +404,15 @@ document.addEventListener('DOMContentLoaded', async () => {
           const dayIndex = DAYS.indexOf(ph.day);
           renderPlaceholder(ph.id, ph.label, topPx, btmPx - topPx, dayIndex);
         });
+      }
+      if (orgBlocksRes.ok) {
+        const orgBlocks = await orgBlocksRes.json();
+        if (orgBlocks.length > 0) {
+          orgBlocks.forEach(b => renderOrgBlock(b));
+          // Show the toggle row since there are org blocks to display
+          const toggleRow = document.getElementById('org-blocks-toggle-row');
+          if (toggleRow) toggleRow.style.display = '';
+        }
       }
       repositionAllBlocks();
     } catch (e) { console.error(e); }
@@ -621,6 +656,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadRoomCount();
   await new Promise(r => requestAnimationFrame(r));
   await loadBlocks();
+
+  // Toggle other-productions overlay visibility
+  document.getElementById('org-blocks-toggle')?.addEventListener('change', function () {
+    document.querySelectorAll('.org-overlay-block').forEach(b => {
+      b.style.display = this.checked ? '' : 'none';
+    });
+  });
 
   // Reposition blocks before/after printing so pixel positions match the print layout
   window.addEventListener('beforeprint', () => repositionAllBlocks());

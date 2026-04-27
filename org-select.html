@@ -113,9 +113,15 @@
           <div id="invite-error" class="alert alert-danger d-none"></div>
           <div id="invite-success" class="alert alert-success d-none"></div>
           <p class="text-muted" style="font-size:13px;">This person will only have access to this specific production, not your other productions. They'll receive an email notification — if they don't have a CastSync account yet, one will be created and they'll be prompted to set a password.</p>
-          <div class="mb-0">
+          <div class="mb-3">
             <label class="form-label">Their Email</label>
             <input type="email" class="form-control" id="invite-email" placeholder="colleague@email.com" />
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="invite-can-see-blocks">
+            <label class="form-check-label" for="invite-can-see-blocks" style="font-size:13px;">
+              Allow this co-director to see other productions' rehearsal blocks on the Master Schedule
+            </label>
           </div>
         </div>
         <div class="modal-footer">
@@ -227,11 +233,12 @@
     function buildProductionRow(org, s, isOwner) {
       const row = document.createElement('div');
       row.id = `prod-row-${s.id}`;
+      const isArchived = s.status === 'archived';
 
       const nameDisplay = `
         <div id="prod-name-display-${s.id}">
-          <div class="prod-info" style="flex:1;min-width:0;">
-            <div class="prod-name">${s.name}</div>
+          <div class="prod-info" style="flex:1;min-width:0;${isArchived ? 'opacity:0.55;' : ''}">
+            <div class="prod-name">${s.name}${isArchived ? ' <span style="font-size:11px;background:#e9ecef;color:#666;border-radius:4px;padding:1px 6px;font-weight:500;">Archived</span>' : ''}</div>
             <div class="prod-meta">Code: <strong>${s.join_code || '—'}</strong> &nbsp;·&nbsp; ${s.submission_count} auditionee${s.submission_count == 1 ? '' : 's'}</div>
           </div>
         </div>`;
@@ -243,9 +250,12 @@
           <button class="btn btn-sm btn-outline-secondary" data-cancel-prod-rename="${s.id}">✕</button>
         </div>`;
 
+      const archiveTitle  = isArchived ? 'Unarchive' : 'Archive';
+      const archiveStatus = isArchived ? 'active' : 'archived';
       const actions = isOwner ? `
         <div class="prod-actions">
           <button class="icon-btn" title="Add co-director" data-invite-prod="${s.id}" data-org-id="${org.id}">👤+</button>
+          <button class="icon-btn" title="${archiveTitle}" data-archive-prod="${s.id}" data-org-id="${org.id}" data-archive-status="${archiveStatus}">${isArchived ? '📂' : '🗂'}</button>
           <button class="icon-btn" title="Rename" data-rename-prod="${s.id}" data-prod-name="${s.name}">✏️</button>
           <button class="icon-btn danger" title="Delete" data-delete-prod="${s.id}" data-org-id="${org.id}" data-prod-name="${s.name}">🗑</button>
         </div>` : '';
@@ -346,6 +356,24 @@
         });
       });
 
+      // Archive / unarchive production
+      document.querySelectorAll('[data-archive-prod]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const seasonId = btn.dataset.archiveProd;
+          const orgId    = btn.dataset.orgId;
+          const status   = btn.dataset.archiveStatus;
+          const label    = status === 'archived' ? 'archive' : 'unarchive';
+          if (!confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} this production?`)) return;
+          const res = await fetch(`/api/orgs/${orgId}/seasons/${seasonId}/status`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status }),
+          });
+          if (res.ok) window.location.reload();
+          else alert((await res.json()).error);
+        });
+      });
+
       // Delete production
       document.querySelectorAll('[data-delete-prod]').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -363,6 +391,7 @@
           selectedSeasonId = btn.dataset.inviteProd;
           selectedOrgId    = btn.dataset.orgId;
           document.getElementById('invite-email').value = '';
+          document.getElementById('invite-can-see-blocks').checked = false;
           document.getElementById('invite-error').classList.add('d-none');
           document.getElementById('invite-success').classList.add('d-none');
           new bootstrap.Modal(document.getElementById('inviteModal')).show();
@@ -381,7 +410,8 @@
     }
 
     document.getElementById('send-invite-btn').addEventListener('click', async () => {
-      const email     = document.getElementById('invite-email').value.trim();
+      const email              = document.getElementById('invite-email').value.trim();
+      const canSeeBlocks       = document.getElementById('invite-can-see-blocks').checked;
       const errorEl   = document.getElementById('invite-error');
       const successEl = document.getElementById('invite-success');
       errorEl.classList.add('d-none');
@@ -389,7 +419,7 @@
       if (!email) { errorEl.textContent = 'Email is required.'; errorEl.classList.remove('d-none'); return; }
       const res  = await fetch(`/api/orgs/${selectedOrgId}/seasons/${selectedSeasonId}/invite`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, can_see_other_blocks: canSeeBlocks }),
       });
       const data = await res.json();
       if (!res.ok) { errorEl.textContent = data.error; errorEl.classList.remove('d-none'); return; }

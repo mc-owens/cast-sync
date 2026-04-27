@@ -160,6 +160,11 @@
 
     <div id="loading-msg" class="text-muted" style="font-size:14px;">Loading...</div>
 
+    <div id="double-booking-alert" class="alert alert-warning d-none py-2 px-3 mb-2" style="font-size:13px;" role="alert">
+      <strong>Schedule overlap detected.</strong> <span id="double-booking-msg"></span>
+      <button type="button" class="btn-close float-end py-1" onclick="document.getElementById('double-booking-alert').classList.add('d-none')"></button>
+    </div>
+
     <div id="empty-msg" class="alert alert-info d-none">
       No pieces in the master schedule yet. Create pieces on the
       <a href="master.html" class="alert-link">Master Schedule</a> page,
@@ -410,6 +415,12 @@
               body: JSON.stringify({ piece_id: pieceId, user_id: userId, cast_role: toRole }),
             });
             if (!res.ok) { alert('Could not move dancer.'); return; }
+            const data = await res.json();
+            if (data.doubleBookingWarnings?.length) {
+              const name = `${row.querySelector('span')?.textContent || 'This dancer'}`;
+              const conflicts = data.doubleBookingWarnings.map(w => `${w.season_name} — ${w.piece_name}`).join('; ');
+              showDoubleBookingAlert(`Schedule overlap: ${name} is also rehearsing in ${conflicts}`);
+            }
 
             row.dataset.role = toRole;
             const removeBtn = row.querySelector('.remove-btn');
@@ -486,6 +497,12 @@
         });
       } catch (err) { console.error(err); }
     }, true);
+
+    // ── Double-booking warning ────────────────────────────────────────────────
+    function showDoubleBookingAlert(msg) {
+      document.getElementById('double-booking-msg').textContent = msg;
+      document.getElementById('double-booking-alert').classList.remove('d-none');
+    }
 
     // ── Preview ───────────────────────────────────────────────────────────────
     // Mirrors exactly what auditionees see in my-casting.html

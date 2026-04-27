@@ -698,7 +698,7 @@ app.patch('/api/orgs/:id', requireAuth('master'), async (req, res) => {
 
 // POST /api/orgs/:orgId/seasons/:seasonId/invite — invite a co-director to one production
 app.post('/api/orgs/:orgId/seasons/:seasonId/invite', requireAuth('master'), async (req, res) => {
-  const { email } = req.body;
+  const { email, can_see_other_blocks } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required.' });
   try {
     // Verify the requester is the org owner
@@ -746,10 +746,12 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/invite', requireAuth('master'), asy
       inviteeId = newUser.rows[0].id;
     }
 
-    // Add to season_members
+    // Add to season_members (update can_see_other_blocks if re-inviting)
     await pool.query(
-      'INSERT INTO season_members (season_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (season_id, user_id) DO NOTHING',
-      [req.params.seasonId, inviteeId, 'editor']
+      `INSERT INTO season_members (season_id, user_id, role, can_see_other_blocks)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (season_id, user_id) DO UPDATE SET can_see_other_blocks = EXCLUDED.can_see_other_blocks`,
+      [req.params.seasonId, inviteeId, 'editor', !!can_see_other_blocks]
     );
 
     // Send notification email
@@ -839,7 +841,7 @@ app.get('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => {
     let query, params;
     if (isOrgMember.rows.length > 0) {
       // Org-level member: show all seasons in the org
-      query  = `SELECT s.id, s.name, s.join_code, s.is_active, s.created_at,
+      query  = `SELECT s.id, s.name, s.join_code, s.is_active, s.status, s.created_at,
                        (SELECT COUNT(*) FROM submissions WHERE season_id = s.id) AS submission_count
                 FROM seasons s
                 WHERE s.org_id = $1
@@ -847,7 +849,7 @@ app.get('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => {
       params = [req.params.orgId];
     } else {
       // Production co-director: only seasons in season_members
-      query  = `SELECT s.id, s.name, s.join_code, s.is_active, s.created_at,
+      query  = `SELECT s.id, s.name, s.join_code, s.is_active, s.status, s.created_at,
                        (SELECT COUNT(*) FROM submissions WHERE season_id = s.id) AS submission_count
                 FROM seasons s
                 JOIN season_members sm ON sm.season_id = s.id
@@ -863,7 +865,7 @@ app.get('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => {
     // If season_members doesn't exist, return all seasons for org members
     try {
       const fallback = await pool.query(
-        `SELECT s.id, s.name, s.join_code, s.is_active, s.created_at,
+        `SELECT s.id, s.name, s.join_code, s.is_active, s.status, s.created_at,
                 (SELECT COUNT(*) FROM submissions WHERE season_id = s.id) AS submission_count
          FROM seasons s
          JOIN org_members om ON om.org_id = s.org_id
@@ -1241,6 +1243,23 @@ app.patch('/api/orgs/:orgId/seasons/:seasonId', requireAuth('master'), async (re
   }
 });
 
+// PATCH /api/orgs/:orgId/seasons/:seasonId/status — archive or activate a production
+app.patch('/api/orgs/:orgId/seasons/:seasonId/status', requireAuth('master'), async (req, res) => {
+  const { status } = req.body;
+  if (!['active', 'archived'].includes(status)) return res.status(400).json({ error: 'status must be active or archived.' });
+  try {
+    const check = await pool.query(
+      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2 AND role = $3',
+      [req.params.orgId, req.session.userId, 'owner']
+    );
+    if (check.rows.length === 0) return res.status(403).json({ error: 'Only the org owner can change production status.' });
+    await pool.query('UPDATE seasons SET status = $1 WHERE id = $2 AND org_id = $3', [status, req.params.seasonId, req.params.orgId]);
+    res.json({ status });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update production status.' });
+  }
+});
+
 // DELETE /api/orgs/:orgId/seasons/:seasonId — delete a production
 app.delete('/api/orgs/:orgId/seasons/:seasonId', requireAuth('master'), async (req, res) => {
   try {
@@ -1584,7 +1603,12 @@ app.get('/api/dancers', requireAuth('master'), async (req, res) => {
               sub.audition_number,
               (SELECT COUNT(*) FROM piece_casts pc
                JOIN pieces p ON p.id = pc.piece_id
-               WHERE pc.user_id = u.id AND p.season_id = $2) AS piece_count
+               WHERE pc.user_id = u.id AND p.season_id = $2) AS piece_count,
+              (SELECT COUNT(*) FROM piece_casts pc2
+               JOIN pieces p2 ON p2.id = pc2.piece_id
+               JOIN seasons s2 ON s2.id = p2.season_id
+               WHERE pc2.user_id = u.id AND s2.org_id = $1
+                 AND (s2.status IS NULL OR s2.status = 'active')) AS org_piece_count
        FROM submissions sub
        JOIN dancer_profiles dp ON dp.user_id = sub.user_id
        JOIN users u ON u.id = sub.user_id
@@ -1791,6 +1815,45 @@ app.delete('/api/master-blocks/:id', requireAuth('master'), async (req, res) => 
     res.json({ message: 'Block deleted.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete block.' });
+  }
+});
+
+// GET /api/master-blocks/org — read-only blocks from OTHER active productions in same org
+// Org owners always see them; co-directors see them only if can_see_other_blocks = TRUE
+app.get('/api/master-blocks/org', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    // Check if the user is an org-level member (owner / co-director at org level)
+    const orgMember = await pool.query(
+      'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2',
+      [orgId, req.session.userId]
+    );
+    if (orgMember.rows.length === 0) {
+      // Production-level co-director — only show if permission granted
+      const canSee = await pool.query(
+        'SELECT can_see_other_blocks FROM season_members WHERE season_id = $1 AND user_id = $2',
+        [seasonId, req.session.userId]
+      );
+      if (!canSee.rows[0]?.can_see_other_blocks) return res.json([]);
+    }
+
+    const result = await pool.query(
+      `SELECT mb.id, mb.day, mb.start_time, mb.end_time,
+              p.name AS piece_name, p.color AS piece_color,
+              s.name AS season_name, s.id AS season_id
+       FROM master_blocks mb
+       JOIN pieces p ON p.id = mb.piece_id
+       JOIN seasons s ON s.id = p.season_id
+       WHERE s.org_id = $1 AND s.id != $2
+         AND (s.status IS NULL OR s.status = 'active')
+       ORDER BY s.name ASC, mb.day ASC, mb.start_time ASC`,
+      [orgId, seasonId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to fetch org blocks.' });
   }
 });
 
@@ -2051,7 +2114,42 @@ app.post('/api/piece-casts', requireAuth('master'), async (req, res) => {
        RETURNING id, cast_role`,
       [piece_id, user_id, cast_role]
     );
-    res.status(201).json(result.rows[0]);
+
+    // Check for double-booking across other active productions in the same org
+    let doubleBookingWarnings = [];
+    const { orgId } = req.session;
+    if (orgId) {
+      try {
+        const conflicts = await pool.query(
+          `SELECT DISTINCT s.name AS season_name, p.name AS piece_name
+           FROM piece_casts pc2
+           JOIN pieces p ON p.id = pc2.piece_id
+           JOIN seasons s ON s.id = p.season_id
+           WHERE pc2.user_id = $1
+             AND s.org_id = $2
+             AND s.id != $3
+             AND (s.status IS NULL OR s.status = 'active')
+             AND EXISTS (
+               SELECT 1 FROM master_blocks mb_other
+               WHERE mb_other.piece_id = p.id
+                 AND EXISTS (
+                   SELECT 1 FROM master_blocks mb_this
+                   WHERE mb_this.piece_id = $4
+                     AND mb_this.day = mb_other.day
+                     AND mb_this.start_time < mb_other.end_time
+                     AND mb_this.end_time > mb_other.start_time
+                 )
+             )
+           ORDER BY s.name, p.name`,
+          [user_id, orgId, seasonId, piece_id]
+        );
+        doubleBookingWarnings = conflicts.rows;
+      } catch (warnErr) {
+        console.error('Double-booking check error:', warnErr.message);
+      }
+    }
+
+    res.status(201).json({ ...result.rows[0], doubleBookingWarnings });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to add to cast.' });
@@ -2393,6 +2491,19 @@ async function runMigrations() {
     `);
     console.log('Migration step 11 (piece_casts.role_name + schedule_placeholders) complete.');
   } catch (err) { console.error('Migration step 11 error:', err.message); }
+
+  // Step 12: season.status (active/archived) + season_members.can_see_other_blocks
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE seasons ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active';
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE season_members ADD COLUMN can_see_other_blocks BOOLEAN NOT NULL DEFAULT FALSE;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 12 (season.status + season_members.can_see_other_blocks) complete.');
+  } catch (err) { console.error('Migration step 12 error:', err.message); }
 
   console.log('All migrations complete.');
 }

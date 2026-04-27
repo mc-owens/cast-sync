@@ -277,7 +277,10 @@
           <td style="cursor:pointer;"><span class="open-modal" style="color:#0d6efd;text-decoration:underline;">${d.last_name}, ${d.first_name}</span></td>
           <td style="color:#555;">${d.email || '—'}</td>
           <td>${d.grade || '—'}</td>
-          <td>${d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>'}</td>
+          <td>
+            ${d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>'}
+            ${d.org_piece_count > d.piece_count ? `<span class="text-muted ms-1" style="font-size:11px;" title="Org-wide across all active productions">(${d.org_piece_count} org-wide)</span>` : ''}
+          </td>
           <td style="color:#888;">${formatDate(d.created_at)}</td>
           <td>
             <button class="btn btn-link p-0 text-danger remove-sub-btn" style="font-size:13px;" data-user-id="${d.user_id}" data-name="${d.first_name} ${d.last_name}" title="Remove submission">Remove</button>
