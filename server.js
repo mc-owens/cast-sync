@@ -2008,7 +2008,7 @@ app.get('/api/piece-casts', requireAuth('master'), async (req, res) => {
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
     const result = await pool.query(
-      `SELECT pc.id, pc.piece_id, pc.user_id, pc.cast_role,
+      `SELECT pc.id, pc.piece_id, pc.user_id, pc.cast_role, pc.role_name,
               p.name AS piece_name, p.color AS piece_color,
               dp.first_name, dp.last_name
        FROM piece_casts pc
@@ -2059,6 +2059,89 @@ app.delete('/api/piece-casts/:id', requireAuth('master'), async (req, res) => {
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to remove from cast.' });
+  }
+});
+
+// PATCH /api/piece-casts/:id — update role_name for a cast entry
+app.patch('/api/piece-casts/:id', requireAuth('master'), async (req, res) => {
+  const { role_name } = req.body;
+  try {
+    const result = await pool.query(
+      'UPDATE piece_casts SET role_name = $1 WHERE id = $2 RETURNING id, role_name',
+      [role_name || null, req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Cast entry not found.' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to update role name.' });
+  }
+});
+
+// ── Schedule placeholder routes ───────────────────────────────────────────────
+
+// GET /api/schedule-placeholders — all placeholders for current season
+app.get('/api/schedule-placeholders', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      'SELECT * FROM schedule_placeholders WHERE season_id = $1 ORDER BY day ASC, start_time ASC',
+      [seasonId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to fetch placeholders.' });
+  }
+});
+
+// POST /api/schedule-placeholders — create a placeholder block
+app.post('/api/schedule-placeholders', requireAuth('master'), async (req, res) => {
+  const { label, day, start_time, end_time } = req.body;
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  if (!day || !start_time || !end_time) return res.status(400).json({ error: 'day, start_time, and end_time required.' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO schedule_placeholders (season_id, label, day, start_time, end_time)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [seasonId, label || 'Blocked', day, start_time, end_time]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to create placeholder.' });
+  }
+});
+
+// PUT /api/schedule-placeholders/:id — update a placeholder block
+app.put('/api/schedule-placeholders/:id', requireAuth('master'), async (req, res) => {
+  const { label, day, start_time, end_time } = req.body;
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      `UPDATE schedule_placeholders SET label=$1, day=$2, start_time=$3, end_time=$4
+       WHERE id=$5 AND season_id=$6 RETURNING *`,
+      [label || 'Blocked', day, start_time, end_time, req.params.id, seasonId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Placeholder not found.' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to update placeholder.' });
+  }
+});
+
+// DELETE /api/schedule-placeholders/:id — delete a placeholder block
+app.delete('/api/schedule-placeholders/:id', requireAuth('master'), async (req, res) => {
+  try {
+    await pool.query('DELETE FROM schedule_placeholders WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Placeholder deleted.' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to delete placeholder.' });
   }
 });
 
@@ -2282,6 +2365,27 @@ async function runMigrations() {
     `);
     console.log('Migration step 10 (email_verified / verification_token) complete.');
   } catch (err) { console.error('Migration step 10 error:', err.message); }
+
+  // Step 11: role_name on piece_casts + schedule_placeholders table
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE piece_casts ADD COLUMN role_name VARCHAR(200);
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS schedule_placeholders (
+        id         SERIAL PRIMARY KEY,
+        season_id  INTEGER REFERENCES seasons(id) ON DELETE CASCADE,
+        label      VARCHAR(200) NOT NULL DEFAULT 'Blocked',
+        day        VARCHAR(20)  NOT NULL,
+        start_time VARCHAR(20)  NOT NULL,
+        end_time   VARCHAR(20)  NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    console.log('Migration step 11 (piece_casts.role_name + schedule_placeholders) complete.');
+  } catch (err) { console.error('Migration step 11 error:', err.message); }
 
   console.log('All migrations complete.');
 }

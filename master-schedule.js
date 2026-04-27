@@ -272,6 +272,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Block rendering ───────────────────────────────────────────────────────────
 
+  function renderPlaceholder(dbId, label, topPx, heightPx, dayIndex) {
+    const dayWidth = grid.clientWidth / 7;
+    const block = document.createElement('div');
+    block.className         = 'block placeholder-block';
+    block.dataset.dbId      = dbId;
+    block.dataset.day       = DAYS[dayIndex];
+    block.style.top         = `${topPx}px`;
+    block.style.height      = `${Math.max(heightPx, slotHeight)}px`;
+    block.style.left        = `${dayIndex * dayWidth}px`;
+    block.style.width       = `${dayWidth}px`;
+    block.style.background  = 'repeating-linear-gradient(45deg,#e8e8e8,#e8e8e8 5px,#d4d4d4 5px,#d4d4d4 10px)';
+    block.style.border      = '2px solid #bbb';
+    block.style.position    = 'absolute';
+    block.style.boxSizing   = 'border-box';
+    block.style.color       = '#666';
+    block.style.zIndex      = '0';
+    block.style.pointerEvents = 'auto';
+    block.innerHTML = `
+      <span style="font-size:11px;font-weight:bold;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${label}</span>
+      <button class="delete-btn" title="Delete">&times;</button>`;
+    block.querySelector('.delete-btn').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await fetch(`/api/schedule-placeholders/${dbId}`, { method: 'DELETE' });
+      block.remove();
+    });
+    grid.appendChild(block);
+    return block;
+  }
+
   // startTimeStr / endTimeStr are optional — if omitted, computed from pixels
   function renderBlock(dbId, piece, topPx, heightPx, dayIndex, startTimeStr, endTimeStr) {
     const dayWidth   = grid.clientWidth / 7;
@@ -316,17 +345,30 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function loadBlocks() {
     try {
-      const res = await fetch('/api/master-blocks');
-      if (!res.ok) return;
-      const blocks = await res.json();
-      blocks.forEach(b => {
-        const piece    = pieces.find(p => p.id === b.piece_id);
-        if (!piece) return;
-        const topPx    = timeStringToTopPx(b.start_time);
-        const btmPx    = timeStringToTopPx(b.end_time);
-        const dayIndex = DAYS.indexOf(b.day);
-        renderBlock(b.id, piece, topPx, btmPx - topPx, dayIndex, b.start_time, b.end_time);
-      });
+      const [blocksRes, placeholdersRes] = await Promise.all([
+        fetch('/api/master-blocks'),
+        fetch('/api/schedule-placeholders'),
+      ]);
+      if (blocksRes.ok) {
+        const blocks = await blocksRes.json();
+        blocks.forEach(b => {
+          const piece    = pieces.find(p => p.id === b.piece_id);
+          if (!piece) return;
+          const topPx    = timeStringToTopPx(b.start_time);
+          const btmPx    = timeStringToTopPx(b.end_time);
+          const dayIndex = DAYS.indexOf(b.day);
+          renderBlock(b.id, piece, topPx, btmPx - topPx, dayIndex, b.start_time, b.end_time);
+        });
+      }
+      if (placeholdersRes.ok) {
+        const placeholders = await placeholdersRes.json();
+        placeholders.forEach(ph => {
+          const topPx    = timeStringToTopPx(ph.start_time);
+          const btmPx    = timeStringToTopPx(ph.end_time);
+          const dayIndex = DAYS.indexOf(ph.day);
+          renderPlaceholder(ph.id, ph.label, topPx, btmPx - topPx, dayIndex);
+        });
+      }
       repositionAllBlocks();
     } catch (e) { console.error(e); }
   }
@@ -334,6 +376,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Mouse interaction ─────────────────────────────────────────────────────────
 
   grid.addEventListener('mousedown', e => {
+    // Placeholder blocks are display-only — don't drag or resize them
+    if (e.target.closest('.placeholder-block')) return;
+
     if (e.target.classList.contains('resize-handle')) {
       isResizing    = true;
       currentBlock  = e.target.closest('.block');
@@ -427,10 +472,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       pendingBlock = currentBlock;
       currentBlock = null;
       populatePieceSelect();
-      document.getElementById('new-piece-name').value            = '';
-      document.getElementById('radio-new-piece').checked         = true;
-      document.getElementById('new-piece-section').style.display = 'block';
-      document.getElementById('existing-piece-section').style.display = 'none';
+      document.getElementById('new-piece-name').value         = '';
+      document.getElementById('placeholder-label-input').value = '';
+      document.getElementById('radio-new-piece').checked      = true;
+      showModalSection('new');
       new bootstrap.Modal(document.getElementById('pieceModal'), { backdrop: 'static' }).show();
       return;
     }
@@ -468,21 +513,52 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Modal radio toggles ───────────────────────────────────────────────────────
 
-  document.getElementById('radio-new-piece').addEventListener('change', () => {
-    document.getElementById('new-piece-section').style.display      = 'block';
-    document.getElementById('existing-piece-section').style.display = 'none';
-  });
-  document.getElementById('radio-existing-piece').addEventListener('change', () => {
-    document.getElementById('new-piece-section').style.display      = 'none';
-    document.getElementById('existing-piece-section').style.display = 'block';
-  });
+  function showModalSection(which) {
+    document.getElementById('new-piece-section').style.display      = which === 'new'         ? 'block' : 'none';
+    document.getElementById('existing-piece-section').style.display = which === 'existing'    ? 'block' : 'none';
+    document.getElementById('placeholder-section').style.display    = which === 'placeholder' ? 'block' : 'none';
+  }
+
+  document.getElementById('radio-new-piece').addEventListener('change',     () => showModalSection('new'));
+  document.getElementById('radio-existing-piece').addEventListener('change', () => showModalSection('existing'));
+  document.getElementById('radio-placeholder').addEventListener('change',   () => showModalSection('placeholder'));
 
   // ── Modal confirm ─────────────────────────────────────────────────────────────
 
   document.getElementById('piece-confirm-btn').addEventListener('click', async () => {
-    const isNew = document.getElementById('radio-new-piece').checked;
-    let piece;
+    const isNew         = document.getElementById('radio-new-piece').checked;
+    const isPlaceholder = document.getElementById('radio-placeholder').checked;
 
+    const topPx    = parseFloat(pendingBlock.style.top);
+    const heightPx = parseFloat(pendingBlock.style.height);
+    const leftPx   = parseFloat(pendingBlock.style.left);
+    const dayWidth = grid.clientWidth / 7;
+    const dayIndex = Math.max(0, Math.min(Math.round(leftPx / dayWidth), 6));
+    const startI   = Math.round(topPx / slotHeight);
+    const endI     = startI + Math.round(heightPx / slotHeight);
+    const startTime = slotToTimeString(startI);
+    const endTime   = slotToTimeString(endI);
+
+    if (isPlaceholder) {
+      const label = document.getElementById('placeholder-label-input').value.trim() || 'Blocked';
+      try {
+        const res = await fetch('/api/schedule-placeholders', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ label, day: DAYS[dayIndex], start_time: startTime, end_time: endTime }),
+        });
+        if (!res.ok) { alert('Could not save placeholder.'); return; }
+        const saved = await res.json();
+        pendingBlock.remove();
+        pendingBlock = null;
+        renderPlaceholder(saved.id, saved.label, topPx, heightPx, dayIndex);
+        repositionAllBlocks();
+      } catch (err) { console.error(err); return; }
+      bootstrap.Modal.getInstance(document.getElementById('pieceModal')).hide();
+      return;
+    }
+
+    let piece;
     if (isNew) {
       const name = document.getElementById('new-piece-name').value.trim();
       if (!name) { alert('Please enter a piece name.'); return; }
@@ -503,16 +579,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       piece = pieces.find(p => p.id === parseInt(sel.value));
       if (!piece) { alert('Please select a piece.'); return; }
     }
-
-    const topPx    = parseFloat(pendingBlock.style.top);
-    const heightPx = parseFloat(pendingBlock.style.height);
-    const leftPx   = parseFloat(pendingBlock.style.left);
-    const dayWidth = grid.clientWidth / 7;
-    const dayIndex = Math.max(0, Math.min(Math.round(leftPx / dayWidth), 6));
-    const startI   = Math.round(topPx / slotHeight);
-    const endI     = startI + Math.round(heightPx / slotHeight);
-    const startTime = slotToTimeString(startI);
-    const endTime   = slotToTimeString(endI);
 
     try {
       const res = await fetch('/api/master-blocks', {

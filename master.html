@@ -16,6 +16,17 @@
       border-radius: 6px;
       min-height: 200px;
     }
+
+    @media print {
+      .app-nav, .legend-panel, #room-conflict-banner,
+      #update-btn, #update-alert, .btn-print,
+      p.text-muted { display: none !important; }
+      body { visibility: visible !important; }
+      .container-fluid { padding: 0 !important; }
+      .d-flex.gap-4 { display: block !important; }
+      .schedule-wrapper { page-break-inside: avoid; }
+      .block.placeholder-block { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   </style>
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -42,6 +53,13 @@
               <input class="form-check-input" type="radio" name="pieceRadio" id="radio-existing-piece">
               <label class="form-check-label" for="radio-existing-piece">Add to existing piece</label>
             </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="pieceRadio" id="radio-placeholder">
+              <label class="form-check-label" for="radio-placeholder">
+                Placeholder / blocked time
+                <span class="text-muted" style="font-size:12px;">(class, studio unavailable, etc.)</span>
+              </label>
+            </div>
           </div>
 
           <div id="new-piece-section">
@@ -52,6 +70,11 @@
           <div id="existing-piece-section" style="display:none;">
             <label for="existing-piece-select" class="form-label">Select piece</label>
             <select class="form-select" id="existing-piece-select"></select>
+          </div>
+
+          <div id="placeholder-section" style="display:none;">
+            <label for="placeholder-label-input" class="form-label">Label</label>
+            <input type="text" class="form-control" id="placeholder-label-input" placeholder="e.g. Technique class, Studio B closed">
           </div>
 
         </div>
@@ -132,13 +155,14 @@
     </div>
   </div>
 
-  <!-- Update button -->
-  <div class="container-fluid px-4 mt-3">
-    <div id="update-alert" class="alert alert-success d-none" role="alert">
+  <!-- Update + Print buttons -->
+  <div class="container-fluid px-4 mt-3 pb-5 d-flex align-items-center gap-3 flex-wrap">
+    <div id="update-alert" class="alert alert-success d-none w-100" role="alert">
       Schedule updated! You can now view dancer availability on the
       <a href="search.html" class="alert-link">Availability</a> tab.
     </div>
     <button id="update-btn" class="btn btn-success">Update Schedule</button>
+    <button class="btn btn-outline-secondary btn-print" onclick="window.print()">Print Schedule</button>
   </div>
 
   <script src="master-schedule.js"></script>
