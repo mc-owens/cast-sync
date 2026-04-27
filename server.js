@@ -1687,7 +1687,14 @@ app.get('/api/pieces', requireAuth('master'), async (req, res) => {
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
     const result = await pool.query(
-      'SELECT id, name, color, choreographer_name, choreographer_email, room FROM pieces WHERE season_id = $1 ORDER BY created_at ASC',
+      `SELECT p.id, p.name, p.color, p.choreographer_name, p.choreographer_email, p.room,
+              COALESCE(json_agg(DISTINCT jsonb_build_object('day',mb.day,'start_time',mb.start_time,'end_time',mb.end_time))
+                FILTER (WHERE mb.id IS NOT NULL), '[]') AS blocks
+       FROM pieces p
+       LEFT JOIN master_blocks mb ON mb.piece_id = p.id
+       WHERE p.season_id = $1
+       GROUP BY p.id
+       ORDER BY p.created_at ASC`,
       [seasonId]
     );
     res.json(result.rows);

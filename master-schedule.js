@@ -89,11 +89,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function getBlockPosition(block) {
-    const dayWidth   = grid.clientWidth / 7;
     const topPx      = parseFloat(block.style.top);
     const heightPx   = parseFloat(block.style.height);
-    const leftPx     = parseFloat(block.style.left);
-    const dayIndex   = Math.max(0, Math.min(Math.round(leftPx / dayWidth), 6));
+    // Use dataset.day which is kept in sync during drag — avoids parsing % left values
+    const dayIndex   = Math.max(0, Math.min(DAYS.indexOf(block.dataset.day), 6));
     const startSlotI = Math.round(topPx / slotHeight);
     const endSlotI   = startSlotI + Math.round(heightPx / slotHeight);
     return {
@@ -126,9 +125,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) { console.error('loadRoomCount error:', e); }
   }
 
-  // Assign overlapping blocks to side-by-side lanes, flag overflow as conflicts
+  // Assign overlapping blocks to side-by-side lanes, flag overflow as conflicts.
+  // Uses percentage-based left/width so positioning is correct at any page width
+  // (critical for print where the grid width differs from screen width).
   function repositionAllBlocks() {
-    const dayWidth = grid.clientWidth / 7;
+    const dayPct = 100 / 7; // % width of one day column
 
     DAYS.forEach((day, di) => {
       const dayBlocks = Array.from(document.querySelectorAll(`.master-block[data-day="${day}"]`))
@@ -156,23 +157,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         b.laneCount = Math.max(b.laneIdx + 1, ...concurrent.map(o => o.laneIdx + 1), 1);
       }
 
-      // Apply positions and store lane index for conflict detection
+      // Apply percentage positions
       for (const b of dayBlocks) {
-        const laneW = dayWidth / b.laneCount;
-        b.el.style.left  = `${di * dayWidth + b.laneIdx * laneW}px`;
-        b.el.style.width = `${laneW}px`;
+        const laneWPct = dayPct / b.laneCount;
+        b.el.style.left  = `${di * dayPct + b.laneIdx * laneWPct}%`;
+        b.el.style.width = `${laneWPct}%`;
         b.el.dataset.laneIdx = b.laneIdx;
       }
     });
 
-    // Reposition placeholder blocks (they don't participate in lane layout but
-    // their left/width must match the current grid width)
-    const dayWidthNow = grid.clientWidth / 7;
+    // Placeholder blocks span one full day column each
     document.querySelectorAll('.placeholder-block').forEach(block => {
       const di = DAYS.indexOf(block.dataset.day);
       if (di === -1) return;
-      block.style.left  = `${di * dayWidthNow}px`;
-      block.style.width = `${dayWidthNow}px`;
+      block.style.left  = `${di * dayPct}%`;
+      block.style.width = `${dayPct}%`;
     });
 
     highlightConflicts();
@@ -283,15 +282,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Block rendering ───────────────────────────────────────────────────────────
 
   function renderPlaceholder(dbId, label, topPx, heightPx, dayIndex) {
-    const dayWidth = grid.clientWidth / 7;
+    const dayPct = 100 / 7;
     const block = document.createElement('div');
     block.className         = 'block placeholder-block';
     block.dataset.dbId      = dbId;
     block.dataset.day       = DAYS[dayIndex];
     block.style.top         = `${topPx}px`;
     block.style.height      = `${Math.max(heightPx, slotHeight)}px`;
-    block.style.left        = `${dayIndex * dayWidth}px`;
-    block.style.width       = `${dayWidth}px`;
+    block.style.left        = `${dayIndex * dayPct}%`;
+    block.style.width       = `${dayPct}%`;
     block.style.background  = 'repeating-linear-gradient(45deg,#e8e8e8,#e8e8e8 5px,#d4d4d4 5px,#d4d4d4 10px)';
     block.style.border      = '2px solid #bbb';
     block.style.position    = 'absolute';
@@ -313,7 +312,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // startTimeStr / endTimeStr are optional — if omitted, computed from pixels
   function renderBlock(dbId, piece, topPx, heightPx, dayIndex, startTimeStr, endTimeStr) {
-    const dayWidth   = grid.clientWidth / 7;
+    const dayPct     = 100 / 7;
     const startSlotI = Math.round(topPx / slotHeight);
     const endSlotI   = startSlotI + Math.round(heightPx / slotHeight);
     const displayStart = startTimeStr || slotToTimeString(startSlotI);
@@ -328,8 +327,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     block.dataset.endTime      = displayEnd;
     block.style.top            = `${topPx}px`;
     block.style.height         = `${Math.max(heightPx, slotHeight)}px`;
-    block.style.left           = `${dayIndex * dayWidth}px`;
-    block.style.width          = `${dayWidth}px`;
+    block.style.left           = `${dayIndex * dayPct}%`;
+    block.style.width          = `${dayPct}%`;
     block.style.background     = hexToRgba(piece.color, 0.65);
     block.style.border         = `2px solid ${piece.color}`;
     block.style.position       = 'absolute';
@@ -401,11 +400,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.target.closest('.master-block')) {
       currentBlock  = e.target.closest('.master-block');
       activeBlockId = currentBlock.dataset.dbId;
-      // Expand to full column width during drag so it moves cleanly between days
-      const dayWidth = grid.clientWidth / 7;
-      const dayIdx   = DAYS.indexOf(currentBlock.dataset.day);
-      currentBlock.style.width = `${dayWidth}px`;
-      currentBlock.style.left  = `${dayIdx * dayWidth}px`;
+      // Snap to single full-column width so block moves cleanly between days
+      const dayIdx = DAYS.indexOf(currentBlock.dataset.day);
+      currentBlock.style.width = `${100 / 7}%`;
+      currentBlock.style.left  = `${dayIdx / 7 * 100}%`;
       offsetY = e.clientY - currentBlock.getBoundingClientRect().top;
       e.preventDefault();
       return;
@@ -417,12 +415,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentDayCol = slot.parentElement;
     startSlot     = parseInt(slot.dataset.timeIndex);
     const dayIndex = Array.from(grid.children).indexOf(currentDayCol);
-    const dayWidth = grid.clientWidth / 7;
 
     currentBlock = document.createElement('div');
     currentBlock.className        = 'block pending-block';
-    currentBlock.style.left       = `${dayIndex * dayWidth}px`;
-    currentBlock.style.width      = `${dayWidth}px`;
+    currentBlock.dataset.dayIndex = dayIndex; // stored so mouseup doesn't need to parse % left
+    currentBlock.style.left       = `${dayIndex / 7 * 100}%`;
+    currentBlock.style.width      = `${100 / 7}%`;
     currentBlock.style.top        = `${startSlot * slotHeight}px`;
     currentBlock.style.height     = `${slotHeight}px`;
     currentBlock.style.background = 'rgba(180,180,180,0.4)';
@@ -471,8 +469,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       y = Math.round(y / slotHeight) * slotHeight;
       y = Math.max(0, Math.min(y, grid.clientHeight - parseFloat(currentBlock.style.height)));
       const dayIndex = Math.max(0, Math.min(Math.floor(x / dayWidth), 6));
-      currentBlock.style.top  = `${y}px`;
-      currentBlock.style.left = `${dayIndex * dayWidth}px`;
+      currentBlock.style.top   = `${y}px`;
+      currentBlock.style.left  = `${dayIndex / 7 * 100}%`;
+      currentBlock.dataset.day = DAYS[dayIndex]; // keep dataset in sync for getBlockPosition
     }
   });
 
@@ -541,9 +540,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const topPx    = parseFloat(pendingBlock.style.top);
     const heightPx = parseFloat(pendingBlock.style.height);
-    const leftPx   = parseFloat(pendingBlock.style.left);
-    const dayWidth = grid.clientWidth / 7;
-    const dayIndex = Math.max(0, Math.min(Math.round(leftPx / dayWidth), 6));
+    const dayIndex = Math.max(0, Math.min(parseInt(pendingBlock.dataset.dayIndex ?? 0), 6));
     const startI   = Math.round(topPx / slotHeight);
     const endI     = startI + Math.round(heightPx / slotHeight);
     const startTime = slotToTimeString(startI);
