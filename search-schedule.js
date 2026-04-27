@@ -261,7 +261,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         castBtn.style.display = '';
         castBtn.onclick     = removeFromCast;
         understudyBtn.textContent = '→ Understudy';
-        understudyBtn.className   = 'btn btn-outline-secondary';
+        understudyBtn.className   = 'btn btn-outline-warning';
         understudyBtn.title       = 'Switch to understudy';
         understudyBtn.style.display = '';
         understudyBtn.onclick     = () => setCast('understudy');
@@ -272,7 +272,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         castBtn.style.display = '';
         castBtn.onclick     = () => setCast('member');
         understudyBtn.textContent = '✓ Understudy';
-        understudyBtn.className   = 'btn btn-success';
+        understudyBtn.className   = 'btn btn-warning';
         understudyBtn.title       = 'Click to remove from understudies';
         understudyBtn.style.display = '';
         understudyBtn.onclick     = removeFromCast;
@@ -283,7 +283,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         castBtn.style.display = '';
         castBtn.onclick     = () => setCast('member');
         understudyBtn.textContent = '+ Understudy';
-        understudyBtn.className   = 'btn btn-outline-secondary';
+        understudyBtn.className   = 'btn btn-outline-warning';
         understudyBtn.title       = '';
         understudyBtn.style.display = '';
         understudyBtn.onclick     = () => setCast('understudy');

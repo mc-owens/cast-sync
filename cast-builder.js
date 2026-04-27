@@ -271,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
             + (dancer.audition_number
                 ? ` <span style="color:#999;font-size:12px;">#${dancer.audition_number}</span>`
                 : '');
-          item.addEventListener('click', () => addUnderstudy(dancer));
+          item.addEventListener('click', e => { e.stopPropagation(); addUnderstudy(dancer); });
           understudyDropdown.appendChild(item);
         });
       }
@@ -823,23 +823,25 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Save selected dancers as cast members and understudies in piece_casts
-      const castInserts = [
-        ...selectedDancers.map(d =>
-          fetch('/api/piece-casts', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ piece_id: pieceId, user_id: d.user_id, cast_role: 'member' }),
-          })
-        ),
-        ...selectedUnderstudies.map(d =>
-          fetch('/api/piece-casts', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ piece_id: pieceId, user_id: d.user_id, cast_role: 'understudy' }),
-          })
-        ),
+      const toSave = [
+        ...selectedDancers.map(d => ({ dancer: d, role: 'member' })),
+        ...selectedUnderstudies.map(d => ({ dancer: d, role: 'understudy' })),
       ];
-      await Promise.all(castInserts);
+      if (toSave.length > 0) {
+        const saveErrors = [];
+        await Promise.all(toSave.map(async ({ dancer, role }) => {
+          const r = await fetch('/api/piece-casts', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ piece_id: pieceId, user_id: dancer.user_id, cast_role: role }),
+          });
+          if (!r.ok) {
+            const e = await r.json().catch(() => ({}));
+            saveErrors.push(`${dancer.first_name} ${dancer.last_name}: ${e.error || r.status}`);
+          }
+        }));
+        if (saveErrors.length > 0) throw new Error('Could not save some cast members — ' + saveErrors.join('; '));
+      }
 
       const castSummary = [];
       if (selectedDancers.length > 0)     castSummary.push(`${selectedDancers.length} cast`);
