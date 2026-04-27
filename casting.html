@@ -62,9 +62,12 @@
       height: auto;
       color: #555;
       border-color: #ddd;
+      display: none; /* hidden until role-names toggle is on */
     }
+    #pieces-container.show-role-names .role-name-input { display: inline-block; }
     .role-name-input::placeholder { color: #bbb; font-style: italic; }
     .role-name-input:focus { border-color: #86b7fe; box-shadow: none; }
+    .dancer-row.insert-above { border-top: 2px solid #0d6efd !important; }
   </style>
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -147,12 +150,21 @@
   <!-- Main content -->
   <div class="container-fluid mt-4 px-4" style="max-width: 800px;">
 
-    <div class="mb-4">
-      <h5 class="mb-0 fw-semibold">Casting</h5>
-      <p class="text-muted mb-0" style="font-size:13px;">
-        Manage cast members and understudies for each piece.
-        Add dancers from the <a href="search.html">Availability</a> tab.
-      </p>
+    <div class="mb-4 d-flex align-items-start justify-content-between flex-wrap gap-2">
+      <div>
+        <h5 class="mb-0 fw-semibold">Casting</h5>
+        <p class="text-muted mb-0" style="font-size:13px;">
+          Manage cast members and understudies for each piece.
+          Add dancers from the <a href="search.html">Availability</a> tab.
+        </p>
+      </div>
+      <div class="form-check form-switch mb-0 d-flex align-items-center gap-2 mt-1">
+        <input class="form-check-input" type="checkbox" id="role-names-toggle" role="switch"
+          style="width:2em;height:1em;cursor:pointer;">
+        <label class="form-check-label text-muted" for="role-names-toggle" style="font-size:13px;white-space:nowrap;">
+          Named roles
+        </label>
+      </div>
     </div>
 
     <div id="loading-msg" class="text-muted" style="font-size:14px;">Loading...</div>
@@ -186,9 +198,22 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
-    let roomCount = 1;
-    let allPieces = [];
-    let allCasts  = [];
+    let roomCount     = 1;
+    let allPieces     = [];
+    let allCasts      = [];
+    let draggingCastId = null; // tracked across dragstart/dragover/drop
+
+    // Role-names toggle
+    document.getElementById('role-names-toggle').addEventListener('change', function () {
+      document.getElementById('pieces-container').classList.toggle('show-role-names', this.checked);
+    });
+
+    // Clean up drag indicators on dragend (fires even if drop was cancelled)
+    document.addEventListener('dragend', () => {
+      draggingCastId = null;
+      document.querySelectorAll('.dancer-row.insert-above').forEach(r => r.classList.remove('insert-above'));
+      document.querySelectorAll('.cast-dropzone.drag-over').forEach(z => z.classList.remove('drag-over'));
+    });
 
     async function loadCasting() {
       try {
@@ -321,27 +346,61 @@
     }
 
     function setupDragAndDrop(pieceId) {
-      const memberList    = document.getElementById(`member-list-${pieceId}`);
+      const memberList     = document.getElementById(`member-list-${pieceId}`);
       const understudyList = document.getElementById(`understudy-list-${pieceId}`);
+
+      function getInsertBeforeRow(zone, clientY) {
+        const rows = [...zone.querySelectorAll('.dancer-row')].filter(r => r.dataset.castId !== draggingCastId);
+        for (const row of rows) {
+          const rect = row.getBoundingClientRect();
+          if (clientY < rect.top + rect.height / 2) return row;
+        }
+        return null;
+      }
 
       [memberList, understudyList].forEach(zone => {
         zone.addEventListener('dragover', (e) => {
           e.preventDefault();
           zone.classList.add('drag-over');
+          // Show insertion indicator
+          const insertBefore = getInsertBeforeRow(zone, e.clientY);
+          document.querySelectorAll('.dancer-row.insert-above').forEach(r => r.classList.remove('insert-above'));
+          if (insertBefore) insertBefore.classList.add('insert-above');
+          zone.dataset.insertBeforeCastId = insertBefore ? insertBefore.dataset.castId : '';
         });
         zone.addEventListener('dragleave', (e) => {
-          if (!zone.contains(e.relatedTarget)) zone.classList.remove('drag-over');
+          if (!zone.contains(e.relatedTarget)) {
+            zone.classList.remove('drag-over');
+            document.querySelectorAll('.dancer-row.insert-above').forEach(r => r.classList.remove('insert-above'));
+          }
         });
         zone.addEventListener('drop', async (e) => {
           e.preventDefault();
           zone.classList.remove('drag-over');
+          document.querySelectorAll('.dancer-row.insert-above').forEach(r => r.classList.remove('insert-above'));
+
           const castId     = e.dataTransfer.getData('castId');
           const userId     = parseInt(e.dataTransfer.getData('userId'));
           const srcPieceId = parseInt(e.dataTransfer.getData('pieceId'));
           const fromRole   = e.dataTransfer.getData('role');
           const toRole     = zone.dataset.role;
-          if (!castId || srcPieceId !== pieceId || fromRole === toRole) return;
+          if (!castId || srcPieceId !== pieceId) return;
 
+          const row        = document.getElementById(`cast-row-${castId}`);
+          const sourceList = document.getElementById(`${fromRole}-list-${pieceId}`);
+          if (!row) return;
+
+          const insertBeforeId = zone.dataset.insertBeforeCastId;
+          const refRow = insertBeforeId ? zone.querySelector(`[data-cast-id="${insertBeforeId}"]`) : null;
+
+          if (fromRole === toRole) {
+            // Same list — just reorder visually, no API call
+            if (refRow && refRow !== row) zone.insertBefore(row, refRow);
+            else if (!refRow) zone.appendChild(row);
+            return;
+          }
+
+          // Different list — update role in DB
           try {
             const res = await fetch('/api/piece-casts', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -349,35 +408,28 @@
             });
             if (!res.ok) { alert('Could not move dancer.'); return; }
 
-            const row        = document.getElementById(`cast-row-${castId}`);
-            const sourceList = document.getElementById(`${fromRole}-list-${pieceId}`);
-            if (!row || !sourceList) return;
-
-            // Update row's role attribute
             row.dataset.role = toRole;
             const removeBtn = row.querySelector('.remove-btn');
             if (removeBtn) removeBtn.dataset.role = toRole;
 
-            // Remove empty placeholder in target
             const targetEmpty = zone.querySelector('.cast-empty');
             if (targetEmpty) targetEmpty.remove();
 
-            zone.appendChild(row);
+            if (refRow) zone.insertBefore(row, refRow);
+            else zone.appendChild(row);
 
-            if (sourceList.querySelectorAll('.dancer-row').length === 0) {
+            if (sourceList && sourceList.querySelectorAll('.dancer-row').length === 0) {
               sourceList.innerHTML = '<p class="text-muted mb-0 cast-empty" style="font-size:13px;">None added yet.</p>';
             }
 
             refreshPieceSummary(pieceId);
           } catch (err) { console.error(err); }
         });
-      });
 
-      // Wire dragstart on existing rows (new rows added later won't need re-wiring — we use event delegation via the zone)
-      [memberList, understudyList].forEach(zone => {
         zone.addEventListener('dragstart', (e) => {
           const row = e.target.closest('.dancer-row');
           if (!row) return;
+          draggingCastId = row.dataset.castId;
           e.dataTransfer.setData('castId',  row.dataset.castId);
           e.dataTransfer.setData('userId',  row.dataset.userId);
           e.dataTransfer.setData('pieceId', row.dataset.pieceId);
@@ -433,46 +485,76 @@
     }, true);
 
     // ── Preview ───────────────────────────────────────────────────────────────
+    // Mirrors exactly what auditionees see in my-casting.html
     function showPreview() {
       const body = document.getElementById('preview-modal-body');
+
       if (allPieces.length === 0) {
         body.innerHTML = '<p class="text-muted">No pieces to preview.</p>';
-      } else {
-        body.innerHTML = allPieces.map(piece => {
-          const pieceCasts   = allCasts.filter(c => c.piece_id === piece.id);
-          // Reflect any role moves that happened in DOM (allCasts won't update on DnD, so read from DOM)
-          const members      = [];
-          const understudies = [];
-          document.querySelectorAll(`#member-list-${piece.id} .dancer-row`).forEach(row => {
-            const castId = row.dataset.castId;
-            const entry  = allCasts.find(c => String(c.id) === castId);
-            if (entry) {
-              const roleInput = row.querySelector('.role-name-input');
-              members.push({ ...entry, role_name: roleInput ? roleInput.value.trim() : entry.role_name });
-            }
-          });
-          document.querySelectorAll(`#understudy-list-${piece.id} .dancer-row`).forEach(row => {
-            const castId = row.dataset.castId;
-            const entry  = allCasts.find(c => String(c.id) === castId);
-            if (entry) {
-              const roleInput = row.querySelector('.role-name-input');
-              understudies.push({ ...entry, role_name: roleInput ? roleInput.value.trim() : entry.role_name });
-            }
-          });
-          if (members.length === 0 && understudies.length === 0) return '';
-          const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${piece.color};margin-right:6px;vertical-align:middle;"></span>`;
-          const renderList = (list) => list.map(c => {
-            const name = `${c.first_name} ${c.last_name}`;
-            return `<li style="padding:3px 0;">${name}${c.role_name ? ` <span style="color:#888;font-size:12px;">— ${c.role_name}</span>` : ''}</li>`;
-          }).join('');
-          return `
-            <div style="margin-bottom:20px;">
-              <div style="font-weight:700;font-size:15px;margin-bottom:6px;">${dot}${piece.name}</div>
-              ${members.length ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:4px;">Cast</div><ul style="margin:0 0 8px;padding-left:18px;list-style:disc;">${renderList(members)}</ul>` : ''}
-              ${understudies.length ? `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;margin-bottom:4px;">Understudies</div><ul style="margin:0;padding-left:18px;list-style:disc;">${renderList(understudies)}</ul>` : ''}
-            </div>`;
-        }).join('') || '<p class="text-muted">No cast members added yet.</p>';
+        new bootstrap.Modal(document.getElementById('previewModal')).show();
+        return;
       }
+
+      // Helper: read current DOM order + role names (DnD may have changed them)
+      function getDomList(pieceId, role) {
+        const list = [];
+        document.querySelectorAll(`#${role}-list-${pieceId} .dancer-row`).forEach(row => {
+          const entry = allCasts.find(c => String(c.id) === row.dataset.castId);
+          if (!entry) return;
+          const roleInput = row.querySelector('.role-name-input');
+          list.push({ ...entry, role_name: roleInput ? roleInput.value.trim() : (entry.role_name || '') });
+        });
+        return list;
+      }
+
+      let html = `<div class="alert alert-secondary py-2 px-3 mb-4" style="font-size:12px;">
+        This is exactly what auditionees see when cast results are published.
+      </div>`;
+
+      for (const piece of allPieces) {
+        const members      = getDomList(piece.id, 'member');
+        const understudies = getDomList(piece.id, 'understudy');
+        const blocks       = piece.blocks || [];
+        const rehearsalStr = blocks.length
+          ? blocks.map(b => `${b.day} ${b.start_time}–${b.end_time}`).join(', ')
+          : 'TBD';
+
+        html += `<div style="border-top:1px solid #e8e8e8;padding-top:14px;margin-bottom:20px;">`;
+
+        if (piece.choreographer_name) {
+          html += `<div class="d-flex align-items-center gap-2 mb-1">
+            <strong style="font-size:15px;">${piece.choreographer_name}</strong>
+          </div>`;
+          if (piece.choreographer_email) {
+            html += `<p style="font-size:13px;color:#555;margin-bottom:6px;">
+              <a href="mailto:${piece.choreographer_email}" style="color:#555;">${piece.choreographer_email}</a>
+            </p>`;
+          }
+        } else {
+          html += `<div class="mb-1">
+            <strong style="font-size:15px;color:#aaa;font-style:italic;">${piece.name} — No choreographer listed</strong>
+          </div>`;
+        }
+
+        html += `<p style="font-size:13px;color:#555;margin-bottom:10px;">Rehearsals: ${rehearsalStr}</p>`;
+
+        if (members.length === 0 && understudies.length === 0) {
+          html += `<p style="font-size:13px;color:#aaa;font-style:italic;">No cast assigned yet.</p>`;
+        } else {
+          members.forEach(c => {
+            const role = c.role_name ? ` <span style="color:#777;font-size:12px;">— ${c.role_name}</span>` : '';
+            html += `<p style="font-size:14px;margin:3px 0;">${c.first_name} ${c.last_name}${role}</p>`;
+          });
+          understudies.forEach(c => {
+            const role = c.role_name ? ` <span style="color:#777;font-size:12px;">— ${c.role_name}</span>` : '';
+            html += `<p style="font-size:14px;margin:3px 0;color:#666;">${c.first_name} ${c.last_name}${role} <span style="font-size:12px;">(understudy)</span></p>`;
+          });
+        }
+
+        html += `</div>`;
+      }
+
+      body.innerHTML = html;
       new bootstrap.Modal(document.getElementById('previewModal')).show();
     }
 

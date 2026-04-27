@@ -165,6 +165,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
+    // Reposition placeholder blocks (they don't participate in lane layout but
+    // their left/width must match the current grid width)
+    const dayWidthNow = grid.clientWidth / 7;
+    document.querySelectorAll('.placeholder-block').forEach(block => {
+      const di = DAYS.indexOf(block.dataset.day);
+      if (di === -1) return;
+      block.style.left  = `${di * dayWidthNow}px`;
+      block.style.width = `${dayWidthNow}px`;
+    });
+
     highlightConflicts();
   }
 
@@ -611,4 +621,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadRoomCount();
   await new Promise(r => requestAnimationFrame(r));
   await loadBlocks();
+
+  // Reposition blocks before/after printing so pixel positions match the print layout
+  window.addEventListener('beforeprint', () => repositionAllBlocks());
+  window.addEventListener('afterprint',  () => repositionAllBlocks());
 });
