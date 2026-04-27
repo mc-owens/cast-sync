@@ -1963,7 +1963,7 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
 
     const dancersResult = await pool.query(
       `SELECT dp.id, u.id AS user_id, dp.first_name, dp.last_name, sub.availability,
-              sub.audition_number, pc.cast_role AS existing_cast_role
+              sub.audition_number, pc.cast_role AS existing_cast_role, pc.id AS cast_id
        FROM submissions sub
        JOIN dancer_profiles dp ON dp.user_id = sub.user_id
        JOIN users u ON u.id = sub.user_id
@@ -1987,6 +1987,7 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
         last_name: dancer.last_name,
         audition_number: dancer.audition_number || null,
         cast_role: dancer.existing_cast_role || null,
+        cast_id: dancer.cast_id || null,
       };
       if (covered === pieceBlocks.length) fully.push(entry);
       else if (covered > 0)              partially.push(entry);

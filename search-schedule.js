@@ -215,7 +215,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Renders a clickable dancer name + cast buttons in the availability list
+  // Renders a clickable dancer name + toggleable cast/understudy buttons
   function appendDancerItem(listEl, dancer, pieceId) {
     const li = document.createElement('li');
     li.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;';
@@ -235,73 +235,107 @@ document.addEventListener('DOMContentLoaded', async () => {
       );
     });
 
-    const btnGroup = document.createElement('div');
-    btnGroup.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
-
     const castBtn = document.createElement('button');
     castBtn.style.cssText = 'font-size:11px;padding:1px 7px;line-height:1.5;';
 
     const understudyBtn = document.createElement('button');
     understudyBtn.style.cssText = 'font-size:11px;padding:1px 7px;line-height:1.5;';
 
-    if (dancer.cast_role === 'member') {
-      // Already a cast member — show confirmed state
-      castBtn.textContent = '✓ Cast';
-      castBtn.className   = 'btn btn-success';
-      castBtn.disabled    = true;
-      understudyBtn.style.display = 'none';
-      understudyBtn.textContent   = '+ Understudy';
-      understudyBtn.className     = 'btn btn-outline-secondary';
-    } else if (dancer.cast_role === 'understudy') {
-      // Already an understudy — show confirmed state
-      understudyBtn.textContent = '✓ Understudy';
-      understudyBtn.className   = 'btn btn-success';
-      understudyBtn.disabled    = true;
-      castBtn.style.display     = 'none';
-      castBtn.textContent       = '+ Cast';
-      castBtn.className         = 'btn btn-outline-primary';
-    } else {
-      // Not yet cast — show action buttons
-      castBtn.textContent   = '+ Cast';
-      castBtn.className     = 'btn btn-outline-primary';
-      understudyBtn.textContent = '+ Understudy';
-      understudyBtn.className   = 'btn btn-outline-secondary';
-      castBtn.addEventListener('click', () => addToCast(pieceId, dancer.id, 'member', castBtn, understudyBtn));
-      understudyBtn.addEventListener('click', () => addToCast(pieceId, dancer.id, 'understudy', understudyBtn, castBtn));
-    }
-
+    const btnGroup = document.createElement('div');
+    btnGroup.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
     btnGroup.appendChild(castBtn);
     btnGroup.appendChild(understudyBtn);
     li.appendChild(link);
     li.appendChild(btnGroup);
     listEl.appendChild(li);
-  }
 
-  async function addToCast(pieceId, userId, castRole, clickedBtn, otherBtn) {
-    clickedBtn.disabled = true;
-    otherBtn.disabled   = true;
-    try {
-      const res = await fetch('/api/piece-casts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ piece_id: pieceId, user_id: userId, cast_role: castRole }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        alert(data.error || 'Failed to add to cast.');
-        clickedBtn.disabled = false;
-        otherBtn.disabled   = false;
-        return;
+    // Mutable per-row state
+    let currentRole   = dancer.cast_role; // null | 'member' | 'understudy'
+    let currentCastId = dancer.cast_id;   // piece_casts.id or null
+
+    function renderBtns() {
+      if (currentRole === 'member') {
+        castBtn.textContent = '✓ Cast';
+        castBtn.className   = 'btn btn-success';
+        castBtn.title       = 'Click to remove from cast';
+        castBtn.style.display = '';
+        castBtn.onclick     = removeFromCast;
+        understudyBtn.textContent = '→ Understudy';
+        understudyBtn.className   = 'btn btn-outline-secondary';
+        understudyBtn.title       = 'Switch to understudy';
+        understudyBtn.style.display = '';
+        understudyBtn.onclick     = () => setCast('understudy');
+      } else if (currentRole === 'understudy') {
+        castBtn.textContent = '→ Cast';
+        castBtn.className   = 'btn btn-outline-primary';
+        castBtn.title       = 'Switch to cast member';
+        castBtn.style.display = '';
+        castBtn.onclick     = () => setCast('member');
+        understudyBtn.textContent = '✓ Understudy';
+        understudyBtn.className   = 'btn btn-success';
+        understudyBtn.title       = 'Click to remove from understudies';
+        understudyBtn.style.display = '';
+        understudyBtn.onclick     = removeFromCast;
+      } else {
+        castBtn.textContent = '+ Cast';
+        castBtn.className   = 'btn btn-outline-primary';
+        castBtn.title       = '';
+        castBtn.style.display = '';
+        castBtn.onclick     = () => setCast('member');
+        understudyBtn.textContent = '+ Understudy';
+        understudyBtn.className   = 'btn btn-outline-secondary';
+        understudyBtn.title       = '';
+        understudyBtn.style.display = '';
+        understudyBtn.onclick     = () => setCast('understudy');
       }
-      clickedBtn.textContent = castRole === 'member' ? '✓ Cast' : '✓ Understudy';
-      clickedBtn.className   = 'btn btn-success';
-      clickedBtn.style.cssText = 'font-size:11px;padding:1px 7px;line-height:1.5;';
-      otherBtn.style.display = 'none';
-    } catch (err) {
-      console.error(err);
-      clickedBtn.disabled = false;
-      otherBtn.disabled   = false;
     }
+
+    async function setCast(role) {
+      castBtn.disabled = true;
+      understudyBtn.disabled = true;
+      try {
+        const res = await fetch('/api/piece-casts', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ piece_id: parseInt(pieceId), user_id: dancer.id, cast_role: role }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          alert(data.error || 'Failed to update cast.');
+          return;
+        }
+        const data  = await res.json();
+        currentRole   = role;
+        currentCastId = data.id;
+        renderBtns();
+      } catch (err) {
+        console.error(err);
+        alert('Failed to update cast.');
+      } finally {
+        castBtn.disabled = false;
+        understudyBtn.disabled = false;
+      }
+    }
+
+    async function removeFromCast() {
+      if (!currentCastId) return;
+      castBtn.disabled = true;
+      understudyBtn.disabled = true;
+      try {
+        const res = await fetch(`/api/piece-casts/${currentCastId}`, { method: 'DELETE' });
+        if (!res.ok) { alert('Could not remove dancer.'); return; }
+        currentRole   = null;
+        currentCastId = null;
+        renderBtns();
+      } catch (err) {
+        console.error(err);
+      } finally {
+        castBtn.disabled = false;
+        understudyBtn.disabled = false;
+      }
+    }
+
+    renderBtns();
   }
 
   // ── Dancer profile modal ──────────────────────────────────────────────────────

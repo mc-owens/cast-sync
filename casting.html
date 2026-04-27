@@ -239,6 +239,11 @@
           btn.addEventListener('click', () => removeCast(btn));
         });
 
+        // Wire up switch-role buttons
+        document.querySelectorAll('.switch-role-btn').forEach(btn => {
+          btn.addEventListener('click', () => switchCastRole(btn));
+        });
+
       } catch (err) {
         console.error(err);
         document.getElementById('loading-msg').textContent = 'Could not load casting data.';
@@ -247,10 +252,21 @@
 
     function buildDancerList(casts, pieceId, role) {
       if (casts.length === 0) return '';
+      const switchLabel = role === 'member' ? '→ Understudy' : '→ Cast';
+      const switchRole  = role === 'member' ? 'understudy'   : 'member';
       return casts.map(c => `
         <div class="dancer-row" id="cast-row-${c.id}">
           <span>${c.last_name}, ${c.first_name}</span>
-          <button class="remove-btn" data-remove-id="${c.id}" data-piece-id="${pieceId}" data-role="${role}" title="Remove">&#x2715;</button>
+          <div style="display:flex;gap:4px;align-items:center;">
+            <button class="switch-role-btn"
+              data-cast-id="${c.id}" data-piece-id="${pieceId}"
+              data-user-id="${c.user_id}" data-current-role="${role}" data-target-role="${switchRole}"
+              style="font-size:11px;padding:1px 8px;line-height:1.5;background:none;border:1px solid #ccc;border-radius:4px;cursor:pointer;color:#555;"
+              title="Move to ${switchRole === 'member' ? 'Cast Members' : 'Understudies'}">
+              ${switchLabel}
+            </button>
+            <button class="remove-btn" data-remove-id="${c.id}" data-piece-id="${pieceId}" data-role="${role}" title="Remove">&#x2715;</button>
+          </div>
         </div>`).join('');
     }
 
@@ -275,6 +291,60 @@
         refreshPieceSummary(pieceId);
       } catch (err) {
         console.error(err);
+      }
+    }
+
+    async function switchCastRole(btn) {
+      const castId      = btn.dataset.castId;
+      const pieceId     = parseInt(btn.dataset.pieceId);
+      const userId      = parseInt(btn.dataset.userId);
+      const currentRole = btn.dataset.currentRole;
+      const targetRole  = btn.dataset.targetRole;
+
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/piece-casts', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ piece_id: pieceId, user_id: userId, cast_role: targetRole }),
+        });
+        if (!res.ok) { alert('Could not switch role.'); return; }
+
+        // Move row to the other list without page reload
+        const row           = document.getElementById(`cast-row-${castId}`);
+        const sourceListEl  = document.getElementById(`${currentRole}-list-${pieceId}`);
+        const targetListEl  = document.getElementById(`${targetRole}-list-${pieceId}`);
+        if (!row || !sourceListEl || !targetListEl) return;
+
+        // Update button attributes for the new state
+        const newSwitchLabel = targetRole === 'member' ? '→ Understudy' : '→ Cast';
+        btn.dataset.currentRole = targetRole;
+        btn.dataset.targetRole  = currentRole;
+        btn.textContent         = newSwitchLabel;
+        btn.title = `Move to ${currentRole === 'member' ? 'Cast Members' : 'Understudies'}`;
+
+        // Update the remove button's role attribute
+        const removeBtn = row.querySelector('.remove-btn');
+        if (removeBtn) removeBtn.dataset.role = targetRole;
+
+        // Remove empty placeholder from target if present
+        const targetEmpty = targetListEl.querySelector('.cast-empty');
+        if (targetEmpty) targetEmpty.remove();
+
+        // Move the row
+        targetListEl.appendChild(row);
+
+        // If source is now empty, show placeholder
+        if (sourceListEl.querySelectorAll('.dancer-row').length === 0) {
+          sourceListEl.innerHTML = '<p class="text-muted mb-0 cast-empty" style="font-size:13px;">None added yet.</p>';
+        }
+
+        refreshPieceSummary(pieceId);
+      } catch (err) {
+        console.error(err);
+        alert('Could not switch role.');
+      } finally {
+        btn.disabled = false;
       }
     }
 

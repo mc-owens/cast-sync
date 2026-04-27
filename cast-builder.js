@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── State ─────────────────────────────────────────────────────────────────────
   let selectedDancers    = [];
+  let selectedUnderstudies = [];
   let pieces             = [];
   let currentCommonSlots = [];
   let masterBlocks       = [];
@@ -22,6 +23,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const castList     = document.getElementById('cast-list');
   const castEmptyMsg = document.getElementById('cast-empty-msg');
   const castCount    = document.getElementById('cast-count');
+
+  const understudySearchInput = document.getElementById('understudy-search');
+  const understudyDropdown    = document.getElementById('understudy-dropdown');
+  const understudyList        = document.getElementById('understudy-list');
+  const understudyEmptyMsg    = document.getElementById('understudy-empty-msg');
+  const understudyCount       = document.getElementById('understudy-count');
+
   const summary      = document.getElementById('cast-summary');
   const placeholder  = document.getElementById('common-placeholder');
   const results      = document.getElementById('common-results');
@@ -127,9 +135,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Dancer double-booking check (against piece_casts in the DB)
-    if (dancerEl && selectedDancers.length > 0) {
+    const allSelectedForConflict = [...selectedDancers, ...selectedUnderstudies];
+    if (dancerEl && allSelectedForConflict.length > 0) {
       try {
-        const userIds   = selectedDancers.map(d => d.user_id).join(',');
+        const userIds   = allSelectedForConflict.map(d => d.user_id).join(',');
         const startTime = hh24ToTimeString(startVal);
         const endTime   = hh24ToTimeString(endVal);
         const params    = new URLSearchParams({ day, start_time: startTime, end_time: endTime, user_ids: userIds });
@@ -191,13 +200,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   searchInput.addEventListener('keydown', e => { if (e.key === 'Escape') hideDropdown(); });
-  document.addEventListener('click', e => { if (!e.target.closest('.search-wrapper')) hideDropdown(); });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#cast-search-wrapper'))       hideDropdown();
+    if (!e.target.closest('#understudy-search-wrapper')) hideUnderstudyDropdown();
+  });
 
   async function fetchDancers(q) {
     try {
       const res      = await fetch(`/api/dancers/search?q=${encodeURIComponent(q)}`);
       const dancers  = await res.json();
-      const filtered = dancers.filter(d => !selectedDancers.find(s => s.id === d.id));
+      const filtered = dancers.filter(d =>
+        !selectedDancers.find(s => s.id === d.id) &&
+        !selectedUnderstudies.find(s => s.id === d.id)
+      );
 
       dropdown.innerHTML = '';
       if (filtered.length === 0) {
@@ -221,6 +236,52 @@ document.addEventListener('DOMContentLoaded', () => {
   function hideDropdown() {
     dropdown.style.display = 'none';
     dropdown.innerHTML     = '';
+  }
+
+  // ── Understudy search ─────────────────────────────────────────────────────────
+
+  let understudyDebounceTimer = null;
+
+  understudySearchInput.addEventListener('input', () => {
+    clearTimeout(understudyDebounceTimer);
+    const q = understudySearchInput.value.trim();
+    if (!q) { hideUnderstudyDropdown(); return; }
+    understudyDebounceTimer = setTimeout(() => fetchUnderstudies(q), 300);
+  });
+
+  understudySearchInput.addEventListener('keydown', e => { if (e.key === 'Escape') hideUnderstudyDropdown(); });
+
+  async function fetchUnderstudies(q) {
+    try {
+      const res      = await fetch(`/api/dancers/search?q=${encodeURIComponent(q)}`);
+      const dancers  = await res.json();
+      const filtered = dancers.filter(d =>
+        !selectedDancers.find(s => s.id === d.id) &&
+        !selectedUnderstudies.find(s => s.id === d.id)
+      );
+
+      understudyDropdown.innerHTML = '';
+      if (filtered.length === 0) {
+        understudyDropdown.innerHTML = '<div class="dropdown-item-dancer text-muted">No results found.</div>';
+      } else {
+        filtered.forEach(dancer => {
+          const item     = document.createElement('div');
+          item.className = 'dropdown-item-dancer';
+          item.innerHTML = `${dancer.first_name} ${dancer.last_name}`
+            + (dancer.audition_number
+                ? ` <span style="color:#999;font-size:12px;">#${dancer.audition_number}</span>`
+                : '');
+          item.addEventListener('click', () => addUnderstudy(dancer));
+          understudyDropdown.appendChild(item);
+        });
+      }
+      understudyDropdown.style.display = 'block';
+    } catch (err) { console.error(err); }
+  }
+
+  function hideUnderstudyDropdown() {
+    understudyDropdown.style.display = 'none';
+    understudyDropdown.innerHTML     = '';
   }
 
   // ── Cast list ─────────────────────────────────────────────────────────────────
@@ -265,6 +326,51 @@ document.addEventListener('DOMContentLoaded', () => {
       chip.appendChild(nameBtn);
       chip.appendChild(removeBtn);
       castList.appendChild(chip);
+    });
+  }
+
+  // ── Understudy list ───────────────────────────────────────────────────────────
+
+  function addUnderstudy(dancer) {
+    if (selectedUnderstudies.find(d => d.id === dancer.id)) return;
+    selectedUnderstudies.push(dancer);
+    understudySearchInput.value = '';
+    hideUnderstudyDropdown();
+    renderUnderstudies();
+    computeCommonAvailability();
+  }
+
+  function removeUnderstudy(id) {
+    selectedUnderstudies = selectedUnderstudies.filter(d => d.id !== id);
+    renderUnderstudies();
+    computeCommonAvailability();
+  }
+
+  function renderUnderstudies() {
+    Array.from(understudyList.children).forEach(c => { if (c !== understudyEmptyMsg) c.remove(); });
+    understudyCount.textContent = `${selectedUnderstudies.length} selected`;
+
+    if (selectedUnderstudies.length === 0) { understudyEmptyMsg.style.display = 'block'; return; }
+    understudyEmptyMsg.style.display = 'none';
+
+    selectedUnderstudies.forEach(dancer => {
+      const chip = document.createElement('div');
+      chip.className = 'understudy-chip';
+
+      const nameBtn = document.createElement('span');
+      nameBtn.textContent   = `${dancer.first_name} ${dancer.last_name}`;
+      nameBtn.style.cssText = 'cursor:pointer;text-decoration:underline;color:#856404;flex:1;';
+      nameBtn.title         = 'Click to view schedule';
+      nameBtn.addEventListener('click', () => openDancerModal(dancer.user_id));
+
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = '×';
+      removeBtn.title       = 'Remove';
+      removeBtn.addEventListener('click', () => removeUnderstudy(dancer.id));
+
+      chip.appendChild(nameBtn);
+      chip.appendChild(removeBtn);
+      understudyList.appendChild(chip);
     });
   }
 
@@ -530,7 +636,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function computeCommonAvailability() {
     currentCommonSlots = [];
 
-    if (selectedDancers.length === 0) {
+    const allSelected = [...selectedDancers, ...selectedUnderstudies];
+
+    if (allSelected.length === 0) {
       placeholder.style.display = 'block';
       results.style.display     = 'none';
       updateActionPanel();
@@ -544,9 +652,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const openByDay = {};
 
     DAYS.forEach(day => {
-      let common = getDayIntervals(selectedDancers[0], day);
-      for (let i = 1; i < selectedDancers.length; i++) {
-        common = intersectIntervals(common, getDayIntervals(selectedDancers[i], day));
+      let common = getDayIntervals(allSelected[0], day);
+      for (let i = 1; i < allSelected.length; i++) {
+        common = intersectIntervals(common, getDayIntervals(allSelected[i], day));
         if (!common.length) break;
       }
       allByDay[day]  = common;
@@ -559,7 +667,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const foundAny = currentCommonSlots.length > 0;
-    noCommon.style.display = (!foundAny && selectedDancers.length >= 2) ? 'block' : 'none';
+    noCommon.style.display = (!foundAny && allSelected.length >= 2) ? 'block' : 'none';
 
     renderAvailGrid(allByDay, openByDay);
     renderTextList(currentCommonSlots);
@@ -569,20 +677,26 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Action panel + summary sentence ──────────────────────────────────────────
 
   function updateActionPanel() {
-    const n = selectedDancers.length;
-    const s = currentCommonSlots.length;
+    const castN       = selectedDancers.length;
+    const understudyN = selectedUnderstudies.length;
+    const total       = castN + understudyN;
+    const s           = currentCommonSlots.length;
 
-    if (n === 0) {
+    if (total === 0) {
       summary.textContent       = '';
       actionPanel.style.display = 'none';
-    } else if (n === 1) {
-      summary.textContent       = '1 dancer selected — add a second to see shared availability';
+    } else if (total === 1) {
+      const label = castN === 1 ? '1 cast member' : '1 understudy';
+      summary.textContent       = `${label} selected — add a second to see shared availability`;
       actionPanel.style.display = 'none';
     } else {
+      const parts = [];
+      if (castN > 0)       parts.push(`${castN} cast`);
+      if (understudyN > 0) parts.push(`${understudyN} understudy`);
       summary.textContent = s > 0
-        ? `${n} dancers selected — ${s} shared window${s === 1 ? '' : 's'}`
-        : `${n} dancers selected — no shared availability`;
-      actionPanel.style.display = s > 0 ? 'block' : 'none';
+        ? `${parts.join(', ')} selected — ${s} shared window${s === 1 ? '' : 's'}`
+        : `${parts.join(', ')} selected — no shared availability`;
+      actionPanel.style.display = (castN >= 1 && s > 0) ? 'block' : 'none';
     }
   }
 
@@ -708,7 +822,31 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(data.error || 'Failed to add block.');
       }
 
-      successEl.textContent = `✓ "${pieceName}" — ${day} ${startTime} – ${endTime} added to the Master Schedule`;
+      // Save selected dancers as cast members and understudies in piece_casts
+      const castInserts = [
+        ...selectedDancers.map(d =>
+          fetch('/api/piece-casts', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ piece_id: pieceId, user_id: d.user_id, cast_role: 'member' }),
+          })
+        ),
+        ...selectedUnderstudies.map(d =>
+          fetch('/api/piece-casts', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ piece_id: pieceId, user_id: d.user_id, cast_role: 'understudy' }),
+          })
+        ),
+      ];
+      await Promise.all(castInserts);
+
+      const castSummary = [];
+      if (selectedDancers.length > 0)     castSummary.push(`${selectedDancers.length} cast`);
+      if (selectedUnderstudies.length > 0) castSummary.push(`${selectedUnderstudies.length} understudy`);
+      const castNote = castSummary.length > 0 ? ` · ${castSummary.join(', ')} saved` : '';
+
+      successEl.textContent = `✓ "${pieceName}" — ${day} ${startTime} – ${endTime} added to Master Schedule${castNote}`;
       successEl.classList.remove('d-none');
       document.getElementById('piece-name-input').value = '';
       // Reload blocks and re-render grid to reflect the new rehearsal

@@ -9,7 +9,8 @@
   <style>
     .search-wrapper { position: relative; }
 
-    #search-dropdown {
+    #search-dropdown,
+    #understudy-dropdown {
       position: absolute;
       top: 100%;
       left: 0;
@@ -41,7 +42,19 @@
       margin-bottom: 6px;
       font-size: 14px;
     }
-    .cast-chip button {
+    .understudy-chip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #fff8e1;
+      border: 1px solid #f0cc74;
+      border-radius: 20px;
+      padding: 4px 12px;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+    .cast-chip button,
+    .understudy-chip button {
       background: none;
       border: none;
       color: #888;
@@ -50,7 +63,8 @@
       padding: 0 0 0 8px;
       cursor: pointer;
     }
-    .cast-chip button:hover { color: #dc3545; }
+    .cast-chip button:hover,
+    .understudy-chip button:hover { color: #dc3545; }
 
     .common-day {
       margin-bottom: 12px;
@@ -210,33 +224,53 @@
   <div class="container-fluid mt-4 px-4">
     <div class="row g-4">
 
-      <!-- Left panel: search + cast list -->
+      <!-- Left panel: search + cast/understudy lists -->
       <div class="col-md-4">
         <h5 class="mb-3">Build Your Cast</h5>
 
-        <!-- Search -->
-        <div class="search-wrapper mb-3">
-          <label for="dancer-search" class="form-label">Search dancers by name</label>
+        <!-- Cast search -->
+        <div class="search-wrapper mb-2" id="cast-search-wrapper">
+          <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555;">Cast Members</label>
           <input
             type="text"
             id="dancer-search"
             class="form-control"
-            placeholder="Start typing a name..."
+            placeholder="Search by name…"
             autocomplete="off"
           />
           <div id="search-dropdown" style="display:none;"></div>
         </div>
 
-        <!-- Selected cast -->
-        <div>
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <span class="fw-bold" style="font-size:14px;">Selected Dancers</span>
+        <div class="mb-3">
+          <div class="d-flex justify-content-end mb-1">
             <span id="cast-count" class="text-muted" style="font-size:12px;">0 selected</span>
           </div>
           <div id="cast-list">
-            <p id="cast-empty-msg" class="text-muted" style="font-size:13px;">
-              Search for a dancer above to add them to the cast.
-            </p>
+            <p id="cast-empty-msg" class="text-muted" style="font-size:13px;">No cast members added yet.</p>
+          </div>
+        </div>
+
+        <hr class="my-3">
+
+        <!-- Understudy search -->
+        <div class="search-wrapper mb-2" id="understudy-search-wrapper">
+          <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555;">Understudies <span style="font-weight:400;color:#999;">(optional)</span></label>
+          <input
+            type="text"
+            id="understudy-search"
+            class="form-control"
+            placeholder="Search by name…"
+            autocomplete="off"
+          />
+          <div id="understudy-dropdown" style="display:none;"></div>
+        </div>
+
+        <div>
+          <div class="d-flex justify-content-end mb-1">
+            <span id="understudy-count" class="text-muted" style="font-size:12px;">0 selected</span>
+          </div>
+          <div id="understudy-list">
+            <p id="understudy-empty-msg" class="text-muted" style="font-size:13px;">No understudies added yet.</p>
           </div>
         </div>
       </div>
