@@ -498,10 +498,25 @@ app.post('/api/auth/reset-password', async (req, res) => {
     if (result.rows.length === 0) return res.status(400).json({ error: 'Invalid or expired reset link.' });
     const hash = await bcrypt.hash(password, 12);
     // Also mark email verified — if they can access their inbox, email is valid
-    await pool.query(
-      'UPDATE users SET password_hash=$1, reset_token=NULL, reset_token_expires=NULL, email_verified=TRUE WHERE id=$2',
+    const userRow = await pool.query(
+      'UPDATE users SET password_hash=$1, reset_token=NULL, reset_token_expires=NULL, email_verified=TRUE WHERE id=$2 RETURNING email',
       [hash, result.rows[0].id]
     );
+    // Security notification
+    if (emailEnabled && userRow.rows[0]?.email) {
+      resend.emails.send({
+        from: FROM_EMAIL,
+        to:   userRow.rows[0].email,
+        subject: 'Your CastSync password was changed',
+        html: `
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#111;">
+            <div style="font-family:'Georgia',serif;font-size:22px;font-weight:700;margin-bottom:24px;">CastSync</div>
+            <p style="font-size:15px;line-height:1.6;">Your CastSync password was just changed successfully.</p>
+            <p style="font-size:14px;color:#6b7280;">If you made this change, no action is needed.</p>
+            <p style="font-size:14px;color:#6b7280;">If you did <strong>not</strong> make this change, contact us immediately at <a href="mailto:support@cast-sync.com" style="color:#111;">support@cast-sync.com</a>.</p>
+          </div>`,
+      }).catch(() => {});
+    }
     // Destroy any existing session so the user logs in fresh as the correct account
     req.session.destroy(() => {
       res.json({ message: 'Password updated.' });
