@@ -506,6 +506,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentBlock.style.position   = 'absolute';
     currentBlock.style.boxSizing  = 'border-box';
     currentBlock.style.pointerEvents = 'none';
+    currentBlock.style.zIndex     = '20';  // float above all existing blocks while drawing
     currentBlock.style.fontSize   = '11px';
     currentBlock.style.padding    = '2px 4px';
     currentBlock.style.color      = '#555';

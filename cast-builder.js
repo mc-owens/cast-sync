@@ -313,9 +313,14 @@ document.addEventListener('DOMContentLoaded', () => {
       chip.className = 'cast-chip';
 
       const nameBtn = document.createElement('span');
-      nameBtn.textContent   = `${dancer.first_name} ${dancer.last_name}`;
-      nameBtn.style.cssText = 'cursor:pointer;text-decoration:underline;color:#0d6efd;flex:1;';
+      nameBtn.style.cssText = 'cursor:pointer;flex:1;display:flex;align-items:center;gap:6px;';
       nameBtn.title         = 'Click to view schedule';
+      if (dancer.audition_number) {
+        nameBtn.innerHTML = `<span style="font-size:11px;font-weight:700;color:#888;flex-shrink:0;">#${dancer.audition_number}</span>`
+          + `<span style="text-decoration:underline;color:#0d6efd;">${dancer.first_name} ${dancer.last_name}</span>`;
+      } else {
+        nameBtn.innerHTML = `<span style="text-decoration:underline;color:#0d6efd;">${dancer.first_name} ${dancer.last_name}</span>`;
+      }
       nameBtn.addEventListener('click', () => openDancerModal(dancer.user_id));
 
       const removeBtn = document.createElement('button');
@@ -358,9 +363,14 @@ document.addEventListener('DOMContentLoaded', () => {
       chip.className = 'understudy-chip';
 
       const nameBtn = document.createElement('span');
-      nameBtn.textContent   = `${dancer.first_name} ${dancer.last_name}`;
-      nameBtn.style.cssText = 'cursor:pointer;text-decoration:underline;color:#856404;flex:1;';
+      nameBtn.style.cssText = 'cursor:pointer;flex:1;display:flex;align-items:center;gap:6px;';
       nameBtn.title         = 'Click to view schedule';
+      if (dancer.audition_number) {
+        nameBtn.innerHTML = `<span style="font-size:11px;font-weight:700;color:#888;flex-shrink:0;">#${dancer.audition_number}</span>`
+          + `<span style="text-decoration:underline;color:#856404;">${dancer.first_name} ${dancer.last_name}</span>`;
+      } else {
+        nameBtn.innerHTML = `<span style="text-decoration:underline;color:#856404;">${dancer.first_name} ${dancer.last_name}</span>`;
+      }
       nameBtn.addEventListener('click', () => openDancerModal(dancer.user_id));
 
       const removeBtn = document.createElement('button');
