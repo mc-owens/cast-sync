@@ -49,7 +49,14 @@
             </table>
           </div>
         </div>
-        <div class="modal-footer">
+        <div class="modal-footer d-flex align-items-center justify-content-between">
+          <div class="d-flex align-items-center gap-2">
+            <label style="font-size:13px;font-weight:600;white-space:nowrap;margin-bottom:0;">Audition #</label>
+            <input type="text" id="edit-audition-number" class="form-control form-control-sm"
+                   style="width:110px;" placeholder="e.g. 42" autocomplete="off" />
+            <button class="btn btn-sm btn-outline-secondary" id="save-audition-number-btn">Save</button>
+            <span id="audition-save-ok" class="text-success" style="font-size:12px;display:none;">Saved</span>
+          </div>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
         </div>
       </div>
@@ -150,14 +157,8 @@
           <th>Name</th>
           <th>Email</th>
           <th>Grade</th>
-          <th id="pieces-cast-th">
-            Pieces Cast
-            <button id="pieces-cast-toggle" class="btn btn-link p-0 ms-1 d-none"
-              style="font-size:11px;text-decoration:none;vertical-align:baseline;"
-              title="Switch between this production and org-wide count">
-              · This production
-            </button>
-          </th>
+          <th>Cast (production)</th>
+          <th>Cast (org-wide)</th>
           <th>Submitted</th>
           <th></th>
         </tr>
@@ -215,8 +216,13 @@
       container.appendChild(wrapper);
     }
 
+    let _modalUserId = null;
+
     async function openDancerModal(id) {
+      _modalUserId = id;
       document.getElementById('dancer-cast-list').innerHTML = '<span class="text-muted" style="font-size:13px;">Loading…</span>';
+      document.getElementById('edit-audition-number').value = '';
+      document.getElementById('audition-save-ok').style.display = 'none';
       try {
         const [dancerRes, piecesRes] = await Promise.all([
           fetch(`/api/dancers/${id}`),
@@ -265,6 +271,7 @@
         document.getElementById('detail-technique').textContent = dancer.technique_classes || '—';
         document.getElementById('detail-injuries').textContent  = dancer.injuries          || '—';
         document.getElementById('detail-absences').textContent  = dancer.absences          || '—';
+        document.getElementById('edit-audition-number').value   = dancer.audition_number   || '';
         document.getElementById('dancer-full-profile').classList.remove('show');
         new bootstrap.Modal(document.getElementById('dancerModal')).show();
       } catch (err) {
@@ -324,10 +331,8 @@
           <td style="cursor:pointer;"><span class="open-modal" style="color:#0d6efd;text-decoration:underline;">${d.last_name}, ${d.first_name}</span></td>
           <td style="color:#555;">${d.email || '—'}</td>
           <td>${d.grade || '—'}</td>
-          <td class="pieces-cast-cell" data-prod="${d.piece_count}" data-org="${d.org_piece_count}">
-            <span class="pc-prod">${d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>'}</span>
-            <span class="pc-org" style="display:none;">${d.org_piece_count > 0 ? `<span class="badge bg-primary">${d.org_piece_count}</span>` : '<span class="text-muted">0</span>'}</span>
-          </td>
+          <td>${d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>'}</td>
+          <td>${d.org_piece_count > 0 ? `<span class="badge bg-primary">${d.org_piece_count}</span>` : '<span class="text-muted">0</span>'}</td>
           <td style="color:#888;">${formatDate(d.created_at)}</td>
           <td>
             <button class="btn btn-link p-0 text-danger remove-sub-btn" style="font-size:13px;" data-user-id="${d.user_id}" data-name="${d.first_name} ${d.last_name}" title="Remove submission">Remove</button>
@@ -361,21 +366,6 @@
 
         applyFilterSort();
 
-        // Show the scope toggle only when at least one dancer has org-wide pieces
-        const hasOrgPieces = allDancers.some(d => d.org_piece_count > d.piece_count);
-        if (hasOrgPieces) {
-          let showingOrg = false;
-          const toggleBtn = document.getElementById('pieces-cast-toggle');
-          toggleBtn.classList.remove('d-none');
-          toggleBtn.addEventListener('click', () => {
-            showingOrg = !showingOrg;
-            toggleBtn.textContent = showingOrg ? '· Org-wide' : '· This production';
-            document.querySelectorAll('.pieces-cast-cell').forEach(cell => {
-              cell.querySelector('.pc-prod').style.display = showingOrg ? 'none' : '';
-              cell.querySelector('.pc-org').style.display  = showingOrg ? ''     : 'none';
-            });
-          });
-        }
       } catch (err) {
         console.error(err);
         document.getElementById('loading-msg').textContent = 'Could not load submissions.';
@@ -413,6 +403,27 @@
     });
 
     loadDancers();
+
+    document.getElementById('save-audition-number-btn').addEventListener('click', async () => {
+      if (!_modalUserId) return;
+      const val = document.getElementById('edit-audition-number').value.trim();
+      try {
+        const res = await fetch(`/api/dancers/${_modalUserId}/audition-number`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ audition_number: val }),
+        });
+        if (!res.ok) { alert('Could not save audition number.'); return; }
+        // Update the in-memory list and the table row
+        const d = allDancers.find(x => x.user_id === _modalUserId);
+        if (d) d.audition_number = val || null;
+        const row = document.getElementById(`row-${_modalUserId}`);
+        if (row) row.cells[0].textContent = val || '—';
+        const ok = document.getElementById('audition-save-ok');
+        ok.style.display = '';
+        setTimeout(() => { ok.style.display = 'none'; }, 2000);
+      } catch (err) { alert('Failed to save audition number.'); }
+    });
   </script>
 
   <script>

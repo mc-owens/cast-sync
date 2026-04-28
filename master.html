@@ -37,6 +37,26 @@
 </head>
 <body style="visibility:hidden">
 
+  <!-- Clear all blocks confirmation modal -->
+  <div class="modal fade" id="clearBlocksModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title">Clear All Schedule Blocks?</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p>This will permanently delete all rehearsal blocks and placeholders from this production's master schedule.</p>
+          <p class="mb-0 text-muted" style="font-size:13px;">Pieces and cast lists will not be affected. Only the schedule blocks will be removed.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirm-clear-blocks-btn">Yes, Clear All</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Piece assignment modal -->
   <div class="modal fade" id="pieceModal" tabindex="-1" aria-labelledby="pieceModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -172,6 +192,7 @@
     </div>
     <button id="update-btn" class="btn btn-success">Update Schedule</button>
     <button class="btn btn-outline-secondary btn-print" onclick="window.print()">Print Schedule</button>
+    <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#clearBlocksModal">Clear All Blocks</button>
   </div>
 
   <script src="master-schedule.js"></script>
@@ -180,6 +201,21 @@
       const alert = document.getElementById('update-alert');
       alert.classList.remove('d-none');
       setTimeout(() => alert.classList.add('d-none'), 6000);
+    });
+
+    document.getElementById('confirm-clear-blocks-btn').addEventListener('click', async () => {
+      try {
+        const [r1, r2] = await Promise.all([
+          fetch('/api/master-blocks/all', { method: 'DELETE' }),
+          fetch('/api/schedule-placeholders/all', { method: 'DELETE' }),
+        ]);
+        if (!r1.ok || !r2.ok) throw new Error();
+        bootstrap.Modal.getInstance(document.getElementById('clearBlocksModal')).hide();
+        // Remove all rendered blocks and placeholders from the grid
+        document.querySelectorAll('.master-block, .placeholder-block').forEach(el => el.remove());
+      } catch (err) {
+        alert('Failed to clear blocks. Please try again.');
+      }
     });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>

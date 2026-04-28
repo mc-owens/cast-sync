@@ -89,28 +89,33 @@
         const container = document.getElementById('orgs-container');
         let anyVisible = false;
 
-        orgs.forEach(org => {
+        orgs.forEach((org, oi) => {
           const card = document.createElement('div');
           card.className = 'card mb-4';
 
           // ── Org header ────────────────────────────────────────────────────
           const myPieces = (org.pieces || []).filter(p => p.my_role);
+          // Auto-expand if the dancer is cast in at least one piece, or casting isn't published
+          const isExpanded = !org.casting_published || myPieces.length > 0;
+          const collapseId = `org-body-${oi}`;
+
           let summaryBadge = '';
           if (org.casting_published && myPieces.length > 0) {
-            summaryBadge = `<span class="badge bg-success ms-2" style="font-size:11px;">
-              You're in ${myPieces.length} piece${myPieces.length !== 1 ? 's' : ''}
-            </span>`;
+            summaryBadge = `<span class="badge bg-success ms-2" style="font-size:11px;">You're in ${myPieces.length} piece${myPieces.length !== 1 ? 's' : ''}</span>`;
           }
 
           let cardHTML = `
-            <div class="card-header d-flex align-items-center justify-content-between" style="background:#f8f9fa;">
+            <div class="piece-card-header card-header" data-bs-toggle="collapse"
+                 data-bs-target="#${collapseId}" aria-expanded="${isExpanded}">
               <div>
                 <span class="fw-bold">${org.org_name}</span>
                 <span class="text-muted ms-2" style="font-size:12px;">${org.season_name}</span>
                 ${summaryBadge}
               </div>
+              <span class="chevron">▾</span>
             </div>
-            <div class="card-body" style="padding:20px 24px;">`;
+            <div class="collapse${isExpanded ? ' show' : ''}" id="${collapseId}">
+              <div class="card-body" style="padding:20px 24px;">`;
 
           if (!org.casting_published) {
             cardHTML += `<p class="text-muted mb-0" style="font-size:13px;">Casting results haven't been published yet.</p>`;
@@ -128,8 +133,7 @@
                 const rehearsalStr = blocks.length
                   ? blocks.map(b => `${b.day} ${b.start_time}–${b.end_time}`).join(', ')
                   : 'TBD';
-                const inPiece   = !!p.my_role;
-                const collapseId = `piece-${org.season_id}-${pi}`;
+                const inPiece = !!p.my_role;
 
                 let roleBadge = '';
                 if (p.my_role === 'member')     roleBadge = `<span class="role-badge member">Cast</span>`;
@@ -139,50 +143,38 @@
                   ? `<strong style="font-size:14px;">${p.choreographer_name}</strong>${roleBadge}`
                   : `<strong style="font-size:14px;color:#aaa;font-style:italic;">No choreographer listed</strong>${roleBadge}`;
 
-                // Auto-expand if the dancer is cast in this piece
-                const expanded = inPiece ? 'true' : 'false';
-                const showClass = inPiece ? ' show' : '';
-
-                cardHTML += `
-                  <div style="margin-bottom:8px;">
-                    <div class="piece-card-header" data-bs-toggle="collapse"
-                         data-bs-target="#${collapseId}" aria-expanded="${expanded}">
-                      <div>
-                        ${title}
-                        <span class="text-muted ms-2" style="font-size:12px;">${rehearsalStr}</span>
-                      </div>
-                      <span class="chevron">▾</span>
-                    </div>
-                    <div class="collapse${showClass}" id="${collapseId}">
-                      <div class="piece-card-body${inPiece ? '' : ' not-cast'}">`;
+                const isLast = pi === org.pieces.length - 1;
+                cardHTML += `<div style="padding-bottom:12px;${!isLast ? 'margin-bottom:12px;border-bottom:1px solid #f0f0f0;' : ''}">`;
+                cardHTML += `<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;">
+                  <span>${title}</span>
+                  <span class="text-muted" style="font-size:12px;">${rehearsalStr}</span>
+                </div>`;
 
                 if (p.choreographer_email) {
-                  cardHTML += `<p style="font-size:12px;color:#555;margin-bottom:8px;">
+                  cardHTML += `<p style="font-size:12px;color:#555;margin-bottom:6px;">
                     <a href="mailto:${p.choreographer_email}" style="color:#555;">${p.choreographer_email}</a></p>`;
                 }
 
                 if (members.length === 0 && understudies.length === 0) {
-                  cardHTML += `<p style="font-size:13px;color:#aaa;font-style:italic;margin-bottom:4px;">No cast assigned yet.</p>`;
+                  cardHTML += `<p style="font-size:13px;color:#aaa;font-style:italic;margin-bottom:0;">No cast assigned yet.</p>`;
                 } else {
                   members.forEach(c => {
                     cardHTML += `<p class="cast-name" data-first="${c.first_name}" data-last="${c.last_name}"
-                      style="margin-bottom:3px;">${c.first_name} ${c.last_name}</p>`;
+                      style="margin-bottom:2px;">${c.first_name} ${c.last_name}</p>`;
                   });
                   understudies.forEach(c => {
                     cardHTML += `<p class="cast-name" data-first="${c.first_name}" data-last="${c.last_name}"
-                      style="margin-bottom:3px;color:#777;">${c.first_name} ${c.last_name}
+                      style="margin-bottom:2px;color:#777;">${c.first_name} ${c.last_name}
                       <span style="font-size:12px;">(understudy)</span></p>`;
                   });
                 }
 
-                cardHTML += `      </div>
-                    </div>
-                  </div>`;
+                cardHTML += `</div>`;
               });
             }
           }
 
-          cardHTML += `</div>`; // card-body
+          cardHTML += `</div></div>`; // card-body + collapse
           card.innerHTML = cardHTML;
           container.appendChild(card);
         });
@@ -213,12 +205,12 @@
 
     // Sync chevron rotation with Bootstrap collapse state
     document.getElementById('orgs-container').addEventListener('show.bs.collapse', e => {
-      const header = document.querySelector(`[data-bs-target="#${e.target.id}"]`);
-      if (header) { header.setAttribute('aria-expanded', 'true'); }
+      const header = e.target.previousElementSibling;
+      if (header) header.setAttribute('aria-expanded', 'true');
     });
     document.getElementById('orgs-container').addEventListener('hide.bs.collapse', e => {
-      const header = document.querySelector(`[data-bs-target="#${e.target.id}"]`);
-      if (header) { header.setAttribute('aria-expanded', 'false'); }
+      const header = e.target.previousElementSibling;
+      if (header) header.setAttribute('aria-expanded', 'false');
     });
   </script>
 

@@ -372,10 +372,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     block.style.boxSizing   = 'border-box';
     block.style.color       = '#666';
     block.style.zIndex      = '0';
-    block.style.pointerEvents = 'auto';
+    block.style.pointerEvents = 'none';  // let mouse events pass through to time slots below
     block.innerHTML = `
       <span style="font-size:11px;font-weight:bold;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${label}</span>
       <button class="delete-btn" title="Delete">&times;</button>`;
+    block.querySelector('.delete-btn').style.pointerEvents = 'auto';  // keep delete button clickable
     block.querySelector('.delete-btn').addEventListener('click', async (e) => {
       e.stopPropagation();
       await fetch(`/api/schedule-placeholders/${dbId}`, { method: 'DELETE' });
@@ -473,6 +474,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Mouse interaction ─────────────────────────────────────────────────────────
 
   grid.addEventListener('mousedown', e => {
+    // Let delete button clicks reach their own click handler uninterrupted
+    if (e.target.classList.contains('delete-btn') || e.target.closest('.delete-btn')) return;
+
     // Placeholder blocks are display-only — don't drag or resize them
     if (e.target.closest('.placeholder-block')) return;
 

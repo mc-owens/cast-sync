@@ -1689,7 +1689,7 @@ app.get('/api/dancers/:userId', requireAuth('master'), async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT dp.first_name, dp.last_name, u.email, dp.phone, dp.address, dp.grade,
-              dp.technique_classes, sub.injuries, sub.absences, sub.availability
+              dp.technique_classes, sub.injuries, sub.absences, sub.availability, sub.audition_number
        FROM submissions sub
        JOIN dancer_profiles dp ON dp.user_id = sub.user_id
        JOIN users u ON u.id = sub.user_id
@@ -1701,6 +1701,24 @@ app.get('/api/dancers/:userId', requireAuth('master'), async (req, res) => {
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to fetch dancer.' });
+  }
+});
+
+// PATCH /api/dancers/:userId/audition-number — director updates a dancer's audition number
+app.patch('/api/dancers/:userId/audition-number', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  const { audition_number } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE submissions SET audition_number=$1
+       WHERE user_id=$2 AND org_id=$3 AND season_id=$4 RETURNING audition_number`,
+      [audition_number || null, req.params.userId, orgId, seasonId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Submission not found.' });
+    res.json({ audition_number: result.rows[0].audition_number });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update audition number.' });
   }
 });
 
@@ -1830,6 +1848,20 @@ app.put('/api/master-blocks/:id', requireAuth('master'), async (req, res) => {
     res.json({ message: 'Block updated.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update block.' });
+  }
+});
+
+app.delete('/api/master-blocks/all', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    await pool.query(
+      'DELETE FROM master_blocks WHERE piece_id IN (SELECT id FROM pieces WHERE season_id = $1)',
+      [seasonId]
+    );
+    res.json({ message: 'All blocks cleared.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to clear blocks.' });
   }
 });
 
@@ -2287,6 +2319,18 @@ app.put('/api/schedule-placeholders/:id', requireAuth('master'), async (req, res
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to update placeholder.' });
+  }
+});
+
+// DELETE /api/schedule-placeholders/all — clear all placeholders for current season
+app.delete('/api/schedule-placeholders/all', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    await pool.query('DELETE FROM schedule_placeholders WHERE season_id = $1', [seasonId]);
+    res.json({ message: 'All placeholders cleared.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to clear placeholders.' });
   }
 });
 
