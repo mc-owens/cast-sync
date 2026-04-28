@@ -1855,13 +1855,15 @@ app.delete('/api/master-blocks/all', requireAuth('master'), async (req, res) => 
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
-    await pool.query(
-      'DELETE FROM master_blocks WHERE piece_id IN (SELECT id FROM pieces WHERE season_id = $1)',
-      [seasonId]
-    );
-    res.json({ message: 'All blocks cleared.' });
+    // Delete in dependency order: casts → blocks → pieces → placeholders
+    await pool.query('DELETE FROM piece_casts  WHERE piece_id IN (SELECT id FROM pieces WHERE season_id=$1)', [seasonId]);
+    await pool.query('DELETE FROM master_blocks WHERE piece_id IN (SELECT id FROM pieces WHERE season_id=$1)', [seasonId]);
+    await pool.query('DELETE FROM pieces        WHERE season_id=$1', [seasonId]);
+    await pool.query('DELETE FROM schedule_placeholders WHERE season_id=$1', [seasonId]);
+    res.json({ message: 'Season board cleared.' });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to clear blocks.' });
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to clear board.' });
   }
 });
 

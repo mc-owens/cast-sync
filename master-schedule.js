@@ -130,65 +130,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   // For print: the legend uses visibility:hidden (not display:none) so the grid keeps
   // exactly the same pixel width as on screen, making pixel positions still correct.
   function repositionAllBlocks() {
+    // Combined sweep-line for master blocks + placeholder blocks — they share column space
     DAYS.forEach((day, di) => {
-      const dayBlocks = Array.from(document.querySelectorAll(`.master-block[data-day="${day}"]`))
-        .map(el => ({
-          el,
-          startMin: timeStringToMinutes(el.dataset.startTime),
-          endMin:   timeStringToMinutes(el.dataset.endTime),
-        }));
+      const masterEls = Array.from(document.querySelectorAll(`.master-block[data-day="${day}"]`));
+      const phEls     = Array.from(document.querySelectorAll(`.placeholder-block[data-day="${day}"]`));
+      const allBlocks = [...masterEls, ...phEls].map(el => ({
+        el,
+        startMin: timeStringToMinutes(el.dataset.startTime),
+        endMin:   timeStringToMinutes(el.dataset.endTime),
+      }));
+      if (!allBlocks.length) return;
 
-      if (!dayBlocks.length) return;
-
-      // Sort by start, assign lanes with sweep line
-      dayBlocks.sort((a, b) => a.startMin - b.startMin);
+      allBlocks.sort((a, b) => a.startMin - b.startMin);
       const laneEnds = [];
-      for (const b of dayBlocks) {
+      for (const b of allBlocks) {
         let li = laneEnds.findIndex(e => b.startMin >= e);
         if (li === -1) { li = laneEnds.length; laneEnds.push(0); }
         laneEnds[li] = b.endMin;
         b.laneIdx = li;
       }
-
-      // Determine total lanes needed per block (max of all overlapping)
-      for (const b of dayBlocks) {
-        const concurrent = dayBlocks.filter(o => o !== b && o.startMin < b.endMin && o.endMin > b.startMin);
+      for (const b of allBlocks) {
+        const concurrent = allBlocks.filter(o => o !== b && o.startMin < b.endMin && o.endMin > b.startMin);
         b.laneCount = Math.max(b.laneIdx + 1, ...concurrent.map(o => o.laneIdx + 1), 1);
       }
-
-      // Apply percentage positions — correct at any print width
-      for (const b of dayBlocks) {
+      for (const b of allBlocks) {
         b.el.style.left  = `calc(${di} * 100% / 7 + ${b.laneIdx} * 100% / 7 / ${b.laneCount})`;
         b.el.style.width = `calc(100% / 7 / ${b.laneCount})`;
-        b.el.dataset.laneIdx = b.laneIdx;
-      }
-    });
-
-    // Placeholder blocks: sweep-line lane logic within their own pool
-    DAYS.forEach((day, di) => {
-      const phDayBlocks = Array.from(document.querySelectorAll(`.placeholder-block[data-day="${day}"]`))
-        .map(el => ({
-          el,
-          startMin: timeStringToMinutes(el.dataset.startTime),
-          endMin:   timeStringToMinutes(el.dataset.endTime),
-        }));
-      if (!phDayBlocks.length) return;
-
-      phDayBlocks.sort((a, b) => a.startMin - b.startMin);
-      const phLaneEnds = [];
-      for (const b of phDayBlocks) {
-        let li = phLaneEnds.findIndex(e => b.startMin >= e);
-        if (li === -1) { li = phLaneEnds.length; phLaneEnds.push(0); }
-        phLaneEnds[li] = b.endMin;
-        b.laneIdx = li;
-      }
-      for (const b of phDayBlocks) {
-        const concurrent = phDayBlocks.filter(o => o !== b && o.startMin < b.endMin && o.endMin > b.startMin);
-        b.laneCount = Math.max(b.laneIdx + 1, ...concurrent.map(o => o.laneIdx + 1), 1);
-      }
-      for (const b of phDayBlocks) {
-        b.el.style.left  = `calc(${di} * 100% / 7 + ${b.laneIdx} * 100% / 7 / ${b.laneCount})`;
-        b.el.style.width = `calc(100% / 7 / ${b.laneCount})`;
+        if (b.el.classList.contains('master-block')) b.el.dataset.laneIdx = b.laneIdx;
       }
     });
 
@@ -360,6 +328,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     block.className         = 'block placeholder-block';
     block.dataset.dbId      = dbId;
     block.dataset.day       = DAYS[dayIndex];
+    block.dataset.label     = label;
     block.dataset.startTime = startTimeStr || slotToTimeString(startSlotI);
     block.dataset.endTime   = endTimeStr   || slotToTimeString(endSlotI);
     block.style.top         = `${topPx}px`;
@@ -371,16 +340,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     block.style.position    = 'absolute';
     block.style.boxSizing   = 'border-box';
     block.style.color       = '#666';
-    block.style.zIndex      = '0';
-    block.style.pointerEvents = 'none';  // let mouse events pass through to time slots below
+    block.style.zIndex      = '2';
+    block.style.pointerEvents = 'none';  // body passes clicks through to time slots below
     block.innerHTML = `
-      <span style="font-size:11px;font-weight:bold;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${label}</span>
-      <button class="delete-btn" title="Delete">&times;</button>`;
-    block.querySelector('.delete-btn').style.pointerEvents = 'auto';  // keep delete button clickable
-    block.querySelector('.delete-btn').addEventListener('click', async (e) => {
+      <span class="ph-drag-handle" title="Drag to move" style="font-size:11px;font-weight:bold;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:move;pointer-events:auto;">${label}</span>
+      <button class="delete-btn" title="Delete">&times;</button>
+      <div class="resize-handle resize-top" style="pointer-events:auto;"></div>
+      <div class="resize-handle resize-bottom" style="pointer-events:auto;"></div>`;
+    block.querySelector('.delete-btn').style.pointerEvents = 'auto';
+    block.querySelector('.delete-btn').addEventListener('mousedown', async (e) => {
       e.stopPropagation();
+      e.preventDefault();
       await fetch(`/api/schedule-placeholders/${dbId}`, { method: 'DELETE' });
       block.remove();
+      repositionAllBlocks();
     });
     grid.appendChild(block);
     return block;
@@ -416,8 +389,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       <div class="resize-handle resize-top"></div>
       <div class="resize-handle resize-bottom"></div>`;
 
-    block.querySelector('.delete-btn').addEventListener('click', async (e) => {
-      e.stopPropagation();
+    block.querySelector('.delete-btn').addEventListener('mousedown', async (e) => {
+      e.stopPropagation();   // prevent grid's mousedown from firing drag mode
+      e.preventDefault();    // prevent focus shift / text selection
       await fetch(`/api/master-blocks/${dbId}`, { method: 'DELETE' });
       block.remove();
       repositionAllBlocks();
@@ -474,12 +448,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Mouse interaction ─────────────────────────────────────────────────────────
 
   grid.addEventListener('mousedown', e => {
-    // Let delete button clicks reach their own click handler uninterrupted
-    if (e.target.classList.contains('delete-btn') || e.target.closest('.delete-btn')) return;
+    // Delete buttons use mousedown+stopPropagation — they never reach here.
 
-    // Placeholder blocks are display-only — don't drag or resize them
-    if (e.target.closest('.placeholder-block')) return;
-
+    // Resize handle — works for both master blocks and placeholder blocks
     if (e.target.classList.contains('resize-handle')) {
       isResizing    = true;
       currentBlock  = e.target.closest('.block');
@@ -489,10 +460,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
+    // Drag handle on placeholder block — move the placeholder
+    if (e.target.classList.contains('ph-drag-handle')) {
+      currentBlock  = e.target.closest('.placeholder-block');
+      activeBlockId = currentBlock.dataset.dbId;
+      const dayWidth = grid.clientWidth / 7;
+      const dayIdx   = DAYS.indexOf(currentBlock.dataset.day);
+      currentBlock.style.width = `${dayWidth}px`;
+      currentBlock.style.left  = `${dayIdx * dayWidth}px`;
+      offsetY = e.clientY - currentBlock.getBoundingClientRect().top;
+      e.preventDefault();
+      return;
+    }
+
+    // Drag a master block
     if (e.target.closest('.master-block')) {
       currentBlock  = e.target.closest('.master-block');
       activeBlockId = currentBlock.dataset.dbId;
-      // Snap to full single-column width while dragging
       const dayWidth = grid.clientWidth / 7;
       const dayIdx   = DAYS.indexOf(currentBlock.dataset.day);
       currentBlock.style.width = `${dayWidth}px`;
@@ -555,7 +539,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    if (currentBlock && currentBlock.classList.contains('master-block') && e.buttons === 1) {
+    if (currentBlock && (currentBlock.classList.contains('master-block') || currentBlock.classList.contains('placeholder-block')) && e.buttons === 1) {
       const rect     = grid.getBoundingClientRect();
       const dayWidth = grid.clientWidth / 7;
       let y = e.clientY - rect.top - offsetY;
@@ -565,7 +549,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const dayIndex = Math.max(0, Math.min(Math.floor(x / dayWidth), 6));
       currentBlock.style.top   = `${y}px`;
       currentBlock.style.left  = `${dayIndex * dayWidth}px`;
-      currentBlock.dataset.day = DAYS[dayIndex]; // keep dataset in sync for getBlockPosition
+      currentBlock.dataset.day = DAYS[dayIndex];
     }
   });
 
@@ -583,18 +567,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    if ((isResizing || (currentBlock && currentBlock.classList.contains('master-block'))) && activeBlockId) {
+    if ((isResizing || currentBlock) && activeBlockId && currentBlock) {
       const blockToUpdate = currentBlock;
       isResizing   = false;
       currentBlock = null;
-      if (blockToUpdate) {
-        const pos = getBlockPosition(blockToUpdate);
-        // Update time label on the block
+      const pos = getBlockPosition(blockToUpdate);
+      blockToUpdate.dataset.startTime = pos.start_time;
+      blockToUpdate.dataset.endTime   = pos.end_time;
+      blockToUpdate.dataset.day       = pos.day;
+
+      if (blockToUpdate.classList.contains('placeholder-block')) {
+        try {
+          await fetch(`/api/schedule-placeholders/${activeBlockId}`, {
+            method:  'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ label: blockToUpdate.dataset.label || '', ...pos }),
+          });
+          repositionAllBlocks();
+        } catch (err) { console.error('Placeholder update failed:', err); }
+      } else {
         const timeLabel = blockToUpdate.querySelector('span:nth-child(2)');
         if (timeLabel) timeLabel.textContent = `${pos.start_time} – ${pos.end_time}`;
-        blockToUpdate.dataset.startTime = pos.start_time;
-        blockToUpdate.dataset.endTime   = pos.end_time;
-        blockToUpdate.dataset.day       = pos.day;
         try {
           await fetch(`/api/master-blocks/${activeBlockId}`, {
             method:  'PUT',

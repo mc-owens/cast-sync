@@ -242,6 +242,9 @@ body {
   box-sizing: border-box;
 }
 
+.master-block { z-index: 1; }
+.master-block:hover { z-index: 10; }
+
 .master-block.room-conflict {
   border: 2px solid #dc3545 !important;
   box-shadow: 0 0 0 2px rgba(220,53,69,0.18);
