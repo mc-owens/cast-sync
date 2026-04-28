@@ -1818,6 +1818,34 @@ app.delete('/api/master-blocks/:id', requireAuth('master'), async (req, res) => 
   }
 });
 
+// GET /api/orgs/:orgId/master-schedule — all blocks from ALL active productions in this org
+// Used by the org-level print view. Requires org membership.
+app.get('/api/orgs/:orgId/master-schedule', requireAuth('master'), async (req, res) => {
+  try {
+    const check = await pool.query(
+      'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2',
+      [req.params.orgId, req.session.userId]
+    );
+    if (check.rows.length === 0) return res.status(403).json({ error: 'Not a member of this org.' });
+
+    const result = await pool.query(
+      `SELECT mb.id, mb.day, mb.start_time, mb.end_time,
+              p.name AS piece_name, p.color AS piece_color,
+              s.name AS season_name, s.id AS season_id
+       FROM master_blocks mb
+       JOIN pieces p ON p.id = mb.piece_id
+       JOIN seasons s ON s.id = p.season_id
+       WHERE s.org_id = $1 AND (s.status IS NULL OR s.status = 'active')
+       ORDER BY s.name ASC, p.name ASC, mb.day ASC, mb.start_time ASC`,
+      [req.params.orgId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to fetch org master schedule.' });
+  }
+});
+
 // GET /api/master-blocks/org — read-only blocks from OTHER active productions in same org
 // Org owners always see them; co-directors see them only if can_see_other_blocks = TRUE
 app.get('/api/master-blocks/org', requireAuth('master'), async (req, res) => {

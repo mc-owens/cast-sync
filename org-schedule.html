@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Master Schedule — CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { background: #fff; }
+
+    .org-sched-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+
+    /* ── Grid ── */
+    .day-header-row {
+      display: grid;
+      grid-template-columns: 72px repeat(7, 1fr);
+      background: #f7f7f7;
+      border: 1px solid #ddd;
+      border-bottom: none;
+      border-radius: 4px 4px 0 0;
+    }
+    .day-header {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 0;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .schedule-container {
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      background: white;
+      border: 1px solid #ddd;
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+    }
+    .time-column {
+      border-right: 1px solid #e8e8e8;
+    }
+    .time-label {
+      height: 50px; /* 4 slots × 12.5px = 50px per hour */
+      font-size: 11px;
+      color: #aaa;
+      display: flex;
+      align-items: flex-start;
+      padding: 2px 6px 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      position: relative;
+    }
+    .day-column {
+      border-right: 1px solid #f0f0f0;
+      position: relative;
+    }
+    .day-column:last-child { border-right: none; }
+    .time-slot {
+      height: 12.5px;
+    }
+    .time-slot.hour-line {
+      border-bottom: 1px solid #e8e8e8;
+    }
+
+    /* ── Blocks ── */
+    .sched-block {
+      position: absolute;
+      border-radius: 3px;
+      box-sizing: border-box;
+      overflow: hidden;
+      padding: 2px 5px;
+      font-size: 10px;
+      line-height: 1.3;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .sched-block .block-season  { font-weight: 700; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sched-block .block-piece   { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.85; }
+    .sched-block .block-time    { display: block; font-size: 9px; opacity: 0.7; }
+
+    /* ── Legend ── */
+    .legend-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 24px;
+      margin-top: 16px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .legend-dot {
+      width: 12px; height: 12px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── Print ── */
+    @media print {
+      .no-print { display: none !important; }
+      body { margin: 0; padding: 0; }
+      .container { max-width: 100% !important; padding: 0 !important; }
+      .sched-block { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container-fluid px-4 py-4" id="main-wrap">
+
+    <div class="org-sched-header">
+      <div>
+        <h5 class="mb-0 fw-bold" id="page-title">Master Schedule</h5>
+        <p class="text-muted mb-0" style="font-size:13px;" id="page-sub">All active productions</p>
+      </div>
+      <div class="no-print d-flex gap-2">
+        <a href="org-select.html" class="btn btn-outline-secondary btn-sm">← Back</a>
+        <button class="btn btn-dark btn-sm" onclick="window.print()">Print</button>
+      </div>
+    </div>
+
+    <div id="loading" class="text-muted" style="font-size:14px;">Loading schedule…</div>
+    <div id="no-blocks" class="alert alert-info d-none">No rehearsal blocks scheduled for any active production in this organization.</div>
+
+    <div id="schedule-wrap" style="display:none;">
+      <div class="day-header-row" id="day-header-row"></div>
+      <div class="schedule-container">
+        <div class="time-column" id="time-column"></div>
+        <div class="grid" id="grid"></div>
+      </div>
+
+      <div class="legend-grid" id="legend"></div>
+    </div>
+
+  </div>
+
+  <script>
+    const DAYS       = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    const DAYS_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const START_HOUR = 8;
+    const END_HOUR   = 23;
+    const INCREMENT  = 15;          // minutes per slot
+    const SLOT_H     = 12.5;        // px per slot
+
+    // Season colour palette — one distinct colour per season
+    const SEASON_COLORS = [
+      '#2563eb','#16a34a','#9333ea','#ea580c','#0891b2',
+      '#d97706','#dc2626','#0d9488','#7c3aed','#be185d',
+    ];
+
+    function formatTime(h, m) {
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const hr   = h % 12 === 0 ? 12 : h % 12;
+      return `${hr}:${m.toString().padStart(2,'0')} ${ampm}`;
+    }
+
+    function timeToTopPx(timeStr) {
+      const [time, ampm] = timeStr.split(' ');
+      const [h, m]       = time.split(':').map(Number);
+      let hour = h;
+      if (ampm === 'PM' && hour !== 12) hour += 12;
+      if (ampm === 'AM' && hour === 12) hour  = 0;
+      const totalMin = hour * 60 + m;
+      return ((totalMin - START_HOUR * 60) / INCREMENT) * SLOT_H;
+    }
+
+    function hexToRgba(hex, alpha) {
+      const r = parseInt(hex.slice(1,3), 16);
+      const g = parseInt(hex.slice(3,5), 16);
+      const b = parseInt(hex.slice(5,7), 16);
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+
+    // ── Build the static grid ─────────────────────────────────────────────────
+
+    const headerRow  = document.getElementById('day-header-row');
+    const timeCol    = document.getElementById('time-column');
+    const grid       = document.getElementById('grid');
+
+    // Empty first cell (above time column)
+    headerRow.appendChild(document.createElement('div'));
+    DAYS_SHORT.forEach(d => {
+      const h = document.createElement('div');
+      h.className   = 'day-header';
+      h.textContent = d;
+      headerRow.appendChild(h);
+    });
+
+    const totalSlots = ((END_HOUR + 1 - START_HOUR) * 60) / INCREMENT;
+    for (let h = START_HOUR; h <= END_HOUR; h++) {
+      const label       = document.createElement('div');
+      label.className   = 'time-label';
+      label.textContent = formatTime(h, 0);
+      timeCol.appendChild(label);
+    }
+
+    DAYS.forEach(() => {
+      const col = document.createElement('div');
+      col.className = 'day-column';
+      for (let i = 0; i < totalSlots; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'time-slot' + (i % 4 === 3 ? ' hour-line' : '');
+        col.appendChild(slot);
+      }
+      grid.appendChild(col);
+    });
+
+    // ── Render blocks ─────────────────────────────────────────────────────────
+
+    function renderBlock(b, color) {
+      const di     = DAYS.indexOf(b.day);
+      if (di === -1) return;
+      const topPx  = timeToTopPx(b.start_time);
+      const btmPx  = timeToTopPx(b.end_time);
+      const h      = Math.max(btmPx - topPx, SLOT_H);
+
+      const el = document.createElement('div');
+      el.className    = 'sched-block';
+      el.style.top    = `${topPx}px`;
+      el.style.height = `${h}px`;
+      // Percentage-based left/width — correct at any print width
+      el.style.left   = `calc(${di} * 100% / 7)`;
+      el.style.width  = `calc(100% / 7)`;
+      el.style.background = hexToRgba(color, 0.65);
+      el.style.border     = `1.5px solid ${color}`;
+      el.innerHTML = `
+        <span class="block-season">${b.season_name}</span>
+        <span class="block-piece">${b.piece_name}</span>
+        <span class="block-time">${b.start_time}–${b.end_time}</span>`;
+      grid.appendChild(el);
+    }
+
+    // ── Load and display ──────────────────────────────────────────────────────
+
+    async function load() {
+      const params = new URLSearchParams(window.location.search);
+      const orgId  = params.get('orgId');
+      const orgName = params.get('orgName');
+
+      if (!orgId) {
+        document.getElementById('loading').textContent = 'No organization specified.';
+        return;
+      }
+
+      if (orgName) {
+        document.getElementById('page-title').textContent = orgName + ' — Master Schedule';
+      }
+
+      try {
+        const res    = await fetch(`/api/orgs/${encodeURIComponent(orgId)}/master-schedule`);
+        if (!res.ok) { window.location.href = 'login.html'; return; }
+        const blocks = await res.json();
+
+        document.getElementById('loading').style.display = 'none';
+
+        if (blocks.length === 0) {
+          document.getElementById('no-blocks').classList.remove('d-none');
+          return;
+        }
+
+        // Assign a stable colour per season
+        const seasonIds  = [...new Set(blocks.map(b => b.season_id))];
+        const colorMap   = {};
+        seasonIds.forEach((id, i) => { colorMap[id] = SEASON_COLORS[i % SEASON_COLORS.length]; });
+
+        blocks.forEach(b => renderBlock(b, colorMap[b.season_id]));
+
+        // Build legend
+        const legendEl = document.getElementById('legend');
+        seasonIds.forEach(id => {
+          const name  = blocks.find(b => b.season_id === id)?.season_name || '';
+          const color = colorMap[id];
+          const item  = document.createElement('div');
+          item.className = 'legend-item';
+          item.innerHTML = `<span class="legend-dot" style="background:${hexToRgba(color,0.65)};border:1.5px solid ${color};"></span>${name}`;
+          legendEl.appendChild(item);
+        });
+
+        document.getElementById('schedule-wrap').style.display = '';
+      } catch (err) {
+        document.getElementById('loading').textContent = 'Could not load schedule.';
+        console.error(err);
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

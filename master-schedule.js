@@ -130,8 +130,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // For print: the legend uses visibility:hidden (not display:none) so the grid keeps
   // exactly the same pixel width as on screen, making pixel positions still correct.
   function repositionAllBlocks() {
-    const dayWidth = grid.clientWidth / 7;
-
     DAYS.forEach((day, di) => {
       const dayBlocks = Array.from(document.querySelectorAll(`.master-block[data-day="${day}"]`))
         .map(el => ({
@@ -158,11 +156,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         b.laneCount = Math.max(b.laneIdx + 1, ...concurrent.map(o => o.laneIdx + 1), 1);
       }
 
-      // Apply pixel positions
+      // Apply percentage positions — correct at any print width
       for (const b of dayBlocks) {
-        const laneW = dayWidth / b.laneCount;
-        b.el.style.left  = `${di * dayWidth + b.laneIdx * laneW}px`;
-        b.el.style.width = `${laneW}px`;
+        b.el.style.left  = `calc(${di} * 100% / 7 + ${b.laneIdx} * 100% / 7 / ${b.laneCount})`;
+        b.el.style.width = `calc(100% / 7 / ${b.laneCount})`;
         b.el.dataset.laneIdx = b.laneIdx;
       }
     });
@@ -171,8 +168,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.placeholder-block, .org-overlay-block').forEach(block => {
       const di = DAYS.indexOf(block.dataset.day);
       if (di === -1) return;
-      block.style.left  = `${di * dayWidth}px`;
-      block.style.width = `${dayWidth}px`;
+      block.style.left  = `calc(${di} * 100% / 7)`;
+      block.style.width = `calc(100% / 7)`;
     });
 
     highlightConflicts();
@@ -283,7 +280,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Block rendering ───────────────────────────────────────────────────────────
 
   function renderOrgBlock(block) {
-    const dayWidth = grid.clientWidth / 7;
     const dayIndex = DAYS.indexOf(block.day);
     if (dayIndex === -1) return;
     const topPx    = timeStringToTopPx(block.start_time);
@@ -295,8 +291,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.dataset.day      = block.day;
     el.style.top        = `${topPx}px`;
     el.style.height     = `${heightPx}px`;
-    el.style.left       = `${dayIndex * dayWidth}px`;
-    el.style.width      = `${dayWidth}px`;
+    el.style.left       = `calc(${dayIndex} * 100% / 7)`;
+    el.style.width      = `calc(100% / 7)`;
     el.style.background = 'repeating-linear-gradient(135deg,rgba(100,116,139,0.12),rgba(100,116,139,0.12) 5px,rgba(100,116,139,0.22) 5px,rgba(100,116,139,0.22) 10px)';
     el.style.border     = '1px dashed #94a3b8';
     el.style.position   = 'absolute';
@@ -308,15 +304,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function renderPlaceholder(dbId, label, topPx, heightPx, dayIndex) {
-    const dayWidth = grid.clientWidth / 7;
     const block = document.createElement('div');
     block.className         = 'block placeholder-block';
     block.dataset.dbId      = dbId;
     block.dataset.day       = DAYS[dayIndex];
     block.style.top         = `${topPx}px`;
     block.style.height      = `${Math.max(heightPx, slotHeight)}px`;
-    block.style.left        = `${dayIndex * dayWidth}px`;
-    block.style.width       = `${dayWidth}px`;
+    block.style.left        = `calc(${dayIndex} * 100% / 7)`;
+    block.style.width       = `calc(100% / 7)`;
     block.style.background  = 'repeating-linear-gradient(45deg,#e8e8e8,#e8e8e8 5px,#d4d4d4 5px,#d4d4d4 10px)';
     block.style.border      = '2px solid #bbb';
     block.style.position    = 'absolute';
@@ -338,7 +333,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // startTimeStr / endTimeStr are optional — if omitted, computed from pixels
   function renderBlock(dbId, piece, topPx, heightPx, dayIndex, startTimeStr, endTimeStr) {
-    const dayWidth   = grid.clientWidth / 7;
     const startSlotI = Math.round(topPx / slotHeight);
     const endSlotI   = startSlotI + Math.round(heightPx / slotHeight);
     const displayStart = startTimeStr || slotToTimeString(startSlotI);
@@ -353,8 +347,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     block.dataset.endTime      = displayEnd;
     block.style.top            = `${topPx}px`;
     block.style.height         = `${Math.max(heightPx, slotHeight)}px`;
-    block.style.left           = `${dayIndex * dayWidth}px`;
-    block.style.width          = `${dayWidth}px`;
+    block.style.left           = `calc(${dayIndex} * 100% / 7)`;
+    block.style.width          = `calc(100% / 7)`;
     block.style.background     = hexToRgba(piece.color, 0.65);
     block.style.border         = `2px solid ${piece.color}`;
     block.style.position       = 'absolute';
@@ -663,8 +657,4 @@ document.addEventListener('DOMContentLoaded', async () => {
       b.style.display = this.checked ? '' : 'none';
     });
   });
-
-  // Reposition blocks before/after printing so pixel positions match the print layout
-  window.addEventListener('beforeprint', () => repositionAllBlocks());
-  window.addEventListener('afterprint',  () => repositionAllBlocks());
 });
