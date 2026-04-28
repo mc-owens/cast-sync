@@ -28,6 +28,9 @@
             <span>8 AM</span><span>12 PM</span><span>6 PM</span><span>11 PM</span>
           </div>
           <hr class="my-3">
+          <h6 class="mb-2" style="font-size:13px;font-weight:bold;color:#555;">Pieces Cast</h6>
+          <div id="dancer-cast-list"><span class="text-muted" style="font-size:13px;">Loading…</span></div>
+          <hr class="my-3">
           <button class="btn btn-sm btn-outline-secondary" type="button"
             data-bs-toggle="collapse" data-bs-target="#dancer-full-profile">
             See Full Profile
@@ -206,11 +209,48 @@
     }
 
     async function openDancerModal(id) {
+      document.getElementById('dancer-cast-list').innerHTML = '<span class="text-muted" style="font-size:13px;">Loading…</span>';
       try {
-        const res    = await fetch(`/api/dancers/${id}`);
-        const dancer = await res.json();
+        const [dancerRes, piecesRes] = await Promise.all([
+          fetch(`/api/dancers/${id}`),
+          fetch(`/api/dancers/${id}/pieces`),
+        ]);
+        const dancer    = await dancerRes.json();
+        const allPieces = piecesRes.ok ? await piecesRes.json() : [];
+
         document.getElementById('dancer-modal-name').textContent = `${dancer.first_name} ${dancer.last_name}`;
         renderMiniSchedule(dancer.availability || []);
+
+        // Render pieces cast
+        const castListEl = document.getElementById('dancer-cast-list');
+        if (allPieces.length === 0) {
+          castListEl.innerHTML = '<span class="text-muted" style="font-size:13px;">Not cast in any pieces.</span>';
+        } else {
+          const current = allPieces.filter(p => p.is_current_season);
+          const other   = allPieces.filter(p => !p.is_current_season);
+          let html = '';
+          if (current.length > 0) {
+            html += '<div style="font-size:12px;font-weight:600;color:#555;margin-bottom:4px;">This production</div>';
+            html += current.map(p => `
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:13px;">
+                <span style="width:10px;height:10px;border-radius:2px;background:${p.color};display:inline-block;flex-shrink:0;"></span>
+                <span>${p.name}</span>
+                <span class="text-muted" style="font-size:11px;">${p.cast_role}${p.role_name ? ` · ${p.role_name}` : ''}</span>
+              </div>`).join('');
+          }
+          if (other.length > 0) {
+            if (current.length > 0) html += '<div style="height:6px;"></div>';
+            html += '<div style="font-size:12px;font-weight:600;color:#555;margin-bottom:4px;">Other productions</div>';
+            html += other.map(p => `
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:13px;">
+                <span style="width:10px;height:10px;border-radius:2px;background:${p.color};display:inline-block;flex-shrink:0;"></span>
+                <span>${p.name}</span>
+                <span class="text-muted" style="font-size:11px;">${p.season_name} · ${p.cast_role}${p.role_name ? ` · ${p.role_name}` : ''}</span>
+              </div>`).join('');
+          }
+          castListEl.innerHTML = html;
+        }
+
         document.getElementById('detail-email').textContent     = dancer.email             || '—';
         document.getElementById('detail-phone').textContent     = dancer.phone             || '—';
         document.getElementById('detail-address').textContent   = dancer.address           || '—';
@@ -278,8 +318,18 @@
           <td style="color:#555;">${d.email || '—'}</td>
           <td>${d.grade || '—'}</td>
           <td>
-            ${d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>'}
-            ${d.org_piece_count > d.piece_count ? `<span class="text-muted ms-1" style="font-size:11px;" title="Org-wide across all active productions">(${d.org_piece_count} org-wide)</span>` : ''}
+            ${d.org_piece_count > d.piece_count
+              ? `<details style="display:inline-block;">
+                   <summary style="cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:5px;">
+                     ${d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>'}
+                     <span class="text-muted" style="font-size:11px;">▾ ${d.org_piece_count} org-wide</span>
+                   </summary>
+                   <div style="padding:4px 0 0 2px;font-size:11px;color:#555;white-space:nowrap;">
+                     <div>This production: <strong>${d.piece_count}</strong></div>
+                     <div>Org-wide (all active): <strong>${d.org_piece_count}</strong></div>
+                   </div>
+                 </details>`
+              : (d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>')}
           </td>
           <td style="color:#888;">${formatDate(d.created_at)}</td>
           <td>

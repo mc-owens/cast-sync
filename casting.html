@@ -414,12 +414,10 @@
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ piece_id: pieceId, user_id: userId, cast_role: toRole }),
             });
-            if (!res.ok) { alert('Could not move dancer.'); return; }
-            const data = await res.json();
-            if (data.doubleBookingWarnings?.length) {
-              const name = `${row.querySelector('span')?.textContent || 'This dancer'}`;
-              const conflicts = data.doubleBookingWarnings.map(w => `${w.season_name} — ${w.piece_name}`).join('; ');
-              showDoubleBookingAlert(`Schedule overlap: ${name} is also rehearsing in ${conflicts}`);
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              alert(errData.error || 'Could not move dancer.');
+              return;
             }
 
             row.dataset.role = toRole;

@@ -164,12 +164,40 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
-    // Placeholder + org overlay blocks span one full day column each
-    document.querySelectorAll('.placeholder-block, .org-overlay-block').forEach(block => {
+    // Placeholder blocks: full column width, no lane logic
+    document.querySelectorAll('.placeholder-block').forEach(block => {
       const di = DAYS.indexOf(block.dataset.day);
       if (di === -1) return;
       block.style.left  = `calc(${di} * 100% / 7)`;
       block.style.width = `calc(100% / 7)`;
+    });
+
+    // Org overlay blocks: same sweep-line lane logic as master blocks (independent pool)
+    DAYS.forEach((day, di) => {
+      const orgDayBlocks = Array.from(document.querySelectorAll(`.org-overlay-block[data-day="${day}"]`))
+        .map(el => ({
+          el,
+          startMin: timeStringToMinutes(el.dataset.startTime),
+          endMin:   timeStringToMinutes(el.dataset.endTime),
+        }));
+      if (!orgDayBlocks.length) return;
+
+      orgDayBlocks.sort((a, b) => a.startMin - b.startMin);
+      const orgLaneEnds = [];
+      for (const b of orgDayBlocks) {
+        let li = orgLaneEnds.findIndex(e => b.startMin >= e);
+        if (li === -1) { li = orgLaneEnds.length; orgLaneEnds.push(0); }
+        orgLaneEnds[li] = b.endMin;
+        b.laneIdx = li;
+      }
+      for (const b of orgDayBlocks) {
+        const concurrent = orgDayBlocks.filter(o => o !== b && o.startMin < b.endMin && o.endMin > b.startMin);
+        b.laneCount = Math.max(b.laneIdx + 1, ...concurrent.map(o => o.laneIdx + 1), 1);
+      }
+      for (const b of orgDayBlocks) {
+        b.el.style.left  = `calc(${di} * 100% / 7 + ${b.laneIdx} * 100% / 7 / ${b.laneCount})`;
+        b.el.style.width = `calc(100% / 7 / ${b.laneCount})`;
+      }
     });
 
     highlightConflicts();
@@ -288,8 +316,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const el = document.createElement('div');
     el.className        = 'block org-overlay-block';
-    el.dataset.day      = block.day;
-    el.style.top        = `${topPx}px`;
+    el.dataset.day       = block.day;
+    el.dataset.startTime = block.start_time;
+    el.dataset.endTime   = block.end_time;
+    el.style.top         = `${topPx}px`;
     el.style.height     = `${heightPx}px`;
     el.style.left       = `calc(${dayIndex} * 100% / 7)`;
     el.style.width      = `calc(100% / 7)`;
@@ -374,10 +404,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function loadBlocks() {
     try {
-      const [blocksRes, placeholdersRes, orgBlocksRes] = await Promise.all([
+      const [blocksRes, placeholdersRes] = await Promise.all([
         fetch('/api/master-blocks'),
         fetch('/api/schedule-placeholders'),
-        fetch('/api/master-blocks/org'),
       ]);
       if (blocksRes.ok) {
         const blocks = await blocksRes.json();
@@ -399,17 +428,22 @@ document.addEventListener('DOMContentLoaded', async () => {
           renderPlaceholder(ph.id, ph.label, topPx, btmPx - topPx, dayIndex);
         });
       }
+    } catch (e) { console.error('loadBlocks error:', e); }
+
+    // Org blocks fetched separately so a failure here never skips repositionAllBlocks
+    try {
+      const orgBlocksRes = await fetch('/api/master-blocks/org');
       if (orgBlocksRes.ok) {
         const orgBlocks = await orgBlocksRes.json();
         if (orgBlocks.length > 0) {
           orgBlocks.forEach(b => renderOrgBlock(b));
-          // Show the toggle row since there are org blocks to display
           const toggleRow = document.getElementById('org-blocks-toggle-row');
           if (toggleRow) toggleRow.style.display = '';
         }
       }
-      repositionAllBlocks();
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error('org blocks error:', e); }
+
+    repositionAllBlocks();
   }
 
   // ── Mouse interaction ─────────────────────────────────────────────────────────

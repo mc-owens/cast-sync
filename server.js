@@ -1704,6 +1704,30 @@ app.get('/api/dancers/:userId', requireAuth('master'), async (req, res) => {
   }
 });
 
+// GET /api/dancers/:userId/pieces — all pieces a dancer is cast in across the org
+app.get('/api/dancers/:userId/pieces', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId) return res.status(400).json({ error: 'No active org.' });
+  try {
+    const result = await pool.query(
+      `SELECT p.id, p.name, p.color, s.name AS season_name, s.id AS season_id,
+              pc.cast_role, pc.role_name,
+              (s.id = $2) AS is_current_season
+       FROM piece_casts pc
+       JOIN pieces p ON p.id = pc.piece_id
+       JOIN seasons s ON s.id = p.season_id
+       WHERE pc.user_id = $1 AND s.org_id = $3
+         AND (s.status IS NULL OR s.status = 'active')
+       ORDER BY (s.id = $2) DESC, s.name ASC, p.name ASC`,
+      [req.params.userId, seasonId || 0, orgId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to fetch dancer pieces.' });
+  }
+});
+
 // ── Pieces routes (season-scoped) ─────────────────────────────────────────────
 
 app.get('/api/pieces', requireAuth('master'), async (req, res) => {
@@ -2128,12 +2152,45 @@ app.post('/api/piece-casts', requireAuth('master'), async (req, res) => {
   const { piece_id, user_id, cast_role } = req.body;
   if (!piece_id || !user_id || !cast_role) return res.status(400).json({ error: 'piece_id, user_id, and cast_role required.' });
   if (!['member', 'understudy'].includes(cast_role)) return res.status(400).json({ error: 'cast_role must be member or understudy.' });
-  const { seasonId } = req.session;
+  const { seasonId, orgId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
     // Verify piece belongs to this season
     const pieceCheck = await pool.query('SELECT id FROM pieces WHERE id = $1 AND season_id = $2', [piece_id, seasonId]);
     if (pieceCheck.rows.length === 0) return res.status(403).json({ error: 'Piece not in active season.' });
+
+    // Hard block: dancer already in any other piece with overlapping rehearsal blocks (same or other production)
+    if (orgId) {
+      const overlaps = await pool.query(
+        `SELECT DISTINCT s.name AS season_name, p.name AS piece_name
+         FROM piece_casts pc2
+         JOIN pieces p ON p.id = pc2.piece_id
+         JOIN seasons s ON s.id = p.season_id
+         WHERE pc2.user_id = $1
+           AND s.org_id = $2
+           AND pc2.piece_id != $3
+           AND (s.status IS NULL OR s.status = 'active')
+           AND EXISTS (
+             SELECT 1 FROM master_blocks mb_other
+             WHERE mb_other.piece_id = pc2.piece_id
+               AND EXISTS (
+                 SELECT 1 FROM master_blocks mb_this
+                 WHERE mb_this.piece_id = $3
+                   AND mb_this.day = mb_other.day
+                   AND mb_this.start_time < mb_other.end_time
+                   AND mb_this.end_time > mb_other.start_time
+               )
+           )
+         ORDER BY s.name, p.name`,
+        [user_id, orgId, piece_id]
+      );
+      if (overlaps.rows.length > 0) {
+        const conflictList = overlaps.rows.map(r => `"${r.piece_name}"`).join(' and ');
+        return res.status(409).json({
+          error: `Scheduling conflict: this dancer is already rehearsing in ${conflictList} at an overlapping time. A dancer cannot be in two places at once.`,
+        });
+      }
+    }
 
     const result = await pool.query(
       `INSERT INTO piece_casts (piece_id, user_id, cast_role)
@@ -2143,41 +2200,7 @@ app.post('/api/piece-casts', requireAuth('master'), async (req, res) => {
       [piece_id, user_id, cast_role]
     );
 
-    // Check for double-booking across other active productions in the same org
-    let doubleBookingWarnings = [];
-    const { orgId } = req.session;
-    if (orgId) {
-      try {
-        const conflicts = await pool.query(
-          `SELECT DISTINCT s.name AS season_name, p.name AS piece_name
-           FROM piece_casts pc2
-           JOIN pieces p ON p.id = pc2.piece_id
-           JOIN seasons s ON s.id = p.season_id
-           WHERE pc2.user_id = $1
-             AND s.org_id = $2
-             AND s.id != $3
-             AND (s.status IS NULL OR s.status = 'active')
-             AND EXISTS (
-               SELECT 1 FROM master_blocks mb_other
-               WHERE mb_other.piece_id = p.id
-                 AND EXISTS (
-                   SELECT 1 FROM master_blocks mb_this
-                   WHERE mb_this.piece_id = $4
-                     AND mb_this.day = mb_other.day
-                     AND mb_this.start_time < mb_other.end_time
-                     AND mb_this.end_time > mb_other.start_time
-                 )
-             )
-           ORDER BY s.name, p.name`,
-          [user_id, orgId, seasonId, piece_id]
-        );
-        doubleBookingWarnings = conflicts.rows;
-      } catch (warnErr) {
-        console.error('Double-booking check error:', warnErr.message);
-      }
-    }
-
-    res.status(201).json({ ...result.rows[0], doubleBookingWarnings });
+    res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to add to cast.' });

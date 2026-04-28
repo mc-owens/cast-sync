@@ -18,13 +18,12 @@
     }
 
     @media print {
-      /* Hide chrome but keep the legend panel IN THE FLEX FLOW (visibility:hidden,
-         not display:none) so the grid keeps exactly the same width as on screen.
-         Blocks are % of grid width, so same width → correct alignment guaranteed. */
+      /* Blocks use calc() percentages so they're correct at any container width —
+         hide the legend completely so the grid stretches to fill the full printed page. */
       .app-nav, #room-conflict-banner,
       #update-btn, #update-alert, .btn-print,
       p.text-muted { display: none !important; }
-      .legend-panel { visibility: hidden; }
+      .legend-panel { display: none !important; }
       body { visibility: visible !important; }
       .container-fluid { padding: 0 !important; }
       .schedule-wrapper { page-break-inside: avoid; }
