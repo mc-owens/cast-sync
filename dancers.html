@@ -150,7 +150,14 @@
           <th>Name</th>
           <th>Email</th>
           <th>Grade</th>
-          <th>Pieces Cast</th>
+          <th id="pieces-cast-th">
+            Pieces Cast
+            <button id="pieces-cast-toggle" class="btn btn-link p-0 ms-1 d-none"
+              style="font-size:11px;text-decoration:none;vertical-align:baseline;"
+              title="Switch between this production and org-wide count">
+              · This production
+            </button>
+          </th>
           <th>Submitted</th>
           <th></th>
         </tr>
@@ -317,19 +324,9 @@
           <td style="cursor:pointer;"><span class="open-modal" style="color:#0d6efd;text-decoration:underline;">${d.last_name}, ${d.first_name}</span></td>
           <td style="color:#555;">${d.email || '—'}</td>
           <td>${d.grade || '—'}</td>
-          <td>
-            ${d.org_piece_count > d.piece_count
-              ? `<details style="display:inline-block;">
-                   <summary style="cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:5px;">
-                     ${d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>'}
-                     <span class="text-muted" style="font-size:11px;">▾ ${d.org_piece_count} org-wide</span>
-                   </summary>
-                   <div style="padding:4px 0 0 2px;font-size:11px;color:#555;white-space:nowrap;">
-                     <div>This production: <strong>${d.piece_count}</strong></div>
-                     <div>Org-wide (all active): <strong>${d.org_piece_count}</strong></div>
-                   </div>
-                 </details>`
-              : (d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>')}
+          <td class="pieces-cast-cell" data-prod="${d.piece_count}" data-org="${d.org_piece_count}">
+            <span class="pc-prod">${d.piece_count > 0 ? `<span class="badge bg-success">${d.piece_count}</span>` : '<span class="text-muted">0</span>'}</span>
+            <span class="pc-org" style="display:none;">${d.org_piece_count > 0 ? `<span class="badge bg-primary">${d.org_piece_count}</span>` : '<span class="text-muted">0</span>'}</span>
           </td>
           <td style="color:#888;">${formatDate(d.created_at)}</td>
           <td>
@@ -363,6 +360,22 @@
         document.getElementById('sort-by').addEventListener('change', applyFilterSort);
 
         applyFilterSort();
+
+        // Show the scope toggle only when at least one dancer has org-wide pieces
+        const hasOrgPieces = allDancers.some(d => d.org_piece_count > d.piece_count);
+        if (hasOrgPieces) {
+          let showingOrg = false;
+          const toggleBtn = document.getElementById('pieces-cast-toggle');
+          toggleBtn.classList.remove('d-none');
+          toggleBtn.addEventListener('click', () => {
+            showingOrg = !showingOrg;
+            toggleBtn.textContent = showingOrg ? '· Org-wide' : '· This production';
+            document.querySelectorAll('.pieces-cast-cell').forEach(cell => {
+              cell.querySelector('.pc-prod').style.display = showingOrg ? 'none' : '';
+              cell.querySelector('.pc-org').style.display  = showingOrg ? ''     : 'none';
+            });
+          });
+        }
       } catch (err) {
         console.error(err);
         document.getElementById('loading-msg').textContent = 'Could not load submissions.';

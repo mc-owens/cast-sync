@@ -164,12 +164,32 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
 
-    // Placeholder blocks: full column width, no lane logic
-    document.querySelectorAll('.placeholder-block').forEach(block => {
-      const di = DAYS.indexOf(block.dataset.day);
-      if (di === -1) return;
-      block.style.left  = `calc(${di} * 100% / 7)`;
-      block.style.width = `calc(100% / 7)`;
+    // Placeholder blocks: sweep-line lane logic within their own pool
+    DAYS.forEach((day, di) => {
+      const phDayBlocks = Array.from(document.querySelectorAll(`.placeholder-block[data-day="${day}"]`))
+        .map(el => ({
+          el,
+          startMin: timeStringToMinutes(el.dataset.startTime),
+          endMin:   timeStringToMinutes(el.dataset.endTime),
+        }));
+      if (!phDayBlocks.length) return;
+
+      phDayBlocks.sort((a, b) => a.startMin - b.startMin);
+      const phLaneEnds = [];
+      for (const b of phDayBlocks) {
+        let li = phLaneEnds.findIndex(e => b.startMin >= e);
+        if (li === -1) { li = phLaneEnds.length; phLaneEnds.push(0); }
+        phLaneEnds[li] = b.endMin;
+        b.laneIdx = li;
+      }
+      for (const b of phDayBlocks) {
+        const concurrent = phDayBlocks.filter(o => o !== b && o.startMin < b.endMin && o.endMin > b.startMin);
+        b.laneCount = Math.max(b.laneIdx + 1, ...concurrent.map(o => o.laneIdx + 1), 1);
+      }
+      for (const b of phDayBlocks) {
+        b.el.style.left  = `calc(${di} * 100% / 7 + ${b.laneIdx} * 100% / 7 / ${b.laneCount})`;
+        b.el.style.width = `calc(100% / 7 / ${b.laneCount})`;
+      }
     });
 
     // Org overlay blocks: same sweep-line lane logic as master blocks (independent pool)
@@ -333,11 +353,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     grid.appendChild(el);
   }
 
-  function renderPlaceholder(dbId, label, topPx, heightPx, dayIndex) {
+  function renderPlaceholder(dbId, label, topPx, heightPx, dayIndex, startTimeStr, endTimeStr) {
+    const startSlotI = Math.round(topPx / slotHeight);
+    const endSlotI   = startSlotI + Math.round(heightPx / slotHeight);
     const block = document.createElement('div');
     block.className         = 'block placeholder-block';
     block.dataset.dbId      = dbId;
     block.dataset.day       = DAYS[dayIndex];
+    block.dataset.startTime = startTimeStr || slotToTimeString(startSlotI);
+    block.dataset.endTime   = endTimeStr   || slotToTimeString(endSlotI);
     block.style.top         = `${topPx}px`;
     block.style.height      = `${Math.max(heightPx, slotHeight)}px`;
     block.style.left        = `calc(${dayIndex} * 100% / 7)`;
@@ -425,7 +449,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const topPx    = timeStringToTopPx(ph.start_time);
           const btmPx    = timeStringToTopPx(ph.end_time);
           const dayIndex = DAYS.indexOf(ph.day);
-          renderPlaceholder(ph.id, ph.label, topPx, btmPx - topPx, dayIndex);
+          renderPlaceholder(ph.id, ph.label, topPx, btmPx - topPx, dayIndex, ph.start_time, ph.end_time);
         });
       }
     } catch (e) { console.error('loadBlocks error:', e); }
@@ -624,7 +648,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const saved = await res.json();
         pendingBlock.remove();
         pendingBlock = null;
-        renderPlaceholder(saved.id, saved.label, topPx, heightPx, dayIndex);
+        renderPlaceholder(saved.id, saved.label, topPx, heightPx, dayIndex, startTime, endTime);
         repositionAllBlocks();
       } catch (err) { console.error(err); return; }
       bootstrap.Modal.getInstance(document.getElementById('pieceModal')).hide();

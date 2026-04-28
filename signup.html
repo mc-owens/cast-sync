@@ -77,7 +77,7 @@
       <p class="text-muted text-center" style="font-size:12px;margin-top:6px;" id="google-note">Google sign-up creates an auditionee account.</p>
     </div>
 
-    <p class="mt-3 text-center" style="font-size:14px;">
+    <p class="mt-3 text-center" style="font-size:14px;" id="login-link-row">
       Already have an account? <a href="login.html">Log in</a>
     </p>
 
@@ -138,10 +138,9 @@
         }
 
         if (data.needsVerification) {
-          // Hide form, show "check email" screen
-          document.getElementById('signup-form').style.display   = 'none';
-          document.getElementById('google-section').style.display = 'none';
-          document.getElementById('role-badge').style.display     = 'none';
+          // Hide everything except the check-email view
+          ['signup-form','google-section','role-badge','page-title','page-sub','account-notice','login-link-row']
+            .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
           document.getElementById('check-email-view').style.display = '';
           document.getElementById('check-email-addr').textContent =
             `We sent a link to ${data.email}`;
