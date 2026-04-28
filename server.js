@@ -2177,8 +2177,8 @@ app.post('/api/piece-casts', requireAuth('master'), async (req, res) => {
                  SELECT 1 FROM master_blocks mb_this
                  WHERE mb_this.piece_id = $3
                    AND mb_this.day = mb_other.day
-                   AND mb_this.start_time < mb_other.end_time
-                   AND mb_this.end_time > mb_other.start_time
+                   AND time_to_minutes(mb_this.start_time) < time_to_minutes(mb_other.end_time)
+                   AND time_to_minutes(mb_this.end_time)   > time_to_minutes(mb_other.start_time)
                )
            )
          ORDER BY s.name, p.name`,
@@ -2555,6 +2555,24 @@ async function runMigrations() {
     `);
     console.log('Migration step 12 (season.status + season_members.can_see_other_blocks) complete.');
   } catch (err) { console.error('Migration step 12 error:', err.message); }
+
+  // Step 13: time_to_minutes() helper function for correct "H:MM AM/PM" comparison in SQL.
+  // String comparison fails for 10/11 AM/PM because "10" sorts before "9" alphabetically.
+  try {
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION time_to_minutes(t TEXT) RETURNS INTEGER AS $$
+        SELECT CASE
+          WHEN t LIKE '12:% AM' THEN CAST(split_part(split_part(t,':',2),' ',1) AS INTEGER)
+          WHEN t LIKE '12:% PM' THEN 720 + CAST(split_part(split_part(t,':',2),' ',1) AS INTEGER)
+          WHEN t LIKE '% AM'    THEN CAST(split_part(t,':',1) AS INTEGER) * 60
+                                       + CAST(split_part(split_part(t,':',2),' ',1) AS INTEGER)
+          ELSE                       (CAST(split_part(t,':',1) AS INTEGER) + 12) * 60
+                                       + CAST(split_part(split_part(t,':',2),' ',1) AS INTEGER)
+        END
+      $$ LANGUAGE SQL IMMUTABLE;
+    `);
+    console.log('Migration step 13 (time_to_minutes function) complete.');
+  } catch (err) { console.error('Migration step 13 error:', err.message); }
 
   console.log('All migrations complete.');
 }
