@@ -109,6 +109,18 @@
 
       <h4 class="mb-1">Dancer Registration</h4>
       <p class="text-muted mb-2" style="font-size:13px;">Fill out this form for each audition you are applying to. Your director will give you a production code.</p>
+
+      <div class="alert alert-info py-2 px-3 mb-3 d-flex justify-content-between align-items-start gap-2" style="font-size:13px;" id="account-reminder">
+        <span>
+          <strong>One account, one email.</strong> CastSync tracks your history across every production
+          in an organization — please use the same email each season and avoid creating duplicate accounts.
+          Need to reset your password? Use <a href="forgot-password.html" class="alert-link">Forgot Password</a>
+          or email <a href="mailto:support@cast-sync.com" class="alert-link">support@cast-sync.com</a>.
+        </span>
+        <button type="button" class="btn-close flex-shrink-0" style="font-size:11px;"
+          onclick="document.getElementById('account-reminder').style.display='none'"></button>
+      </div>
+
       <div id="profile-prefill-notice" class="alert alert-secondary py-2 px-3 mb-3 d-none" style="font-size:13px;">
         Using your saved profile — review and update anything that has changed.
       </div>

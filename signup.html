@@ -30,7 +30,15 @@
     </div>
 
     <h4 class="mb-1 fw-semibold" id="page-title">Create Account</h4>
-    <p class="text-muted mb-4" style="font-size:14px;" id="page-sub"></p>
+    <p class="text-muted mb-3" style="font-size:14px;" id="page-sub"></p>
+
+    <div id="account-notice" class="alert alert-info d-none py-2 px-3 mb-3" style="font-size:13px;">
+      <strong>Keep your email handy.</strong> Your account is how CastSync tracks your audition history
+      across productions within an organization — so please use one email address and don't create
+      duplicate accounts. If you ever need to reset your password, use the
+      <a href="forgot-password.html" class="alert-link">Forgot Password</a> link or reach out to
+      <a href="mailto:support@cast-sync.com" class="alert-link">support@cast-sync.com</a>.
+    </div>
 
     <div id="error-msg" class="alert alert-danger d-none"></div>
 
@@ -99,6 +107,7 @@
     } else {
       document.getElementById('page-title').textContent = 'Create an Account';
       document.getElementById('page-sub').textContent   = 'Auditioning for a production? Sign up here.';
+      document.getElementById('account-notice').classList.remove('d-none');
     }
 
     document.getElementById('signup-form').addEventListener('submit', async (e) => {
