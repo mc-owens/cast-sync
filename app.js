@@ -67,6 +67,8 @@ async function addDancer() {
 
   if (!join_code)                { alert('Please enter your director\'s join code.'); return; }
   if (!first_name || !last_name) { alert('First and last name are required.'); return; }
+  const commitCheck = document.getElementById('commitment-check');
+  if (commitCheck && !commitCheck.checked) { alert('Please read and check the commitment acknowledgment before submitting.'); return; }
 
   const gradeRadio = document.querySelector('input[name="flexRadioDefault"]:checked');
   const grade      = gradeRadio ? gradeRadio.nextElementSibling.textContent.trim() : null;

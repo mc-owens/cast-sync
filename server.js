@@ -1599,8 +1599,9 @@ app.get('/api/dancers', requireAuth('master'), async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT dp.id AS profile_id, u.id AS user_id,
-              dp.first_name, dp.last_name, u.email, dp.grade, sub.created_at,
-              sub.audition_number,
+              dp.first_name, dp.last_name, u.email, dp.phone, dp.address,
+              dp.grade, dp.technique_classes, sub.injuries, sub.absences,
+              sub.created_at, sub.audition_number,
               (SELECT COUNT(*) FROM piece_casts pc
                JOIN pieces p ON p.id = pc.piece_id
                WHERE pc.user_id = u.id AND p.season_id = $2) AS piece_count,

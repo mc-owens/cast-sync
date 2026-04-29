@@ -292,12 +292,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     const understudyBtn = document.createElement('button');
     understudyBtn.style.cssText = 'font-size:11px;padding:1px 7px;line-height:1.5;';
 
+    const errorMsg = document.createElement('span');
+    errorMsg.style.cssText = 'display:none;font-size:11px;color:#dc3545;margin-top:2px;';
+
     const btnGroup = document.createElement('div');
     btnGroup.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
     btnGroup.appendChild(castBtn);
     btnGroup.appendChild(understudyBtn);
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;gap:0;flex-shrink:0;';
+    row.appendChild(btnGroup);
+    row.appendChild(errorMsg);
+
     li.appendChild(link);
-    li.appendChild(btnGroup);
+    li.appendChild(row);
     listEl.appendChild(li);
 
     // Mutable per-row state
@@ -352,16 +361,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         if (!res.ok) {
           const data = await res.json();
-          alert(data.error || 'Failed to update cast.');
+          errorMsg.textContent   = data.error || 'Failed to update cast.';
+          errorMsg.style.display = 'block';
+          setTimeout(() => { errorMsg.style.display = 'none'; }, 6000);
           return;
         }
+        errorMsg.style.display = 'none';
         const data  = await res.json();
         currentRole   = role;
         currentCastId = data.id;
         renderBtns();
       } catch (err) {
         console.error(err);
-        alert('Failed to update cast.');
+        errorMsg.textContent   = 'Failed to update cast.';
+        errorMsg.style.display = 'block';
+        setTimeout(() => { errorMsg.style.display = 'none'; }, 6000);
       } finally {
         castBtn.disabled = false;
         understudyBtn.disabled = false;
@@ -374,7 +388,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       understudyBtn.disabled = true;
       try {
         const res = await fetch(`/api/piece-casts/${currentCastId}`, { method: 'DELETE' });
-        if (!res.ok) { alert('Could not remove dancer.'); return; }
+        if (!res.ok) {
+          errorMsg.textContent = 'Could not remove dancer.';
+          errorMsg.style.display = 'block';
+          setTimeout(() => { errorMsg.style.display = 'none'; }, 6000);
+          return;
+        }
         currentRole   = null;
         currentCastId = null;
         renderBtns();

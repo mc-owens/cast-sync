@@ -121,9 +121,12 @@
         <h5 class="mb-0">All Auditionees</h5>
         <p class="text-muted mb-0" style="font-size:13px;" id="dancer-count-label"></p>
       </div>
-      <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#clearModal">
-        Clear All Submissions
-      </button>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm" id="export-csv-btn">Export CSV</button>
+        <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#clearModal">
+          Clear All Submissions
+        </button>
+      </div>
     </div>
 
     <!-- Filter + sort controls -->
@@ -403,6 +406,44 @@
     });
 
     loadDancers();
+
+    document.getElementById('export-csv-btn').addEventListener('click', async () => {
+      try {
+        const res     = await fetch('/api/dancers');
+        const dancers = await res.json();
+        if (!dancers.length) { alert('No auditionees to export.'); return; }
+
+        const headers = ['Audition #', 'First Name', 'Last Name', 'Email', 'Phone', 'Address',
+                         'Grade', 'Technique Classes', 'Injuries', 'Absences', 'Submitted'];
+        const rows = dancers.map(d => [
+          d.audition_number ?? '',
+          d.first_name,
+          d.last_name,
+          d.email ?? '',
+          d.phone ?? '',
+          d.address ?? '',
+          d.grade ?? '',
+          d.technique_classes ?? '',
+          d.injuries ?? '',
+          d.absences ?? '',
+          d.created_at ? new Date(d.created_at).toLocaleDateString() : '',
+        ]);
+
+        const csv = [headers, ...rows].map(row =>
+          row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+        ).join('\n');
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = 'auditionees.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        alert('Could not export. Please try again.');
+      }
+    });
 
     document.getElementById('save-audition-number-btn').addEventListener('click', async () => {
       if (!_modalUserId) return;
