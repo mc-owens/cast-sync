@@ -514,16 +514,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     grid.appendChild(currentBlock);
   });
 
+  // Document-level handler for drag-create — fires even when cursor leaves the grid
+  document.addEventListener('mousemove', e => {
+    if (!isSelecting || !currentBlock) return;
+    const rect = grid.getBoundingClientRect();
+    const y    = e.clientY - rect.top;
+    const cur  = Math.max(0, Math.min(Math.floor(y / slotHeight), totalSlots - 1));
+    const topSlot = Math.min(startSlot, cur);
+    currentBlock.style.top    = `${topSlot * slotHeight}px`;
+    currentBlock.style.height = `${(Math.abs(cur - startSlot) + 1) * slotHeight}px`;
+  });
+
   grid.addEventListener('mousemove', e => {
-    if (isSelecting && currentBlock) {
-      const rect = grid.getBoundingClientRect();
-      const y    = e.clientY - rect.top;
-      const cur  = Math.max(0, Math.min(Math.floor(y / slotHeight), totalSlots - 1));
-      const topSlot = Math.min(startSlot, cur);
-      currentBlock.style.top    = `${topSlot * slotHeight}px`;
-      currentBlock.style.height = `${(Math.abs(cur - startSlot) + 1) * slotHeight}px`;
-      return;
-    }
+    if (isSelecting) return; // handled above at document level
 
     if (isResizing && currentBlock) {
       const rect = grid.getBoundingClientRect();

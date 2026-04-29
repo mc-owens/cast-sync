@@ -205,19 +205,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     sorted.partial.forEach(d => appendDancerItem(partialList, d, _availPieceId));
   }
 
-  // Wire sort buttons
-  document.getElementById('sort-abc').addEventListener('click', () => {
-    _sortMode = 'abc';
-    document.getElementById('sort-abc').classList.add('active');
-    document.getElementById('sort-num').classList.remove('active');
+  // Wire sort buttons — swap solid/outline to show active state clearly
+  function setSortMode(mode) {
+    _sortMode = mode;
+    const abcBtn = document.getElementById('sort-abc');
+    const numBtn = document.getElementById('sort-num');
+    abcBtn.className = mode === 'abc' ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-outline-secondary';
+    numBtn.className = mode === 'num' ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-outline-secondary';
+    abcBtn.style.fontSize = '12px';
+    numBtn.style.fontSize = '12px';
     renderAvailabilityLists();
-  });
-  document.getElementById('sort-num').addEventListener('click', () => {
-    _sortMode = 'num';
-    document.getElementById('sort-num').classList.add('active');
-    document.getElementById('sort-abc').classList.remove('active');
-    renderAvailabilityLists();
-  });
+  }
+  document.getElementById('sort-abc').addEventListener('click', () => setSortMode('abc'));
+  document.getElementById('sort-num').addEventListener('click', () => setSortMode('num'));
 
   async function showAvailability(block) {
     const pieceId   = block.dataset.pieceId;
@@ -236,8 +236,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Reset sort to A-Z each time a new piece is opened
     _sortMode = 'abc';
-    document.getElementById('sort-abc').classList.add('active');
-    document.getElementById('sort-num').classList.remove('active');
+    document.getElementById('sort-abc').className = 'btn btn-sm btn-secondary';
+    document.getElementById('sort-abc').style.fontSize = '12px';
+    document.getElementById('sort-num').className = 'btn btn-sm btn-outline-secondary';
+    document.getElementById('sort-num').style.fontSize = '12px';
 
     const modal = new bootstrap.Modal(document.getElementById('availabilityModal'));
     modal.show();
@@ -270,7 +272,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     li.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;';
 
     const link = document.createElement('span');
-    link.textContent   = dancer.audition_number
+    link.textContent   = (_sortMode === 'num' && dancer.audition_number)
       ? `#${dancer.audition_number} — ${dancer.first_name} ${dancer.last_name}`
       : `${dancer.first_name} ${dancer.last_name}`;
     link.style.cssText = 'cursor:pointer;text-decoration:underline;color:#0d6efd;font-size:13px;flex:1;';
