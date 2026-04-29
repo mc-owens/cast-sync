@@ -168,6 +168,57 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Availability modal ────────────────────────────────────────────────────────
 
+  // State shared between showAvailability and sort buttons
+  let _availFull    = [];
+  let _availPartial = [];
+  let _availPieceId = null;
+  let _sortMode     = 'abc';
+
+  function sortDancers(arr) {
+    return [...arr].sort((a, b) => {
+      if (_sortMode === 'num') {
+        const aNum = a.audition_number != null ? Number(a.audition_number) : Infinity;
+        const bNum = b.audition_number != null ? Number(b.audition_number) : Infinity;
+        if (aNum !== bNum) return aNum - bNum;
+      }
+      // A-Z (always tiebreak)
+      const lastCmp = (a.last_name || '').localeCompare(b.last_name || '');
+      return lastCmp !== 0 ? lastCmp : (a.first_name || '').localeCompare(b.first_name || '');
+    });
+  }
+
+  function renderAvailabilityLists() {
+    const fullList    = document.getElementById('fully-available-list');
+    const partialList = document.getElementById('partially-available-list');
+    const noFull      = document.getElementById('no-full');
+    const noPartial   = document.getElementById('no-partial');
+
+    fullList.innerHTML    = '';
+    partialList.innerHTML = '';
+
+    const sorted = { full: sortDancers(_availFull), partial: sortDancers(_availPartial) };
+
+    noFull.style.display = sorted.full.length === 0 ? 'block' : 'none';
+    sorted.full.forEach(d => appendDancerItem(fullList, d, _availPieceId));
+
+    noPartial.style.display = sorted.partial.length === 0 ? 'block' : 'none';
+    sorted.partial.forEach(d => appendDancerItem(partialList, d, _availPieceId));
+  }
+
+  // Wire sort buttons
+  document.getElementById('sort-abc').addEventListener('click', () => {
+    _sortMode = 'abc';
+    document.getElementById('sort-abc').classList.add('active');
+    document.getElementById('sort-num').classList.remove('active');
+    renderAvailabilityLists();
+  });
+  document.getElementById('sort-num').addEventListener('click', () => {
+    _sortMode = 'num';
+    document.getElementById('sort-num').classList.add('active');
+    document.getElementById('sort-abc').classList.remove('active');
+    renderAvailabilityLists();
+  });
+
   async function showAvailability(block) {
     const pieceId   = block.dataset.pieceId;
     const pieceName = block.dataset.pieceName;
@@ -183,6 +234,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     noFull.style.display    = 'none';
     noPartial.style.display = 'none';
 
+    // Reset sort to A-Z each time a new piece is opened
+    _sortMode = 'abc';
+    document.getElementById('sort-abc').classList.add('active');
+    document.getElementById('sort-num').classList.remove('active');
+
     const modal = new bootstrap.Modal(document.getElementById('availabilityModal'));
     modal.show();
 
@@ -196,19 +252,12 @@ document.addEventListener('DOMContentLoaded', async () => {
           `${pieceName} — ${formatPieceSchedule(data.piece_blocks)}`;
       }
 
+      _availFull    = data.fully_available;
+      _availPartial = data.partially_available;
+      _availPieceId = pieceId;
+
       fullList.innerHTML = '';
-
-      if (data.fully_available.length === 0) {
-        noFull.style.display = 'block';
-      } else {
-        data.fully_available.forEach(d => appendDancerItem(fullList, d, pieceId));
-      }
-
-      if (data.partially_available.length === 0) {
-        noPartial.style.display = 'block';
-      } else {
-        data.partially_available.forEach(d => appendDancerItem(partialList, d, pieceId));
-      }
+      renderAvailabilityLists();
     } catch (err) {
       fullList.innerHTML = '<li class="text-danger" style="font-size:13px;">Could not load availability.</li>';
       console.error(err);

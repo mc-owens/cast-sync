@@ -516,9 +516,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   grid.addEventListener('mousemove', e => {
     if (isSelecting && currentBlock) {
-      const slot = e.target.closest('.time-slot');
-      if (!slot) return;
-      const cur     = parseInt(slot.dataset.timeIndex);
+      const rect = grid.getBoundingClientRect();
+      const y    = e.clientY - rect.top;
+      const cur  = Math.max(0, Math.min(Math.floor(y / slotHeight), totalSlots - 1));
       const topSlot = Math.min(startSlot, cur);
       currentBlock.style.top    = `${topSlot * slotHeight}px`;
       currentBlock.style.height = `${(Math.abs(cur - startSlot) + 1) * slotHeight}px`;
