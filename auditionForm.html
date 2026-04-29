@@ -155,9 +155,18 @@
 
         <div class="row g-3 mb-3">
           <div class="col-sm-6">
+            <label for="form-email" class="form-label">Email</label>
+            <input type="email" id="form-email" class="form-control" readonly
+                   style="background:#f8f9fa;color:#555;" tabindex="-1" />
+            <div class="form-text">From your account — <a href="account.html">update in Account settings</a></div>
+          </div>
+          <div class="col-sm-6">
             <label for="phonenumber" class="form-label">Phone Number</label>
             <input type="text" id="phonenumber" class="form-control" />
           </div>
+        </div>
+
+        <div class="row g-3 mb-3">
           <div class="col-sm-6">
             <label for="address" class="form-label">Address</label>
             <input type="text" id="address" class="form-control" />
@@ -166,22 +175,42 @@
 
         <div class="mb-3">
           <label class="form-label">Grade</label>
-          <div class="d-flex gap-4 flex-wrap">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;max-width:400px;">
             <div class="form-check">
               <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault1" />
-              <label class="form-check-label" for="flexRadioDefault1">Senior</label>
+              <label class="form-check-label" for="flexRadioDefault1">Freshman Major</label>
             </div>
             <div class="form-check">
               <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault2" />
-              <label class="form-check-label" for="flexRadioDefault2">Junior</label>
+              <label class="form-check-label" for="flexRadioDefault2">Freshman Minor</label>
             </div>
             <div class="form-check">
               <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault3" />
-              <label class="form-check-label" for="flexRadioDefault3">Sophomore</label>
+              <label class="form-check-label" for="flexRadioDefault3">Sophomore Major</label>
             </div>
             <div class="form-check">
               <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault4" />
-              <label class="form-check-label" for="flexRadioDefault4">Freshman</label>
+              <label class="form-check-label" for="flexRadioDefault4">Sophomore Minor</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault5" />
+              <label class="form-check-label" for="flexRadioDefault5">Junior Major</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault6" />
+              <label class="form-check-label" for="flexRadioDefault6">Junior Minor</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault7" />
+              <label class="form-check-label" for="flexRadioDefault7">Senior Major</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault8" />
+              <label class="form-check-label" for="flexRadioDefault8">Senior Minor</label>
+            </div>
+            <div class="form-check" style="grid-column:1/-1;">
+              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault9" />
+              <label class="form-check-label" for="flexRadioDefault9">Other</label>
             </div>
           </div>
         </div>
@@ -231,6 +260,7 @@
           const res  = await fetch('/api/auth/me');
           const user = await res.json();
           if (!res.ok) { window.location.href = 'login.html'; return; }
+          if (user.email) document.getElementById('form-email').value = user.email;
           // Director in director mode → go to director side
           // (but allow role=master who has explicitly switched to auditionee mode)
           if (user.mode === 'director' || (user.role === 'master' && user.mode !== 'auditionee')) {
@@ -268,7 +298,16 @@
               if (p.address)    document.getElementById('address').value       = p.address;
               if (p.technique_classes) document.getElementById('techniqueclasses').value = p.technique_classes;
               if (p.grade) {
-                const gradeMap = { Senior: 'flexRadioDefault1', Junior: 'flexRadioDefault2', Sophomore: 'flexRadioDefault3', Freshman: 'flexRadioDefault4' };
+                const gradeMap = {
+                  'Freshman Major':'flexRadioDefault1','Freshman Minor':'flexRadioDefault2',
+                  'Sophomore Major':'flexRadioDefault3','Sophomore Minor':'flexRadioDefault4',
+                  'Junior Major':'flexRadioDefault5','Junior Minor':'flexRadioDefault6',
+                  'Senior Major':'flexRadioDefault7','Senior Minor':'flexRadioDefault8',
+                  'Other':'flexRadioDefault9',
+                  // backward compat for old data
+                  'Freshman':'flexRadioDefault1','Sophomore':'flexRadioDefault3',
+                  'Junior':'flexRadioDefault5','Senior':'flexRadioDefault7',
+                };
                 const radioId = gradeMap[p.grade];
                 if (radioId) document.getElementById(radioId).checked = true;
               }
@@ -414,7 +453,15 @@
             if (d.injuries) document.getElementById('injuries').value = d.injuries;
             if (d.absences) document.getElementById('absences').value = d.absences;
             if (d.grade) {
-              const gm = {Senior:'flexRadioDefault1',Junior:'flexRadioDefault2',Sophomore:'flexRadioDefault3',Freshman:'flexRadioDefault4'};
+              const gm = {
+                'Freshman Major':'flexRadioDefault1','Freshman Minor':'flexRadioDefault2',
+                'Sophomore Major':'flexRadioDefault3','Sophomore Minor':'flexRadioDefault4',
+                'Junior Major':'flexRadioDefault5','Junior Minor':'flexRadioDefault6',
+                'Senior Major':'flexRadioDefault7','Senior Minor':'flexRadioDefault8',
+                'Other':'flexRadioDefault9',
+                'Freshman':'flexRadioDefault1','Sophomore':'flexRadioDefault3',
+                'Junior':'flexRadioDefault5','Senior':'flexRadioDefault7',
+              };
               if (gm[d.grade]) document.getElementById(gm[d.grade]).checked = true;
             }
             if (d.availability?.length) restoreAvailabilityBlocks(d.availability);
