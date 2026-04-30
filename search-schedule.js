@@ -169,8 +169,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Availability modal ────────────────────────────────────────────────────────
 
   function showErrorModal(msg) {
-    document.getElementById('error-modal-body').textContent = msg;
-    new bootstrap.Modal(document.getElementById('errorModal')).show();
+    document.getElementById('error-toast-body').textContent = msg;
+    new bootstrap.Toast(document.getElementById('error-toast')).show();
   }
 
   // State shared between showAvailability and sort buttons

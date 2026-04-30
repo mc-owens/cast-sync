@@ -67,18 +67,12 @@
     </div>
   </div>
 
-  <!-- Generic error modal -->
-  <div class="modal fade" id="errorModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-      <div class="modal-content">
-        <div class="modal-header bg-danger text-white py-2">
-          <h6 class="modal-title mb-0">Unable to Cast</h6>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body" id="error-modal-body" style="font-size:14px;"></div>
-        <div class="modal-footer py-2">
-          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">OK</button>
-        </div>
+  <!-- Error toast (works on top of open modals) -->
+  <div class="toast-container position-fixed top-0 start-50 translate-middle-x p-3" style="z-index:9999;">
+    <div id="error-toast" class="toast align-items-center text-bg-danger border-0" role="alert" aria-live="assertive" data-bs-delay="6000">
+      <div class="d-flex">
+        <div class="toast-body" id="error-toast-body" style="font-size:14px;"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
       </div>
     </div>
   </div>
