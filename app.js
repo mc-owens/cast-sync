@@ -38,8 +38,8 @@ async function submitToServer(data, isUpdate) {
     document.getElementById('successModalLabel').textContent = isUpdate ? 'Submission Updated!' : 'Submitted!';
     document.getElementById('successModalBody').textContent  =
       isUpdate
-        ? `Your submission for ${result.org} — ${result.season} has been updated.`
-        : `Your audition form for ${result.org} — ${result.season} has been received!`;
+        ? `Your submission for ${result.org}: ${result.season} has been updated.`
+        : `Your audition form for ${result.org}: ${result.season} has been received!`;
     new bootstrap.Modal(document.getElementById('successModal')).show();
     if (!isUpdate) {
       document.getElementById('successModal').addEventListener('hidden.bs.modal', () => {
@@ -111,7 +111,7 @@ async function addDancer() {
     const checkRes = await fetch(`/api/submissions/me?join_code=${encodeURIComponent(join_code)}`);
     if (checkRes.ok) {
       const existing = await checkRes.json();
-      document.getElementById('existing-org-name').textContent = existing.org_name + ' — ' + existing.season_name;
+      document.getElementById('existing-org-name').textContent = existing.org_name + ': ' + existing.season_name;
       pendingSubmission = data;
       new bootstrap.Modal(document.getElementById('updateConfirmModal')).show();
       return;

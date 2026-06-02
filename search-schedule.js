@@ -256,7 +256,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Update title with formatted schedule
       if (data.piece_blocks && data.piece_blocks.length > 0) {
         document.getElementById('avail-modal-title').textContent =
-          `${pieceName} — ${formatPieceSchedule(data.piece_blocks)}`;
+          `${pieceName}: ${formatPieceSchedule(data.piece_blocks)}`;
       }
 
       _availFull    = data.fully_available;
@@ -278,7 +278,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const link = document.createElement('span');
     link.textContent   = (_sortMode === 'num' && dancer.audition_number)
-      ? `#${dancer.audition_number} — ${dancer.first_name} ${dancer.last_name}`
+      ? `#${dancer.audition_number} ${dancer.first_name} ${dancer.last_name}`
       : `${dancer.first_name} ${dancer.last_name}`;
     link.style.cssText = 'cursor:pointer;text-decoration:underline;color:#0d6efd;font-size:13px;flex:1;';
     link.title         = 'Click to view schedule';
@@ -460,13 +460,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function populateDancerDetails(dancer) {
-    document.getElementById('detail-email').textContent     = dancer.email             || '—';
-    document.getElementById('detail-phone').textContent     = dancer.phone             || '—';
-    document.getElementById('detail-address').textContent   = dancer.address           || '—';
-    document.getElementById('detail-grade').textContent     = dancer.grade             || '—';
-    document.getElementById('detail-technique').textContent = dancer.technique_classes || '—';
-    document.getElementById('detail-injuries').textContent  = dancer.injuries          || '—';
-    document.getElementById('detail-absences').textContent  = dancer.absences          || '—';
+    document.getElementById('detail-email').textContent     = dancer.email             || '';
+    document.getElementById('detail-phone').textContent     = dancer.phone             || '';
+    document.getElementById('detail-address').textContent   = dancer.address           || '';
+    document.getElementById('detail-grade').textContent     = dancer.grade             || '';
+    document.getElementById('detail-technique').textContent = dancer.technique_classes || '';
+    document.getElementById('detail-injuries').textContent  = dancer.injuries          || '';
+    document.getElementById('detail-absences').textContent  = dancer.absences          || '';
   }
 
   // ── Load and render everything ────────────────────────────────────────────────

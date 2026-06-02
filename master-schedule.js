@@ -279,7 +279,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const hasExisting = pieces.length > 0;
     document.getElementById('radio-existing-piece').disabled = !hasExisting;
     if (!hasExisting) {
-      sel.innerHTML = '<option disabled>No pieces yet — create one first</option>';
+      sel.innerHTML = '<option disabled>No pieces yet. Create one first.</option>';
       document.getElementById('radio-new-piece').checked              = true;
       document.getElementById('new-piece-section').style.display      = 'block';
       document.getElementById('existing-piece-section').style.display = 'none';

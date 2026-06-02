@@ -428,13 +428,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function populateDancerDetails(d) {
-    document.getElementById('detail-email').textContent     = d.email             || '—';
-    document.getElementById('detail-phone').textContent     = d.phone             || '—';
-    document.getElementById('detail-address').textContent   = d.address           || '—';
-    document.getElementById('detail-grade').textContent     = d.grade             || '—';
-    document.getElementById('detail-technique').textContent = d.technique_classes || '—';
-    document.getElementById('detail-injuries').textContent  = d.injuries          || '—';
-    document.getElementById('detail-absences').textContent  = d.absences          || '—';
+    document.getElementById('detail-email').textContent     = d.email             || '';
+    document.getElementById('detail-phone').textContent     = d.phone             || '';
+    document.getElementById('detail-address').textContent   = d.address           || '';
+    document.getElementById('detail-grade').textContent     = d.grade             || '';
+    document.getElementById('detail-technique').textContent = d.technique_classes || '';
+    document.getElementById('detail-injuries').textContent  = d.injuries          || '';
+    document.getElementById('detail-absences').textContent  = d.absences          || '';
   }
 
   // ── Common availability ───────────────────────────────────────────────────────
@@ -697,15 +697,15 @@ document.addEventListener('DOMContentLoaded', () => {
       actionPanel.style.display = 'none';
     } else if (total === 1) {
       const label = castN === 1 ? '1 cast member' : '1 understudy';
-      summary.textContent       = `${label} selected — add a second to see shared availability`;
+      summary.textContent       = `${label} selected. Add a second to see shared availability`;
       actionPanel.style.display = 'none';
     } else {
       const parts = [];
       if (castN > 0)       parts.push(`${castN} cast`);
       if (understudyN > 0) parts.push(`${understudyN} understudy`);
       summary.textContent = s > 0
-        ? `${parts.join(', ')} selected — ${s} shared window${s === 1 ? '' : 's'}`
-        : `${parts.join(', ')} selected — no shared availability`;
+        ? `${parts.join(', ')} selected: ${s} shared window${s === 1 ? '' : 's'}`
+        : `${parts.join(', ')} selected: no shared availability`;
       actionPanel.style.display = (castN >= 1 && s > 0) ? 'block' : 'none';
     }
   }
@@ -725,7 +725,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const slotEl = document.getElementById('slot-select');
     slotEl.innerHTML = currentCommonSlots.map(s =>
       `<option value="${s.day}|||${s.start}|||${s.end}">` +
-      `${s.day} — available ${minutesToTimeString(s.start)} – ${minutesToTimeString(s.end)}` +
+      `${s.day}: available ${minutesToTimeString(s.start)} – ${minutesToTimeString(s.end)}` +
       `</option>`
     ).join('');
 
@@ -850,7 +850,7 @@ document.addEventListener('DOMContentLoaded', () => {
             saveErrors.push(`${dancer.first_name} ${dancer.last_name}: ${e.error || r.status}`);
           }
         }));
-        if (saveErrors.length > 0) throw new Error('Could not save some cast members — ' + saveErrors.join('; '));
+        if (saveErrors.length > 0) throw new Error('Could not save some cast members: ' + saveErrors.join('; '));
       }
 
       const castSummary = [];
@@ -858,7 +858,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (selectedUnderstudies.length > 0) castSummary.push(`${selectedUnderstudies.length} understudy`);
       const castNote = castSummary.length > 0 ? ` · ${castSummary.join(', ')} saved` : '';
 
-      successEl.textContent = `✓ "${pieceName}" — ${day} ${startTime} – ${endTime} added to Master Schedule${castNote}`;
+      successEl.textContent = `✓ "${pieceName}", ${day} ${startTime} – ${endTime} added to Master Schedule${castNote}`;
       successEl.classList.remove('d-none');
       document.getElementById('piece-name-input').value = '';
       // Reload blocks and re-render grid to reflect the new rehearsal
