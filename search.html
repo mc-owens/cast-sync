@@ -217,8 +217,7 @@
             if (sub.isTrial) {
               const days = sub.daysRemaining;
               document.getElementById('trial-banner-text').textContent =
-                (days <= 1 ? 'Your free trial expires today.' : `Your free trial expires in ${days} day${days === 1 ? '' : 's'}.`) +
-                ' Upgrade any time to keep your productions.';
+                days <= 1 ? 'Explore mode: your trial expires today. Upgrade to start your first real production.' : `Explore mode: ${days} day${days === 1 ? '' : 's'} left to explore. Upgrade any time to start your first real production.`;
               document.getElementById('trial-banner').style.display = '';
               document.getElementById('trial-banner-dismiss').addEventListener('click', () => {
                 document.getElementById('trial-banner').style.display = 'none';

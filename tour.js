@@ -19,7 +19,6 @@
   /* ── Step definitions ───────────────────────────────────────── */
   const STEPS = {
 
-    /* org-select: triggered by ?tour=1 from signup */
     'org-select': [
       {
         selector: null,
@@ -40,11 +39,10 @@
       {
         selector: null,
         title: 'Invite a Co-Director',
-        body: 'You can add a <strong>co-director</strong> to any production. They get full access to that show\'s data (scheduling, casting, publishing) without seeing your other productions.<br><br>Once you\'ve created a production and entered it, your workspace tour begins automatically with sample data already loaded.',
+        body: 'You can add a <strong>co-director</strong> to any production. They get full access to that show\'s data (scheduling, casting, publishing) without seeing your other productions.<br><br>Once you\'ve created a production and entered it, your workspace tour begins with sample data already loaded.',
       },
     ],
 
-    /* master.html: auto-starts on first production entry */
     'master': [
       {
         selector: '.navbar-collapse',
@@ -56,78 +54,80 @@
         selector: '#grid',
         position: 'top',
         title: 'Master Schedule Grid',
-        body: 'We\'ve loaded 2 sample pieces with 3 rehearsal blocks so you can see this in action. In your real production, <strong>drag</strong> on the grid to place a block and <strong>resize</strong> to adjust it. Blocks that exceed your room count turn red automatically.',
+        body: 'We\'ve loaded 2 sample pieces with 3 rehearsal blocks so you can see how this works. <strong>Drag</strong> on the grid to place a block, <strong>resize</strong> to adjust the time. Blocks that exceed your room count turn red automatically.',
       },
       {
         selector: '#pieces-legend',
         position: 'right',
         title: 'Pieces and Colors',
-        body: 'Each piece gets its own color. You\'ll see Tour Piece A (red) and Tour Piece B (blue) as examples. Create a piece first, then drag its rehearsal blocks onto the grid.',
+        body: 'Each piece gets its own color. Piece A (red) and Piece B (blue) are loaded as examples. Click the <strong>+</strong> button in this panel to create your own, then drag their rehearsal blocks onto the grid. You can resize and reposition blocks any time.',
       },
       {
         selector: '#room-count-input',
         position: 'bottom',
         title: 'Room Count',
-        body: 'Tell CastSync how many rehearsal rooms you have. Scheduling more pieces at the same time than you have rooms turns those blocks red so you can fix the conflict.',
+        body: 'Tell CastSync how many rehearsal rooms you have. Scheduling more pieces at the same time than you have rooms turns those blocks red so you can catch the conflict immediately.',
         nextPage: 'search.html',
       },
     ],
 
-    /* search.html: Availability */
     'search': [
       {
         selector: '.schedule-wrapper',
         position: 'top',
         title: 'Availability Grid',
-        body: 'We\'ve loaded 5 sample dancers so you can see this populated. Each colored block shows a dancer\'s available time window. Once your real auditionees submit, their availability fills in here.',
+        body: 'We\'ve loaded 5 sample dancers so you can see this populated. Each colored block shows when a dancer is available. The colors match your pieces from the Master Schedule.',
       },
       {
         selector: null,
-        title: 'Click Any Block to See Who\'s Free',
-        body: 'Click on a time block in the grid to open a panel showing <strong>who is fully available</strong> and <strong>who is partially available</strong> during that window, making it easy to find dancers who can all rehearse together.',
+        title: 'Click a Block to See Who\'s Free',
+        body: 'Click any colored block on the schedule below. A panel will open showing exactly which dancers are available during that window.',
+        interactive: true,
+        interactiveSelector: '.readonly-block',
+        interactiveEvent: 'click',
       },
       {
         selector: null,
-        title: 'Viewing Auditionee Profiles',
-        body: 'Click any dancer\'s name to open their full profile: contact info, grade, technique background, injuries, known absences, and their complete availability schedule.',
+        title: 'Who\'s In, Who\'s Out',
+        body: 'The panel breaks dancers into fully available and partially available. Click any dancer\'s name to open their full profile: contact info, technique, injuries, and their complete availability grid.',
         nextPage: 'cast.html',
       },
     ],
 
-    /* cast.html: Cast Builder */
     'cast': [
       {
+        selector: '#dancer-search',
+        position: 'bottom',
+        title: 'Build Your Cast',
+        body: 'Search for a dancer by name or audition number that you have in mind for a piece. Add them to see when they\'re free.',
+        interactive: true,
+        interactiveSelector: '#dancer-search',
+        interactiveEvent: 'focus',
+      },
+      {
         selector: null,
-        title: 'Cast Builder',
-        body: 'This is where you build your cast piece by piece. Select a piece from the left panel to see which of the 5 sample dancers are available during its rehearsal window.',
+        title: 'Find a Time That Works',
+        body: 'Add a few dancers and the grid shows every window when everyone is free at the same time. Build each piece around the rehearsal time that works for the whole cast.',
       },
       {
         selector: '#view-all-btn',
         position: 'bottom',
         title: 'View Modes',
-        body: '<strong>All Windows</strong> shows every time slot where your selected dancers are free. <strong>Open Rooms</strong> filters to only windows where a rehearsal room is also available, useful when rooms are your bottleneck.',
+        body: '<strong>All Windows</strong> shows every time slot your cast is free. <strong>Open Rooms</strong> filters to only windows where a rehearsal room is also available.',
       },
       {
-        selector: '#avail-grid-wrapper',
-        position: 'top',
-        title: 'Availability Overlay',
-        body: 'Green slots mean everyone in the current cast is free. Amber means rooms are full at that time. Gray blocks are already-scheduled rehearsals from the Master Schedule.',
-      },
-      {
-        selector: '#action-panel',
-        position: 'top',
-        title: 'Assign Cast Members',
-        body: 'Select dancers from the list on the left, then use this panel to assign them as <strong>Cast Members</strong> or <strong>Understudies</strong> for the selected piece. CastSync will flag a conflict if a dancer is double-booked.',
+        selector: null,
+        title: 'Conflict Detection',
+        body: 'CastSync flags a conflict if you try to cast the same dancer in two pieces that rehearse at the same time. You\'ll see a warning before it\'s confirmed, so nothing slips through.',
         nextPage: 'dancers.html',
       },
     ],
 
-    /* dancers.html: Auditionees */
     'dancers': [
       {
         selector: null,
         title: 'Auditionees',
-        body: 'Your 5 sample auditionees are listed here. In a real production, dancers submit their info using the join code you share with them and appear here automatically.',
+        body: 'Your 5 sample auditionees appear here, each with an audition number. In a real production, dancers submit using the join code you share with them. You can search by name <strong>or</strong> by audition number.',
       },
       {
         selector: '#dancers-table',
@@ -138,7 +138,6 @@
       },
     ],
 
-    /* casting.html: Casting tab */
     'casting': [
       {
         selector: '#pieces-container',
@@ -156,7 +155,7 @@
         selector: 'a[href="publish.html"]',
         position: 'top',
         title: 'Email and Export',
-        body: 'Use this to <strong>email the cast list</strong> to all auditionees at once, or <strong>download a PDF or CSV</strong> for your records.<br><br>That\'s everything! Click Finish to clear the sample data and start fresh.',
+        body: 'Use this to <strong>email the cast list</strong> to all auditionees at once, or <strong>download a PDF or CSV</strong> for your records.<br><br>That\'s it! Click Finish to clear the sample data and start fresh.',
         isFinalStep: true,
       },
     ],
@@ -164,9 +163,31 @@
   };
 
   /* ── UI ─────────────────────────────────────────────────────── */
-  let _steps, _page, _cur, _ring, _tip, _orgId, _seasonId;
+  let _steps, _page, _cur, _ring, _tip, _orgId, _seasonId, _tourPieceIds, _interactiveCleanup;
+
+  function injectCSS() {
+    if (document.getElementById('cs-tour-style')) return;
+    const s = document.createElement('style');
+    s.id = 'cs-tour-style';
+    s.textContent = `
+      @keyframes csTourPulse {
+        0%   { outline: 3px solid rgba(196,148,58,.9); outline-offset: 2px; }
+        50%  { outline: 3px solid rgba(196,148,58,.15); outline-offset: 5px; }
+        100% { outline: 3px solid rgba(196,148,58,.9); outline-offset: 2px; }
+      }
+      .cs-tour-target {
+        animation: csTourPulse 1.3s ease-in-out infinite !important;
+        cursor: pointer !important;
+        position: relative;
+        z-index: 9996;
+      }
+    `;
+    document.head.appendChild(s);
+  }
 
   function buildUI() {
+    injectCSS();
+
     _ring = document.createElement('div');
     _ring.id = 'tour-ring';
     Object.assign(_ring.style, {
@@ -209,23 +230,62 @@
     document.getElementById('t-next').onclick = advance;
   }
 
+  function cleanupInteractive() {
+    if (_interactiveCleanup) {
+      _interactiveCleanup();
+      _interactiveCleanup = null;
+    }
+  }
+
   function show(i) {
     if (i < 0) i = 0;
     _cur = i;
-    save({ page: _page, step: i, orgId: _orgId, seasonId: _seasonId });
+    save({ page: _page, step: i, orgId: _orgId, seasonId: _seasonId, tourPieceIds: _tourPieceIds });
 
-    const step     = _steps[i];
-    const isLast   = i === _steps.length - 1;
-    const nextLabel = step.isFinalStep  ? 'Finish and Clear Sample Data'
-                    : (isLast && step.nextPage) ? 'Next Page'
-                    : isLast            ? 'Finish'
-                    :                     'Next';
+    cleanupInteractive();
+
+    const step    = _steps[i];
+    const isLast  = i === _steps.length - 1;
+    const nextBtn = step.isFinalStep  ? 'Finish and Clear Sample Data'
+                  : (isLast && step.nextPage) ? 'Next Page'
+                  : isLast            ? 'Finish'
+                  :                     'Next';
 
     document.getElementById('t-label').textContent = `Step ${i + 1} of ${_steps.length}`;
     document.getElementById('t-title').textContent = step.title;
     document.getElementById('t-body').innerHTML    = step.body;
     document.getElementById('t-prev').style.display = i === 0 ? 'none' : '';
-    document.getElementById('t-next').textContent   = nextLabel;
+    document.getElementById('t-next').textContent   = nextBtn;
+
+    const ov = document.getElementById('tour-overlay');
+
+    if (step.interactive && step.interactiveSelector) {
+      // Lift the overlay so the user can interact with the page
+      if (ov) ov.style.display = 'none';
+      _ring.style.display = 'none';
+      centerTip();
+
+      const targets = Array.from(document.querySelectorAll(step.interactiveSelector));
+      targets.forEach(t => t.classList.add('cs-tour-target'));
+
+      const evt = step.interactiveEvent || 'click';
+      const handler = () => {
+        setTimeout(() => advance(), 650);
+      };
+      targets.forEach(t => t.addEventListener(evt, handler, { once: true }));
+
+      _interactiveCleanup = () => {
+        if (ov) ov.style.display = '';
+        targets.forEach(t => {
+          t.classList.remove('cs-tour-target');
+          t.removeEventListener(evt, handler);
+        });
+      };
+      return;
+    }
+
+    // Non-interactive: restore overlay
+    if (ov) ov.style.display = '';
 
     const el = step.selector ? document.querySelector(step.selector) : null;
     if (el) {
@@ -276,11 +336,12 @@
   }
 
   async function advance() {
+    cleanupInteractive();
     const next = _cur + 1;
     if (next >= _steps.length) {
       const step = _steps[_cur];
       if (step.nextPage) {
-        save({ page: step.nextPage.replace('.html', ''), step: 0, orgId: _orgId, seasonId: _seasonId });
+        save({ page: step.nextPage.replace('.html', ''), step: 0, orgId: _orgId, seasonId: _seasonId, tourPieceIds: _tourPieceIds });
         window.location.href = step.nextPage;
       } else if (_page === 'org-select') {
         clear();
@@ -296,10 +357,14 @@
   }
 
   async function end() {
-    // Clean up tour-seeded data
+    cleanupInteractive();
     if (_orgId && _seasonId) {
       try {
-        await fetch(`/api/orgs/${_orgId}/seasons/${_seasonId}/tour-cleanup`, { method: 'DELETE' });
+        await fetch(`/api/orgs/${_orgId}/seasons/${_seasonId}/tour-cleanup`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pieceIds: _tourPieceIds || [] }),
+        });
       } catch (_) {}
     }
     markDone();
@@ -328,10 +393,10 @@
       const pageSteps = STEPS[pageKey];
       if (!pageSteps) return;
 
-      // Continue tour already in progress for this page
       if (state && state.page === pageKey) {
-        _orgId    = state.orgId    || orgId;
-        _seasonId = state.seasonId || seasonId;
+        _orgId         = state.orgId    || orgId;
+        _seasonId      = state.seasonId || seasonId;
+        _tourPieceIds  = state.tourPieceIds || null;
         _steps = pageSteps;
         _page  = pageKey;
         _cur   = state.step || 0;
@@ -340,21 +405,20 @@
         return;
       }
 
-      // First entry into workspace (master page only)
       if (pageKey === 'master' && !localStorage.getItem(WORKSPACE_KEY)) {
         localStorage.setItem(WORKSPACE_KEY, '1');
         _orgId    = orgId;
         _seasonId = seasonId;
 
         if (orgId && seasonId) {
-          // Seed sample data, then reload so the schedule grid shows it
           fetch(`/api/orgs/${orgId}/seasons/${seasonId}/seed-tour`, { method: 'POST' })
-            .then(() => {
-              save({ page: 'master', step: 0, orgId, seasonId });
+            .then(r => r.json())
+            .then(data => {
+              _tourPieceIds = data.pieceAId && data.pieceBId ? [data.pieceAId, data.pieceBId] : null;
+              save({ page: 'master', step: 0, orgId, seasonId, tourPieceIds: _tourPieceIds });
               window.location.reload();
             })
             .catch(() => {
-              // Seeding failed — start tour without sample data
               _steps = pageSteps;
               _page  = 'master';
               _cur   = 0;

@@ -1787,9 +1787,9 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/seed-mock', requireAuth('master'), 
 
       for (const sid of seasonIds) {
         await pool.query(
-          `INSERT INTO submissions (user_id, org_id, season_id, availability)
-           VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, season_id) DO NOTHING`,
-          [userId, orgId, sid, availability]
+          `INSERT INTO submissions (user_id, org_id, season_id, availability, audition_number)
+           VALUES ($1,$2,$3,$4,$5) ON CONFLICT (user_id, season_id) DO NOTHING`,
+          [userId, orgId, sid, availability, String(i + 1)]
         );
       }
       created++;
@@ -1812,7 +1812,7 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/seed-tour', requireAuth('master'), 
     if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member.' });
 
     const existing = await pool.query(
-      `SELECT COUNT(*) FROM pieces WHERE season_id = $1 AND name LIKE 'Tour Piece%'`,
+      `SELECT COUNT(*) FROM pieces WHERE season_id = $1 AND name IN ('Piece A','Piece B')`,
       [seasonId]
     );
     if (parseInt(existing.rows[0].count) > 0) return res.json({ alreadySeeded: true });
@@ -1842,18 +1842,18 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/seed-tour', requireAuth('master'), 
         [uid, first, last]
       );
       await pool.query(
-        `INSERT INTO submissions (user_id, org_id, season_id, availability)
-         VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, season_id) DO NOTHING`,
-        [uid, orgId, seasonId, avail]
+        `INSERT INTO submissions (user_id, org_id, season_id, availability, audition_number)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (user_id, season_id) DO NOTHING`,
+        [uid, orgId, seasonId, avail, String(i + 1)]
       );
     }
 
     const pA = await pool.query(
-      `INSERT INTO pieces (name, color, season_id, master_id) VALUES ('Tour Piece A','#e74c3c',$1,$2) RETURNING id`,
+      `INSERT INTO pieces (name, color, season_id, master_id) VALUES ('Piece A','#e74c3c',$1,$2) RETURNING id`,
       [seasonId, req.session.userId]
     );
     const pB = await pool.query(
-      `INSERT INTO pieces (name, color, season_id, master_id) VALUES ('Tour Piece B','#3498db',$1,$2) RETURNING id`,
+      `INSERT INTO pieces (name, color, season_id, master_id) VALUES ('Piece B','#3498db',$1,$2) RETURNING id`,
       [seasonId, req.session.userId]
     );
     const pidA = pA.rows[0].id, pidB = pB.rows[0].id;
@@ -1861,7 +1861,7 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/seed-tour', requireAuth('master'), 
     await pool.query(`INSERT INTO master_blocks (piece_id,day,start_time,end_time) VALUES ($1,'Wednesday','3:00 PM','5:00 PM')`,[pidA]);
     await pool.query(`INSERT INTO master_blocks (piece_id,day,start_time,end_time) VALUES ($1,'Tuesday','4:00 PM','6:00 PM')`,  [pidB]);
 
-    res.json({ seeded: true });
+    res.json({ seeded: true, pieceAId: pidA, pieceBId: pidB });
   } catch (err) {
     console.error('Seed tour error:', err.message);
     res.status(500).json({ error: 'Failed to seed tour data.' });
@@ -1878,10 +1878,18 @@ app.delete('/api/orgs/:orgId/seasons/:seasonId/tour-cleanup', requireAuth('maste
     );
     if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member.' });
 
-    await pool.query(
-      `DELETE FROM pieces WHERE season_id = $1 AND master_id = $2 AND name LIKE 'Tour Piece%'`,
-      [seasonId, req.session.userId]
-    );
+    const { pieceIds } = req.body || {};
+    if (pieceIds && pieceIds.length > 0) {
+      await pool.query(
+        `DELETE FROM pieces WHERE id = ANY($1::int[]) AND master_id = $2`,
+        [pieceIds, req.session.userId]
+      );
+    } else {
+      await pool.query(
+        `DELETE FROM pieces WHERE season_id = $1 AND master_id = $2 AND name IN ('Piece A','Piece B')`,
+        [seasonId, req.session.userId]
+      );
+    }
     await pool.query(
       `DELETE FROM submissions s USING users u
        WHERE s.user_id = u.id AND s.season_id = $1 AND u.email LIKE $2`,
