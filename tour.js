@@ -60,7 +60,7 @@
         selector: '#pieces-legend',
         position: 'right',
         title: 'Pieces and Colors',
-        body: 'Each piece gets its own color. Piece A (red) and Piece B (blue) are loaded as examples. Click the <strong>+</strong> button in this panel to create your own, then drag their rehearsal blocks onto the grid. You can resize and reposition blocks any time.',
+        body: 'Each piece gets its own color. Piece A (red) and Piece B (blue) are loaded as examples. To delete all blocks of a certain color, click the <strong>x</strong> next to it.',
       },
       {
         selector: '#room-count-input',
@@ -96,10 +96,9 @@
 
     'cast': [
       {
-        selector: '#dancer-search',
-        position: 'bottom',
+        selector: null,
         title: 'Build Your Cast',
-        body: 'Search for a dancer by name or audition number that you have in mind for a piece. Add them to see when they\'re free.',
+        body: 'Search for a dancer by name or audition number in the Cast Members field below. Try typing a name to see who comes up.',
         interactive: true,
         interactiveSelector: '#dancer-search',
         interactiveEvent: 'focus',
@@ -107,18 +106,14 @@
       {
         selector: null,
         title: 'Find a Time That Works',
-        body: 'Add a few dancers and the grid shows every window when everyone is free at the same time. Build each piece around the rehearsal time that works for the whole cast.',
-      },
-      {
-        selector: '#view-all-btn',
-        position: 'bottom',
-        title: 'View Modes',
-        body: '<strong>All Windows</strong> shows every time slot your cast is free. <strong>Open Rooms</strong> filters to only windows where a rehearsal room is also available.',
+        body: 'Add a few dancers and the availability grid fills in showing every window when everyone is free at the same time. Build each piece around the rehearsal time that works for the whole group. <br><br><em style="font-size:11px;color:rgba(255,255,255,.45);">Explore freely, then click Next.</em>',
+        interactive: true,
       },
       {
         selector: null,
         title: 'Conflict Detection',
-        body: 'CastSync flags a conflict if you try to cast the same dancer in two pieces that rehearse at the same time. You\'ll see a warning before it\'s confirmed, so nothing slips through.',
+        body: 'If the same dancer is cast in two pieces with overlapping rehearsal times, CastSync flags it before it\'s confirmed. Nothing slips through. <br><br><em style="font-size:11px;color:rgba(255,255,255,.45);">Explore freely, then click Next.</em>',
+        interactive: true,
         nextPage: 'dancers.html',
       },
     ],
@@ -259,28 +254,30 @@
 
     const ov = document.getElementById('tour-overlay');
 
-    if (step.interactive && step.interactiveSelector) {
+    if (step.interactive) {
       // Lift the overlay so the user can interact with the page
       if (ov) ov.style.display = 'none';
       _ring.style.display = 'none';
       centerTip();
 
-      const targets = Array.from(document.querySelectorAll(step.interactiveSelector));
-      targets.forEach(t => t.classList.add('cs-tour-target'));
-
-      const evt = step.interactiveEvent || 'click';
-      const handler = () => {
-        setTimeout(() => advance(), 650);
-      };
-      targets.forEach(t => t.addEventListener(evt, handler, { once: true }));
-
-      _interactiveCleanup = () => {
-        if (ov) ov.style.display = '';
-        targets.forEach(t => {
-          t.classList.remove('cs-tour-target');
-          t.removeEventListener(evt, handler);
-        });
-      };
+      if (step.interactiveSelector) {
+        // Pulse a specific target and auto-advance when the user interacts with it
+        const targets = Array.from(document.querySelectorAll(step.interactiveSelector));
+        targets.forEach(t => t.classList.add('cs-tour-target'));
+        const evt = step.interactiveEvent || 'click';
+        const handler = () => { setTimeout(() => advance(), 650); };
+        targets.forEach(t => t.addEventListener(evt, handler, { once: true }));
+        _interactiveCleanup = () => {
+          if (ov) ov.style.display = '';
+          targets.forEach(t => {
+            t.classList.remove('cs-tour-target');
+            t.removeEventListener(evt, handler);
+          });
+        };
+      } else {
+        // Free-interaction mode: overlay lifted, user explores freely, clicks Next to continue
+        _interactiveCleanup = () => { if (ov) ov.style.display = ''; };
+      }
       return;
     }
 
@@ -358,12 +355,13 @@
 
   async function end() {
     cleanupInteractive();
-    if (_orgId && _seasonId) {
+    // Only clean up if we actually seeded demo data (skip if production had existing content)
+    if (_orgId && _seasonId && _tourPieceIds && _tourPieceIds.length > 0) {
       try {
         await fetch(`/api/orgs/${_orgId}/seasons/${_seasonId}/tour-cleanup`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pieceIds: _tourPieceIds || [] }),
+          body: JSON.stringify({ pieceIds: _tourPieceIds }),
         });
       } catch (_) {}
     }
@@ -414,7 +412,9 @@
           fetch(`/api/orgs/${orgId}/seasons/${seasonId}/seed-tour`, { method: 'POST' })
             .then(r => r.json())
             .then(data => {
-              _tourPieceIds = data.pieceAId && data.pieceBId ? [data.pieceAId, data.pieceBId] : null;
+              // If the production had existing data, don't track pieceIds (nothing to clean up)
+              _tourPieceIds = (!data.alreadySeeded && data.pieceAId && data.pieceBId)
+                ? [data.pieceAId, data.pieceBId] : null;
               save({ page: 'master', step: 0, orgId, seasonId, tourPieceIds: _tourPieceIds });
               window.location.reload();
             })

@@ -1811,11 +1811,13 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/seed-tour', requireAuth('master'), 
     );
     if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member.' });
 
+    // Skip seeding if the production already has any content (real or demo)
     const existing = await pool.query(
-      `SELECT COUNT(*) FROM pieces WHERE season_id = $1 AND name IN ('Piece A','Piece B')`,
+      `SELECT (SELECT COUNT(*) FROM pieces WHERE season_id = $1) +
+              (SELECT COUNT(*) FROM submissions WHERE season_id = $1) AS total`,
       [seasonId]
     );
-    if (parseInt(existing.rows[0].count) > 0) return res.json({ alreadySeeded: true });
+    if (parseInt(existing.rows[0].total) > 0) return res.json({ alreadySeeded: true });
 
     const tourDancers = [
       { first: 'Jamie', last: 'Lee' }, { first: 'Alex', last: 'Kim' },
