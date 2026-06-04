@@ -1231,6 +1231,26 @@ app.post('/api/orgs/:orgId/seasons/free', requireAuth('master'), async (req, res
         if (e.code !== '23505') throw e;
       }
     }
+
+    // Auto-seed mock auditionees into the new season if they already exist for this org
+    const mockUsers = await pool.query(
+      `SELECT id FROM users WHERE email LIKE $1 AND is_mock = TRUE`,
+      [`mock-%-o${req.params.orgId}@trial.castsync.app`]
+    );
+    if (mockUsers.rows.length > 0) {
+      const avail = JSON.stringify(
+        ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+          .map(day => ({ day, startTime: '9:00 AM', endTime: '9:00 PM' }))
+      );
+      for (const { id: userId } of mockUsers.rows) {
+        await pool.query(
+          `INSERT INTO submissions (user_id, org_id, season_id, availability)
+           VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, season_id) DO NOTHING`,
+          [userId, req.params.orgId, row.id, avail]
+        );
+      }
+    }
+
     res.status(201).json(row);
   } catch (err) {
     console.error(err.message);
@@ -1695,9 +1715,9 @@ app.delete('/api/dancers', requireAuth('master'), async (req, res) => {
   }
 });
 
-// POST /api/orgs/:orgId/seasons/:seasonId/seed-mock — generate 15 mock auditionees for trial accounts
+// POST /api/orgs/:orgId/seasons/:seasonId/seed-mock — seed 15 mock auditionees into ALL productions for this org
 app.post('/api/orgs/:orgId/seasons/:seasonId/seed-mock', requireAuth('master'), async (req, res) => {
-  const { orgId, seasonId } = req.params;
+  const { orgId } = req.params;
   try {
     const memberCheck = await pool.query(
       'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
@@ -1705,47 +1725,49 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/seed-mock', requireAuth('master'), 
     );
     if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
 
-    const seasonCheck = await pool.query(
-      'SELECT id FROM seasons WHERE id = $1 AND org_id = $2',
-      [seasonId, orgId]
-    );
-    if (seasonCheck.rows.length === 0) return res.status(404).json({ error: 'Season not found.' });
-
+    // Check if org already has mock auditionees
     const existingMocks = await pool.query(
-      `SELECT COUNT(*) FROM submissions s JOIN users u ON u.id = s.user_id
-       WHERE s.season_id = $1 AND u.is_mock = TRUE`,
-      [seasonId]
+      `SELECT COUNT(*) FROM users WHERE email LIKE $1 AND is_mock = TRUE`,
+      [`mock-%-o${orgId}@trial.castsync.app`]
     );
     if (parseInt(existingMocks.rows[0].count) > 0) {
-      return res.status(409).json({ error: 'This production already has mock auditionees.' });
+      return res.status(409).json({ error: 'This organization already has mock auditionees.' });
     }
 
     const mockDancers = [
-      { first: 'Ava',      last: 'Chen',      grade: '11th',              technique: 'Ballet, Jazz'          },
-      { first: 'Marcus',   last: 'Rivera',    grade: '10th',              technique: 'Contemporary, Hip Hop'  },
-      { first: 'Priya',    last: 'Patel',     grade: '12th',              technique: 'Ballet, Modern'         },
-      { first: 'Jordan',   last: 'Williams',  grade: '9th',               technique: 'Jazz, Tap'             },
-      { first: 'Sofia',    last: 'Martinez',  grade: '11th',              technique: 'Contemporary, Ballet'   },
-      { first: 'Elijah',   last: 'Thompson',  grade: '10th',              technique: 'Hip Hop, Jazz'          },
-      { first: 'Mei',      last: 'Lin',       grade: '12th',              technique: 'Ballet, Contemporary'   },
-      { first: 'Caden',    last: 'Harris',    grade: '9th',               technique: 'Jazz, Modern'           },
-      { first: 'Aaliyah',  last: 'Johnson',   grade: '11th',              technique: 'Contemporary, Tap'      },
-      { first: 'Ethan',    last: 'Nguyen',    grade: '10th',              technique: 'Ballet, Hip Hop'        },
-      { first: 'Zoe',      last: 'Davis',     grade: '12th',              technique: 'Jazz, Ballet'           },
-      { first: 'Liam',     last: 'Brown',     grade: '9th',               technique: 'Modern, Contemporary'   },
-      { first: 'Amara',    last: 'Wilson',    grade: '11th',              technique: 'Ballet, Jazz'           },
-      { first: 'Tyler',    last: 'Anderson',  grade: '10th',              technique: 'Hip Hop, Modern'        },
-      { first: 'Isabella', last: 'Garcia',    grade: '12th',              technique: 'Contemporary, Ballet'   },
+      { first: 'Ava',      last: 'Chen',      grade: '11th', technique: 'Ballet, Jazz'          },
+      { first: 'Marcus',   last: 'Rivera',    grade: '10th', technique: 'Contemporary, Hip Hop'  },
+      { first: 'Priya',    last: 'Patel',     grade: '12th', technique: 'Ballet, Modern'         },
+      { first: 'Jordan',   last: 'Williams',  grade: '9th',  technique: 'Jazz, Tap'              },
+      { first: 'Sofia',    last: 'Martinez',  grade: '11th', technique: 'Contemporary, Ballet'   },
+      { first: 'Elijah',   last: 'Thompson',  grade: '10th', technique: 'Hip Hop, Jazz'          },
+      { first: 'Mei',      last: 'Lin',       grade: '12th', technique: 'Ballet, Contemporary'   },
+      { first: 'Caden',    last: 'Harris',    grade: '9th',  technique: 'Jazz, Modern'           },
+      { first: 'Aaliyah',  last: 'Johnson',   grade: '11th', technique: 'Contemporary, Tap'      },
+      { first: 'Ethan',    last: 'Nguyen',    grade: '10th', technique: 'Ballet, Hip Hop'        },
+      { first: 'Zoe',      last: 'Davis',     grade: '12th', technique: 'Jazz, Ballet'           },
+      { first: 'Liam',     last: 'Brown',     grade: '9th',  technique: 'Modern, Contemporary'   },
+      { first: 'Amara',    last: 'Wilson',    grade: '11th', technique: 'Ballet, Jazz'           },
+      { first: 'Tyler',    last: 'Anderson',  grade: '10th', technique: 'Hip Hop, Modern'        },
+      { first: 'Isabella', last: 'Garcia',    grade: '12th', technique: 'Contemporary, Ballet'   },
     ];
 
     const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
     const availability = JSON.stringify(days.map(day => ({ day, startTime: '9:00 AM', endTime: '9:00 PM' })));
 
+    // Get all active seasons for this org
+    const seasonsResult = await pool.query(
+      `SELECT id FROM seasons WHERE org_id = $1 AND status != 'archived'`,
+      [orgId]
+    );
+    const seasonIds = seasonsResult.rows.map(r => r.id);
+
+    // Create mock users and seed into every season
     let created = 0;
     for (let i = 0; i < mockDancers.length; i++) {
       const { first, last, grade, technique } = mockDancers[i];
-      const email    = `mock-${i + 1}-s${seasonId}@trial.castsync.app`;
-      const fakeHash = await bcrypt.hash(require('crypto').randomBytes(16).toString('hex'), 8);
+      const email    = `mock-${i + 1}-o${orgId}@trial.castsync.app`;
+      const fakeHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 8);
 
       const userResult = await pool.query(
         `INSERT INTO users (email, password_hash, role, email_verified, is_mock)
@@ -1763,17 +1785,112 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/seed-mock', requireAuth('master'), 
         [userId, first, last, grade, technique]
       );
 
-      await pool.query(
-        `INSERT INTO submissions (user_id, org_id, season_id, availability)
-         VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, season_id) DO NOTHING`,
-        [userId, orgId, seasonId, availability]
-      );
+      for (const sid of seasonIds) {
+        await pool.query(
+          `INSERT INTO submissions (user_id, org_id, season_id, availability)
+           VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, season_id) DO NOTHING`,
+          [userId, orgId, sid, availability]
+        );
+      }
       created++;
     }
-    res.json({ created, message: `${created} mock auditionees added to this production.` });
+    res.json({ created, seasons: seasonIds.length, message: `${created} mock auditionees added to ${seasonIds.length} production(s).` });
   } catch (err) {
     console.error('Seed mock error:', err.message);
     res.status(500).json({ error: 'Failed to seed mock auditionees.' });
+  }
+});
+
+// POST /api/orgs/:orgId/seasons/:seasonId/seed-tour — create 5 mock dancers + 2 pieces + 3 blocks for the guided tour
+app.post('/api/orgs/:orgId/seasons/:seasonId/seed-tour', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.params;
+  try {
+    const memberCheck = await pool.query(
+      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
+      [orgId, req.session.userId]
+    );
+    if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member.' });
+
+    const existing = await pool.query(
+      `SELECT COUNT(*) FROM pieces WHERE season_id = $1 AND name LIKE 'Tour Piece%'`,
+      [seasonId]
+    );
+    if (parseInt(existing.rows[0].count) > 0) return res.json({ alreadySeeded: true });
+
+    const tourDancers = [
+      { first: 'Jamie', last: 'Lee' }, { first: 'Alex', last: 'Kim' },
+      { first: 'Sam',   last: 'Park'}, { first: 'Morgan', last: 'Chen' },
+      { first: 'Riley', last: 'Nguyen' },
+    ];
+    const avail = JSON.stringify(
+      ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+        .map(day => ({ day, startTime: '9:00 AM', endTime: '9:00 PM' }))
+    );
+    for (let i = 0; i < tourDancers.length; i++) {
+      const { first, last } = tourDancers[i];
+      const email    = `tour-${i + 1}-s${seasonId}@tour.castsync.app`;
+      const fakeHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 8);
+      const ur = await pool.query(
+        `INSERT INTO users (email, password_hash, role, email_verified, is_mock)
+         VALUES ($1,$2,'auditionee',TRUE,TRUE) ON CONFLICT (email) DO UPDATE SET is_mock=TRUE RETURNING id`,
+        [email, fakeHash]
+      );
+      const uid = ur.rows[0].id;
+      await pool.query(
+        `INSERT INTO dancer_profiles (user_id, first_name, last_name, updated_at)
+         VALUES ($1,$2,$3,NOW()) ON CONFLICT (user_id) DO UPDATE SET first_name=$2, last_name=$3, updated_at=NOW()`,
+        [uid, first, last]
+      );
+      await pool.query(
+        `INSERT INTO submissions (user_id, org_id, season_id, availability)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, season_id) DO NOTHING`,
+        [uid, orgId, seasonId, avail]
+      );
+    }
+
+    const pA = await pool.query(
+      `INSERT INTO pieces (name, color, season_id, master_id) VALUES ('Tour Piece A','#e74c3c',$1,$2) RETURNING id`,
+      [seasonId, req.session.userId]
+    );
+    const pB = await pool.query(
+      `INSERT INTO pieces (name, color, season_id, master_id) VALUES ('Tour Piece B','#3498db',$1,$2) RETURNING id`,
+      [seasonId, req.session.userId]
+    );
+    const pidA = pA.rows[0].id, pidB = pB.rows[0].id;
+    await pool.query(`INSERT INTO master_blocks (piece_id,day,start_time,end_time) VALUES ($1,'Monday','3:00 PM','5:00 PM')`,   [pidA]);
+    await pool.query(`INSERT INTO master_blocks (piece_id,day,start_time,end_time) VALUES ($1,'Wednesday','3:00 PM','5:00 PM')`,[pidA]);
+    await pool.query(`INSERT INTO master_blocks (piece_id,day,start_time,end_time) VALUES ($1,'Tuesday','4:00 PM','6:00 PM')`,  [pidB]);
+
+    res.json({ seeded: true });
+  } catch (err) {
+    console.error('Seed tour error:', err.message);
+    res.status(500).json({ error: 'Failed to seed tour data.' });
+  }
+});
+
+// DELETE /api/orgs/:orgId/seasons/:seasonId/tour-cleanup — wipe all tour-seeded data
+app.delete('/api/orgs/:orgId/seasons/:seasonId/tour-cleanup', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.params;
+  try {
+    const memberCheck = await pool.query(
+      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
+      [orgId, req.session.userId]
+    );
+    if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member.' });
+
+    await pool.query(
+      `DELETE FROM pieces WHERE season_id = $1 AND master_id = $2 AND name LIKE 'Tour Piece%'`,
+      [seasonId, req.session.userId]
+    );
+    await pool.query(
+      `DELETE FROM submissions s USING users u
+       WHERE s.user_id = u.id AND s.season_id = $1 AND u.email LIKE $2`,
+      [seasonId, `tour-%-s${seasonId}@tour.castsync.app`]
+    );
+    res.json({ cleaned: true });
+  } catch (err) {
+    console.error('Tour cleanup error:', err.message);
+    res.status(500).json({ error: 'Cleanup failed.' });
   }
 });
 
