@@ -83,6 +83,26 @@
     </div>
   </div>
 
+  <!-- Seed mock auditionees confirmation modal -->
+  <div class="modal fade" id="seedMockModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Add 15 Mock Auditionees?</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:14px;">This will add 15 placeholder auditionees with wide-open availability to this production so you can explore scheduling and conflict detection.</p>
+          <p class="text-muted mb-0" style="font-size:13px;">Mock auditionees are clearly marked and can be removed individually or with "Clear All Submissions."</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-dark" id="confirm-seed-btn">Add Mock Auditionees</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Nav -->
   <nav class="navbar navbar-expand-lg app-nav">
     <div class="container-fluid">
@@ -113,6 +133,17 @@
     </div>
   </nav>
 
+  <!-- Trial banner -->
+  <div id="trial-banner" style="display:none;background:#fefce8;border-bottom:1px solid #fde68a;">
+    <div class="container-fluid px-4 py-2 d-flex align-items-center justify-content-between gap-3">
+      <span style="font-size:13px;color:#92400e;" id="trial-banner-text"></span>
+      <div class="d-flex gap-2 flex-shrink-0">
+        <a href="plan-select.html" class="btn btn-sm btn-warning" style="font-size:12px;font-weight:600;">Upgrade</a>
+        <button class="btn btn-sm btn-link p-0" style="font-size:12px;color:#92400e;text-decoration:none;" id="trial-banner-dismiss">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Main content -->
   <div class="container-fluid mt-4 px-4">
 
@@ -122,6 +153,9 @@
         <p class="text-muted mb-0" style="font-size:13px;" id="dancer-count-label"></p>
       </div>
       <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm d-none" id="seed-mock-btn"
+                data-bs-toggle="modal" data-bs-target="#seedMockModal"
+                title="Add 15 mock auditionees to test scheduling">+ Mock Auditionees</button>
         <button class="btn btn-outline-secondary btn-sm" id="export-csv-btn">Export CSV</button>
         <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#clearModal">
           Clear All Submissions
@@ -468,12 +502,17 @@
   </script>
 
   <script>
+    let _currentOrgId    = null;
+    let _currentSeasonId = null;
+
     (async () => {
       try {
         const res  = await fetch('/api/auth/me');
         const user = await res.json();
         if (!res.ok || (user.role !== 'master' && user.mode !== 'director')) { window.location.href = 'login.html'; return; }
         if (!user.orgId) { window.location.href = 'org-select.html'; return; }
+        _currentOrgId    = user.orgId;
+        _currentSeasonId = user.seasonId;
         const nav = document.querySelector('.navbar-nav');
         nav.insertAdjacentHTML('beforeend',
           `<li class="nav-item"><span class="nav-link nav-context">${user.orgName} · ${user.seasonName}</span></li>`
@@ -486,10 +525,53 @@
           window.location.href = 'login.html';
         });
         document.body.style.visibility = 'visible';
+
+        // Trial banner + seed-mock button
+        try {
+          const subRes = await fetch('/api/subscription');
+          if (subRes.ok) {
+            const sub = await subRes.json();
+            if (sub.isTrial) {
+              const days = sub.daysRemaining;
+              const text = days <= 1
+                ? 'Your free trial expires today.'
+                : `Your free trial expires in ${days} day${days === 1 ? '' : 's'}.`;
+              document.getElementById('trial-banner-text').textContent = text + ' Upgrade any time to keep your productions.';
+              document.getElementById('trial-banner').style.display = '';
+              document.getElementById('trial-banner-dismiss').addEventListener('click', () => {
+                document.getElementById('trial-banner').style.display = 'none';
+              });
+              document.getElementById('seed-mock-btn').classList.remove('d-none');
+            }
+          }
+        } catch (_) {}
       } catch (err) {
         window.location.href = 'login.html';
       }
     })();
+
+    document.getElementById('confirm-seed-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('confirm-seed-btn');
+      btn.disabled    = true;
+      btn.textContent = 'Adding…';
+      try {
+        const res = await fetch(`/api/orgs/${_currentOrgId}/seasons/${_currentSeasonId}/seed-mock`, { method: 'POST' });
+        const data = await res.json();
+        if (res.status === 409) {
+          bootstrap.Modal.getInstance(document.getElementById('seedMockModal')).hide();
+          alert('This production already has mock auditionees.');
+          return;
+        }
+        if (!res.ok) { alert(data.error || 'Could not add mock auditionees.'); return; }
+        bootstrap.Modal.getInstance(document.getElementById('seedMockModal')).hide();
+        window.location.reload();
+      } catch (err) {
+        alert('Could not add mock auditionees. Please try again.');
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = 'Add Mock Auditionees';
+      }
+    });
   </script>
 
   <script src="tour.js"></script>

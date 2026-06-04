@@ -266,13 +266,21 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
     );
     const user = result.rows[0];
 
+    // Activate 10-day trial for new director accounts
+    if (role === 'master') {
+      await pool.query(
+        `UPDATE users SET plan_type = 'trial', plan_expires_at = NOW() + INTERVAL '10 days' WHERE id = $1`,
+        [user.id]
+      );
+    }
+
     if (!emailEnabled) {
       // No email configured (local dev) — auto-verify and log in
       await pool.query('UPDATE users SET email_verified = TRUE, verification_token = NULL WHERE id = $1', [user.id]);
       req.session.userId = user.id;
       req.session.role   = user.role;
       req.session.email  = user.email;
-      return res.status(201).json({ id: user.id, email: user.email, role: user.role });
+      return res.status(201).json({ id: user.id, email: user.email, role: user.role, trialActivated: role === 'master' });
     }
 
     // Send verification email
@@ -296,7 +304,7 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
       </div>`,
     }).catch(err => console.error('Verification email error:', err.message));
 
-    res.status(201).json({ needsVerification: true, email: user.email });
+    res.status(201).json({ needsVerification: true, email: user.email, trialActivated: role === 'master' });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'An account with that email already exists.' });
     console.error('Signup error:', err.message);
@@ -890,9 +898,13 @@ app.get('/api/subscription', requireAuth('master'), async (req, res) => {
       [req.session.userId]
     );
     const { plan_type, plan_expires_at } = row.rows[0] || {};
-    const isAnnualActive = (plan_type === 'annual' || plan_type === 'free') &&
+    const isAnnualActive = (plan_type === 'annual' || plan_type === 'free' || plan_type === 'trial') &&
       (!plan_expires_at || new Date(plan_expires_at) > new Date());
-    res.json({ planType: plan_type || 'none', planExpiresAt: plan_expires_at || null, isAnnualActive });
+    const isTrial = plan_type === 'trial' && plan_expires_at && new Date(plan_expires_at) > new Date();
+    const daysRemaining = isTrial
+      ? Math.max(0, Math.ceil((new Date(plan_expires_at) - new Date()) / (1000 * 60 * 60 * 24)))
+      : null;
+    res.json({ planType: plan_type || 'none', planExpiresAt: plan_expires_at || null, isAnnualActive, isTrial, daysRemaining });
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch subscription.' });
   }
@@ -1191,7 +1203,7 @@ app.post('/api/orgs/:orgId/seasons/free', requireAuth('master'), async (req, res
       [req.session.userId]
     );
     const { plan_type, plan_expires_at } = planRow.rows[0] || {};
-    const hasAnnual = (plan_type === 'annual' || plan_type === 'free') &&
+    const hasAnnual = (plan_type === 'annual' || plan_type === 'free' || plan_type === 'trial') &&
       (!plan_expires_at || new Date(plan_expires_at) > new Date());
     if (!hasAnnual) return res.status(403).json({ error: 'An active annual plan is required.' });
 
@@ -1328,6 +1340,33 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
     );
 
     const isUpdate = existing.rows.length > 0;
+
+    // Trial cap: new submissions only; block at 15 real (non-mock) auditionees per production
+    if (!isUpdate) {
+      const ownerRow = await pool.query(
+        `SELECT u.plan_type, u.plan_expires_at
+         FROM org_members om JOIN users u ON u.id = om.user_id
+         WHERE om.org_id = $1 AND om.role = 'owner' LIMIT 1`,
+        [org.id]
+      );
+      if (ownerRow.rows.length > 0) {
+        const { plan_type: ownerPlan, plan_expires_at: ownerExpiry } = ownerRow.rows[0];
+        const isTrial = ownerPlan === 'trial' && ownerExpiry && new Date(ownerExpiry) > new Date();
+        if (isTrial) {
+          const countResult = await pool.query(
+            `SELECT COUNT(*) FROM submissions s JOIN users u ON u.id = s.user_id
+             WHERE s.season_id = $1 AND u.is_mock = FALSE`,
+            [season.id]
+          );
+          if (parseInt(countResult.rows[0].count) >= 15) {
+            return res.status(403).json({
+              error: 'This production has reached its 15-auditionee trial limit. Please contact the director for more information.',
+              trialLimitReached: true,
+            });
+          }
+        }
+      }
+    }
 
     const audNum = audition_number ? audition_number.toString().trim() : null;
     if (isUpdate) {
@@ -1653,6 +1692,88 @@ app.delete('/api/dancers', requireAuth('master'), async (req, res) => {
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to clear submissions.' });
+  }
+});
+
+// POST /api/orgs/:orgId/seasons/:seasonId/seed-mock — generate 15 mock auditionees for trial accounts
+app.post('/api/orgs/:orgId/seasons/:seasonId/seed-mock', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.params;
+  try {
+    const memberCheck = await pool.query(
+      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
+      [orgId, req.session.userId]
+    );
+    if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
+
+    const seasonCheck = await pool.query(
+      'SELECT id FROM seasons WHERE id = $1 AND org_id = $2',
+      [seasonId, orgId]
+    );
+    if (seasonCheck.rows.length === 0) return res.status(404).json({ error: 'Season not found.' });
+
+    const existingMocks = await pool.query(
+      `SELECT COUNT(*) FROM submissions s JOIN users u ON u.id = s.user_id
+       WHERE s.season_id = $1 AND u.is_mock = TRUE`,
+      [seasonId]
+    );
+    if (parseInt(existingMocks.rows[0].count) > 0) {
+      return res.status(409).json({ error: 'This production already has mock auditionees.' });
+    }
+
+    const mockDancers = [
+      { first: 'Ava',      last: 'Chen',      grade: '11th',              technique: 'Ballet, Jazz'          },
+      { first: 'Marcus',   last: 'Rivera',    grade: '10th',              technique: 'Contemporary, Hip Hop'  },
+      { first: 'Priya',    last: 'Patel',     grade: '12th',              technique: 'Ballet, Modern'         },
+      { first: 'Jordan',   last: 'Williams',  grade: '9th',               technique: 'Jazz, Tap'             },
+      { first: 'Sofia',    last: 'Martinez',  grade: '11th',              technique: 'Contemporary, Ballet'   },
+      { first: 'Elijah',   last: 'Thompson',  grade: '10th',              technique: 'Hip Hop, Jazz'          },
+      { first: 'Mei',      last: 'Lin',       grade: '12th',              technique: 'Ballet, Contemporary'   },
+      { first: 'Caden',    last: 'Harris',    grade: '9th',               technique: 'Jazz, Modern'           },
+      { first: 'Aaliyah',  last: 'Johnson',   grade: '11th',              technique: 'Contemporary, Tap'      },
+      { first: 'Ethan',    last: 'Nguyen',    grade: '10th',              technique: 'Ballet, Hip Hop'        },
+      { first: 'Zoe',      last: 'Davis',     grade: '12th',              technique: 'Jazz, Ballet'           },
+      { first: 'Liam',     last: 'Brown',     grade: '9th',               technique: 'Modern, Contemporary'   },
+      { first: 'Amara',    last: 'Wilson',    grade: '11th',              technique: 'Ballet, Jazz'           },
+      { first: 'Tyler',    last: 'Anderson',  grade: '10th',              technique: 'Hip Hop, Modern'        },
+      { first: 'Isabella', last: 'Garcia',    grade: '12th',              technique: 'Contemporary, Ballet'   },
+    ];
+
+    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+    const availability = JSON.stringify(days.map(day => ({ day, startTime: '9:00 AM', endTime: '9:00 PM' })));
+
+    let created = 0;
+    for (let i = 0; i < mockDancers.length; i++) {
+      const { first, last, grade, technique } = mockDancers[i];
+      const email    = `mock-${i + 1}-s${seasonId}@trial.castsync.app`;
+      const fakeHash = await bcrypt.hash(require('crypto').randomBytes(16).toString('hex'), 8);
+
+      const userResult = await pool.query(
+        `INSERT INTO users (email, password_hash, role, email_verified, is_mock)
+         VALUES ($1, $2, 'auditionee', TRUE, TRUE)
+         ON CONFLICT (email) DO UPDATE SET is_mock = TRUE
+         RETURNING id`,
+        [email, fakeHash]
+      );
+      const userId = userResult.rows[0].id;
+
+      await pool.query(
+        `INSERT INTO dancer_profiles (user_id, first_name, last_name, grade, technique_classes, updated_at)
+         VALUES ($1,$2,$3,$4,$5,NOW())
+         ON CONFLICT (user_id) DO UPDATE SET first_name=$2, last_name=$3, grade=$4, technique_classes=$5, updated_at=NOW()`,
+        [userId, first, last, grade, technique]
+      );
+
+      await pool.query(
+        `INSERT INTO submissions (user_id, org_id, season_id, availability)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, season_id) DO NOTHING`,
+        [userId, orgId, seasonId, availability]
+      );
+      created++;
+    }
+    res.json({ created, message: `${created} mock auditionees added to this production.` });
+  } catch (err) {
+    console.error('Seed mock error:', err.message);
+    res.status(500).json({ error: 'Failed to seed mock auditionees.' });
   }
 });
 
@@ -2620,6 +2741,16 @@ async function runMigrations() {
     `);
     console.log('Migration step 13 (time_to_minutes function) complete.');
   } catch (err) { console.error('Migration step 13 error:', err.message); }
+
+  // Step 14: is_mock flag on users (for seeded trial test auditionees)
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN is_mock BOOLEAN NOT NULL DEFAULT FALSE;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 14 (users.is_mock) complete.');
+  } catch (err) { console.error('Migration step 14 error:', err.message); }
 
   console.log('All migrations complete.');
 }
