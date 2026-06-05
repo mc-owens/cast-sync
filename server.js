@@ -2596,6 +2596,75 @@ app.delete('/api/schedule-placeholders/:id', requireAuth('master'), async (req, 
   }
 });
 
+// ── Private admin — director accounts ────────────────────────────────────────
+
+app.get('/admin/masters', async (req, res) => {
+  if (!process.env.MASTER_CODE || req.query.key !== process.env.MASTER_CODE) {
+    return res.status(401).send('Unauthorized');
+  }
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.email, u.created_at, u.plan_type, u.plan_expires_at,
+             COALESCE(string_agg(DISTINCT o.name, ', ' ORDER BY o.name), '—') AS orgs
+      FROM users u
+      LEFT JOIN org_members om ON om.user_id = u.id AND om.role = 'owner'
+      LEFT JOIN orgs o ON o.id = om.org_id
+      WHERE u.role = 'master'
+        AND u.email NOT LIKE '%@demo.castsync.app'
+        AND (u.is_mock IS NULL OR u.is_mock IS FALSE)
+      GROUP BY u.id, u.email, u.created_at, u.plan_type, u.plan_expires_at
+      ORDER BY u.created_at DESC NULLS LAST
+    `);
+
+    const now = new Date();
+    const tableRows = rows.map(r => {
+      const joined  = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+      const expires = r.plan_expires_at ? new Date(r.plan_expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+      const plan    = r.plan_type || '—';
+      const expired = r.plan_expires_at && new Date(r.plan_expires_at) < now;
+      const badge   = expired
+        ? `<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-size:12px;">${plan} · expired</span>`
+        : `<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:12px;">${plan}</span>`;
+      return `<tr>
+        <td>${r.email}</td>
+        <td>${joined}</td>
+        <td>${badge}</td>
+        <td>${expires}</td>
+        <td>${r.orgs}</td>
+      </tr>`;
+    }).join('');
+
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CastSync — Director Accounts</title>
+  <style>
+    body { font-family:-apple-system,sans-serif; background:#f9fafb; color:#111; margin:0; padding:40px; }
+    h1 { font-size:1.4rem; margin-bottom:4px; }
+    .sub { color:#6b7280; font-size:14px; margin-bottom:32px; }
+    table { border-collapse:collapse; width:100%; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+    th { background:#111; color:#fff; padding:10px 14px; text-align:left; font-size:12px; font-weight:600; letter-spacing:.4px; text-transform:uppercase; }
+    td { padding:10px 14px; border-bottom:1px solid #e5e7eb; font-size:14px; color:#374151; }
+    tr:last-child td { border-bottom:none; }
+    tr:hover td { background:#f9fafb; }
+  </style>
+</head>
+<body>
+  <h1>Director Accounts</h1>
+  <div class="sub">${rows.length} total</div>
+  <table>
+    <thead><tr><th>Email</th><th>Joined</th><th>Plan</th><th>Expires</th><th>Orgs</th></tr></thead>
+    <tbody>${tableRows || '<tr><td colspan="5" style="color:#9ca3af;text-align:center;padding:24px;">No director accounts yet.</td></tr>'}</tbody>
+  </table>
+</body>
+</html>`);
+  } catch (err) {
+    console.error('Admin masters error:', err.message);
+    res.status(500).send('Server error');
+  }
+});
+
 // ── Auto-migration ────────────────────────────────────────────────────────────
 
 async function runMigrations() {
