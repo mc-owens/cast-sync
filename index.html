@@ -123,7 +123,9 @@
 
     /* Pricing */
     .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; max-width: 780px; margin: 0 auto; }
-    .price-card { border: 1px solid var(--border); border-radius: 14px; padding: 32px; position: relative; background: #fff; }
+    .price-card { border: 1px solid var(--border); border-radius: 14px; padding: 32px; position: relative; background: #fff; display: flex; flex-direction: column; }
+    .price-card ul { flex: 1; }
+    .price-card > a { margin-top: auto; }
     .price-card.featured { border-color: var(--gold); border-width: 2px; background: #fffdf7; }
     .price-card .featured-badge { position: absolute; top: -13px; left: 50%; transform: translateX(-50%); background: var(--gold); color: #fff; font-size: 11px; font-weight: 700; padding: 3px 14px; border-radius: 99px; letter-spacing: .5px; white-space: nowrap; }
     .price-card h4 { font-weight: 800; font-size: 17px; margin-bottom: 6px; }
