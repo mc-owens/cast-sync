@@ -45,6 +45,7 @@
           <li class="nav-item"><a class="nav-link" href="casting.html">Casting</a></li>
           <li class="nav-item"><a class="nav-link" href="dancers.html">Auditionees</a></li>
           <li class="nav-item"><a class="nav-link active" id="form-nav-link" href="form-builder.html?scope=season">Audition Form</a></li>
+          <li class="nav-item"><a class="nav-link" href="notes.html">Production Notes</a></li>
         </ul>
       </div>
       <div class="app-nav-right" id="right-nav"></div>
@@ -99,7 +100,7 @@
 
       <div class="col-lg-5">
         <div class="preview-pane">
-          <div class="preview-pane-header">Live Preview — what auditionees will see</div>
+          <div class="preview-pane-header">Live Preview: what auditionees will see</div>
           <div class="preview-pane-body" id="preview-body"></div>
         </div>
       </div>
@@ -180,7 +181,7 @@
     const GRADE_OPTIONS = ['Freshman Major','Freshman Minor','Sophomore Major','Sophomore Minor',
                             'Junior Major','Junior Minor','Senior Major','Senior Minor','Other'];
 
-    // True builtins — wired into backend behavior (profile prefill, special rendering,
+    // True builtins, wired into backend behavior (profile prefill, special rendering,
     // and for secondary_email, dual-notification emails). Re-adding one must reinsert
     // this exact shape, not a custom field that merely looks similar, or that behavior
     // won't fire.
@@ -193,7 +194,7 @@
       { id: 'absences', builtin: 'absences', label: 'Known Absences', type: 'textarea', required: true },
     ];
 
-    // Plain custom-question presets — just a head start on label/type, no special
+    // Plain custom-question presets, just a head start on label/type, no special
     // backend meaning. Stored like any other typed-in question.
     const PRESET_CUSTOM = [
       { label: 'School Address', type: 'text' },

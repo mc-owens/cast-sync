@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Production Notes | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .note-card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; background: #fff; }
+    .note-meta { font-size: 12px; color: #888; }
+    .note-text { font-size: 14px; white-space: pre-wrap; margin: 6px 0; }
+    .note-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+    .note-tag { font-size: 11px; background: #f3f3f3; color: #555; padding: 2px 8px; border-radius: 10px; }
+    .faculty-check { font-size: 13px; }
+    .search-wrapper { position: relative; }
+    #note-dancer-dropdown {
+      position: absolute; top: 100%; left: 0; right: 0; background: white;
+      border: 1px solid #ccc; border-top: none; border-radius: 0 0 6px 6px;
+      z-index: 100; max-height: 220px; overflow-y: auto;
+    }
+    .dropdown-item-dancer { padding: 8px 12px; cursor: pointer; font-size: 14px; }
+    .dropdown-item-dancer:hover { background: #f0f0f0; }
+  </style>
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body style="visibility:hidden">
+
+  <!-- Nav -->
+  <nav class="navbar navbar-expand-lg app-nav">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav">
+          <li class="nav-item"><a class="nav-link" href="search.html">Availability</a></li>
+          <li class="nav-item"><a class="nav-link" href="master.html">Master Schedule</a></li>
+          <li class="nav-item"><a class="nav-link" href="cast.html">Cast Builder</a></li>
+          <li class="nav-item"><a class="nav-link" href="casting.html">Casting</a></li>
+          <li class="nav-item"><a class="nav-link" href="dancers.html">Auditionees</a></li>
+          <li class="nav-item"><a class="nav-link" href="form-builder.html?scope=season">Audition Form</a></li>
+          <li class="nav-item"><a class="nav-link active" href="notes.html">Production Notes</a></li>
+        </ul>
+      </div>
+      <div class="app-nav-right" id="right-nav"></div>
+    </div>
+  </nav>
+
+  <!-- Trial banner -->
+  <div id="trial-banner" style="display:none;background:#fefce8;border-bottom:1px solid #fde68a;">
+    <div class="container-fluid px-4 py-2 d-flex align-items-center justify-content-between gap-3">
+      <span style="font-size:13px;color:#92400e;" id="trial-banner-text"></span>
+      <div class="d-flex gap-2 flex-shrink-0">
+        <a href="plan-select.html" class="btn btn-sm btn-warning" style="font-size:12px;font-weight:600;">Upgrade</a>
+        <button class="btn btn-sm btn-link p-0" style="font-size:12px;color:#92400e;text-decoration:none;" id="trial-banner-dismiss">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="container-fluid mt-4 px-4" style="max-width: 760px;">
+
+    <div class="mb-3">
+      <h5 class="mb-0 fw-semibold">Production Notes</h5>
+      <p class="text-muted mb-0" style="font-size:13px;">
+        Internal notes for directors, co-directors, and choreographers for absences, injuries, attendance
+        concerns, rehearsal updates, anything worth tracking. Auditionees never see this page.
+      </p>
+    </div>
+
+    <!-- Add note form -->
+    <div class="border rounded p-3 mb-4" style="background:#fafafa;">
+      <textarea id="note-text" class="form-control mb-2" rows="3" placeholder="Write a note…"></textarea>
+
+      <div class="row g-2 mb-2">
+        <div class="col-sm-4">
+          <label class="form-label mb-1" style="font-size:12px;color:#666;">Category</label>
+          <select id="note-category" class="form-select form-select-sm">
+            <option value="general">General</option>
+            <option value="absence">Absence</option>
+            <option value="injury">Injury</option>
+            <option value="attendance">Attendance</option>
+            <option value="casting">Casting</option>
+          </select>
+        </div>
+        <div class="col-sm-8">
+          <label class="form-label mb-1" style="font-size:12px;color:#666;">Related dancer (optional)</label>
+          <div class="search-wrapper" id="note-dancer-wrapper">
+            <input type="text" id="note-dancer-search" class="form-control form-control-sm"
+                   placeholder="Search by name or #…" autocomplete="off">
+            <div id="note-dancer-dropdown" style="display:none;"></div>
+          </div>
+          <div id="note-dancer-selected" class="mt-1 d-none">
+            <span class="badge text-bg-light border" id="note-dancer-chip"></span>
+            <button type="button" class="btn btn-link btn-sm p-0 ms-1" id="note-dancer-clear" style="font-size:12px;">Remove</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-2">
+        <label class="form-label mb-1" style="font-size:12px;color:#666;">Related piece(s) (optional)</label>
+        <div id="note-pieces" class="d-flex gap-3 flex-wrap"></div>
+      </div>
+
+      <div class="mb-2">
+        <label class="form-label mb-1" style="font-size:12px;color:#666;">Email this note to (optional)</label>
+        <div id="note-faculty" class="d-flex gap-3 flex-wrap"></div>
+      </div>
+
+      <button id="add-note-btn" class="btn btn-dark btn-sm mt-1">Add Note</button>
+      <span id="note-error" class="text-danger ms-2 d-none" style="font-size:13px;"></span>
+    </div>
+
+    <div id="notes-loading" class="text-muted" style="font-size:14px;">Loading…</div>
+    <div id="notes-list"></div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    const CATEGORY_LABELS = { absence: 'Absence', injury: 'Injury', attendance: 'Attendance', casting: 'Casting', general: 'General' };
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function formatDate(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+             ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+
+    // ── Related dancer search (same pattern as the Cast Builder's dancer search) ──
+    let selectedDancer = null; // { user_id, first_name, last_name, audition_number }
+    let dancerSearchDebounce = null;
+
+    const dancerSearchInput = document.getElementById('note-dancer-search');
+    const dancerDropdown    = document.getElementById('note-dancer-dropdown');
+
+    dancerSearchInput.addEventListener('input', () => {
+      clearTimeout(dancerSearchDebounce);
+      const q = dancerSearchInput.value.trim();
+      if (!q) { hideDancerDropdown(); return; }
+      dancerSearchDebounce = setTimeout(() => fetchDancerMatches(q), 300);
+    });
+    dancerSearchInput.addEventListener('keydown', e => { if (e.key === 'Escape') hideDancerDropdown(); });
+    document.addEventListener('click', e => {
+      if (!e.target.closest('#note-dancer-wrapper')) hideDancerDropdown();
+    });
+
+    async function fetchDancerMatches(q) {
+      try {
+        const res     = await fetch(`/api/dancers/search?q=${encodeURIComponent(q)}`);
+        const dancers = await res.json();
+        dancerDropdown.innerHTML = dancers.length === 0
+          ? '<div class="dropdown-item-dancer text-muted">No results found.</div>'
+          : dancers.map(d => `
+              <div class="dropdown-item-dancer" data-user-id="${d.user_id}"
+                   data-first-name="${escapeHtml(d.first_name)}" data-last-name="${escapeHtml(d.last_name)}">
+                ${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)}
+                ${d.audition_number ? `<span style="color:#999;font-size:12px;"> #${escapeHtml(d.audition_number)}</span>` : ''}
+              </div>`).join('');
+        dancerDropdown.style.display = 'block';
+      } catch (e) { /* leave dropdown as-is */ }
+    }
+
+    dancerDropdown.addEventListener('click', (e) => {
+      const item = e.target.closest('.dropdown-item-dancer[data-user-id]');
+      if (!item) return;
+      selectedDancer = { user_id: item.dataset.userId, first_name: item.dataset.firstName, last_name: item.dataset.lastName };
+      document.getElementById('note-dancer-chip').textContent = `${selectedDancer.first_name} ${selectedDancer.last_name}`;
+      document.getElementById('note-dancer-selected').classList.remove('d-none');
+      dancerSearchInput.value = '';
+      dancerSearchInput.classList.add('d-none');
+      hideDancerDropdown();
+    });
+
+    document.getElementById('note-dancer-clear').addEventListener('click', () => {
+      selectedDancer = null;
+      document.getElementById('note-dancer-selected').classList.add('d-none');
+      dancerSearchInput.classList.remove('d-none');
+    });
+
+    function hideDancerDropdown() {
+      dancerDropdown.style.display = 'none';
+      dancerDropdown.innerHTML     = '';
+    }
+
+    function resetDancerSearch() {
+      selectedDancer = null;
+      document.getElementById('note-dancer-selected').classList.add('d-none');
+      dancerSearchInput.classList.remove('d-none');
+      dancerSearchInput.value = '';
+    }
+
+    async function loadPieceOptions() {
+      try {
+        const res = await fetch('/api/pieces');
+        if (!res.ok) return;
+        const pieces = await res.json();
+        const container = document.getElementById('note-pieces');
+        if (pieces.length === 0) {
+          container.innerHTML = '<span class="text-muted" style="font-size:12px;">No pieces yet.</span>';
+          return;
+        }
+        container.innerHTML = pieces.map(p => `
+          <label class="form-check form-check-inline faculty-check mb-0">
+            <input type="checkbox" class="form-check-input note-piece-checkbox" value="${p.id}">
+            ${escapeHtml(p.name)}
+          </label>`).join('');
+      } catch (e) { /* leave empty */ }
+    }
+
+    async function loadFacultyOptions() {
+      try {
+        const res = await fetch('/api/season/faculty');
+        if (!res.ok) return;
+        const faculty = await res.json();
+        const container = document.getElementById('note-faculty');
+        if (faculty.length === 0) {
+          container.innerHTML = '<span class="text-muted" style="font-size:12px;">No co-directors or choreographer emails on file yet.</span>';
+          return;
+        }
+        container.innerHTML = faculty.map(f => `
+          <label class="form-check form-check-inline faculty-check mb-0">
+            <input type="checkbox" class="form-check-input note-faculty-checkbox" value="${escapeHtml(f.email)}">
+            ${escapeHtml(f.label)}
+          </label>`).join('');
+      } catch (e) { /* leave empty */ }
+    }
+
+    let currentUserEmail = null;
+
+    function renderNotes(notes) {
+      const list = document.getElementById('notes-list');
+      if (notes.length === 0) {
+        list.innerHTML = '<p class="text-muted" style="font-size:13px;">No notes yet.</p>';
+        return;
+      }
+      list.innerHTML = notes.map(n => {
+        const dancerName = n.dancer_first_name ? `${n.dancer_first_name} ${n.dancer_last_name}` : null;
+        const pieces     = (n.piece_names || []).filter(Boolean);
+        const tags = [
+          dancerName ? `<span class="note-tag">${escapeHtml(dancerName)}</span>` : '',
+          ...pieces.map(p => `<span class="note-tag">${escapeHtml(p)}</span>`),
+        ].join('');
+        const canDelete = n.author_email && n.author_email === currentUserEmail;
+        return `
+        <div class="note-card" data-note-id="${n.id}">
+          <div class="d-flex justify-content-between align-items-start">
+            <span class="badge text-bg-secondary">${CATEGORY_LABELS[n.category] || 'General'}</span>
+            <span class="note-meta">${formatDate(n.created_at)}</span>
+          </div>
+          <div class="note-text">${escapeHtml(n.note_text)}</div>
+          <div class="d-flex justify-content-between align-items-center">
+            <div class="note-meta">Posted by ${escapeHtml(n.author_email || 'Unknown')}</div>
+            ${canDelete ? `<button class="btn btn-link btn-sm p-0 text-danger delete-note-btn" data-note-id="${n.id}" style="font-size:12px;text-decoration:none;">Delete</button>` : ''}
+          </div>
+          ${tags ? `<div class="note-tags">${tags}</div>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    document.getElementById('notes-list').addEventListener('click', async (e) => {
+      const btn = e.target.closest('.delete-note-btn');
+      if (!btn) return;
+      if (!confirm('Delete this note? This cannot be undone.')) return;
+      try {
+        const res = await fetch(`/api/season/production-notes/${btn.dataset.noteId}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          alert(data.error || 'Could not delete note.');
+          return;
+        }
+        document.querySelector(`.note-card[data-note-id="${btn.dataset.noteId}"]`)?.remove();
+        if (document.getElementById('notes-list').children.length === 0) {
+          document.getElementById('notes-list').innerHTML = '<p class="text-muted" style="font-size:13px;">No notes yet.</p>';
+        }
+      } catch (err) {
+        alert('Could not connect to server.');
+      }
+    });
+
+    async function loadNotes() {
+      try {
+        const res = await fetch('/api/season/production-notes');
+        if (!res.ok) throw new Error();
+        const notes = await res.json();
+        document.getElementById('notes-loading').style.display = 'none';
+        renderNotes(notes);
+      } catch (err) {
+        document.getElementById('notes-loading').textContent = 'Could not load notes.';
+      }
+    }
+
+    document.getElementById('add-note-btn').addEventListener('click', async () => {
+      const noteText = document.getElementById('note-text').value.trim();
+      const errEl    = document.getElementById('note-error');
+      errEl.classList.add('d-none');
+      if (!noteText) { errEl.textContent = 'Note text is required.'; errEl.classList.remove('d-none'); return; }
+
+      const category      = document.getElementById('note-category').value;
+      const piece_ids      = Array.from(document.querySelectorAll('.note-piece-checkbox:checked')).map(el => parseInt(el.value));
+      const notify_emails  = Array.from(document.querySelectorAll('.note-faculty-checkbox:checked')).map(el => el.value);
+
+      const btn = document.getElementById('add-note-btn');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/season/production-notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            note_text: noteText,
+            category,
+            dancer_user_id: selectedDancer ? parseInt(selectedDancer.user_id) : null,
+            piece_ids,
+            notify_emails,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          errEl.textContent = data.error || 'Could not save note.';
+          errEl.classList.remove('d-none');
+          return;
+        }
+        document.getElementById('note-text').value = '';
+        document.getElementById('note-category').value = 'general';
+        resetDancerSearch();
+        document.querySelectorAll('.note-piece-checkbox:checked').forEach(el => el.checked = false);
+        document.querySelectorAll('.note-faculty-checkbox:checked').forEach(el => el.checked = false);
+        await loadNotes();
+      } catch (err) {
+        errEl.textContent = 'Could not connect to server.';
+        errEl.classList.remove('d-none');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+
+  <script>
+    (async () => {
+      try {
+        const res  = await fetch('/api/auth/me');
+        const user = await res.json();
+        if (!res.ok || (user.role !== 'master' && user.mode !== 'director')) { window.location.href = 'login.html'; return; }
+        if (!user.orgId) { window.location.href = 'org-select.html'; return; }
+        currentUserEmail = user.email;
+        const nav = document.querySelector('.navbar-nav');
+        nav.insertAdjacentHTML('beforeend',
+          `<li class="nav-item"><span class="nav-link nav-context">${user.orgName} · ${user.seasonName}</span></li>`
+        );
+        document.getElementById('right-nav').innerHTML =
+          `<a href="account.html" class="btn-nav-account">Account</a>
+           <button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+        document.body.style.visibility = 'visible';
+
+        loadPieceOptions();
+        loadFacultyOptions();
+        loadNotes();
+
+        try {
+          const subRes = await fetch('/api/subscription');
+          if (subRes.ok) {
+            const sub = await subRes.json();
+            if (sub.isTrial) {
+              const days = sub.daysRemaining;
+              document.getElementById('trial-banner-text').textContent =
+                days <= 1 ? 'Explore mode: your trial expires today. Upgrade to start your first real production.' : `Explore mode: ${days} day${days === 1 ? '' : 's'} left to explore. Upgrade any time to start your first real production.`;
+              document.getElementById('trial-banner').style.display = '';
+              document.getElementById('trial-banner-dismiss').addEventListener('click', () => {
+                document.getElementById('trial-banner').style.display = 'none';
+              });
+            }
+          }
+        } catch (_) {}
+      } catch (err) {
+        window.location.href = 'login.html';
+      }
+    })();
+  </script>
+
+  <script src="tour.js"></script>
+</body>
+</html>

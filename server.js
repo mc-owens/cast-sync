@@ -2123,7 +2123,7 @@ app.patch('/api/pieces/:id', requireAuth('master'), async (req, res) => {
   const { choreographer_name, choreographer_email, room, name } = req.body;
   if (name !== undefined && !name.trim()) return res.status(400).json({ error: 'Piece name cannot be empty.' });
 
-  // Only touch fields actually present in the request — distinguishes "not sent"
+  // Only touch fields actually present in the request, distinguishing "not sent"
   // (leave alone, e.g. the rename button only sends `name`) from "sent as empty
   // string" (clear it, e.g. casting.html's choreographer auto-save on blur).
   const sets = [];
@@ -2401,6 +2401,135 @@ app.patch('/api/season/form-schema', requireAuth('master'), async (req, res) => 
     res.json({ form_schema });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update form schema.' });
+  }
+});
+
+// ── Production Notes ──────────────────────────────────────────────────────────
+// Internal faculty notes (absences, injuries, attendance, casting, general). Scoped
+// to the active season; never exposed to any auditionee-facing route.
+
+const NOTE_CATEGORIES = ['absence', 'injury', 'attendance', 'casting', 'general'];
+
+// GET /api/season/production-notes, newest first
+app.get('/api/season/production-notes', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      `SELECT pn.id, pn.note_text, pn.category, pn.created_at,
+              u.email AS author_email,
+              dp.first_name AS dancer_first_name, dp.last_name AS dancer_last_name,
+              COALESCE(
+                json_agg(DISTINCT p.name) FILTER (WHERE p.id IS NOT NULL), '[]'
+              ) AS piece_names
+       FROM production_notes pn
+       LEFT JOIN users u ON u.id = pn.author_user_id
+       LEFT JOIN dancer_profiles dp ON dp.user_id = pn.dancer_user_id
+       LEFT JOIN production_note_pieces pnp ON pnp.note_id = pn.id
+       LEFT JOIN pieces p ON p.id = pnp.piece_id
+       WHERE pn.season_id = $1
+       GROUP BY pn.id, u.email, dp.first_name, dp.last_name
+       ORDER BY pn.created_at DESC`,
+      [seasonId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load notes.' });
+  }
+});
+
+// GET /api/season/faculty: co-directors + piece choreographers, for the notify picker
+app.get('/api/season/faculty', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const [orgMembers, seasonMembers, choreographers] = await Promise.all([
+      pool.query(`SELECT DISTINCT u.email FROM org_members om JOIN users u ON u.id = om.user_id WHERE om.org_id = $1`, [orgId]),
+      pool.query(`SELECT DISTINCT u.email FROM season_members sm JOIN users u ON u.id = sm.user_id WHERE sm.season_id = $1`, [seasonId]),
+      pool.query(`SELECT DISTINCT choreographer_email AS email, name AS piece_name FROM pieces WHERE season_id = $1 AND choreographer_email IS NOT NULL AND choreographer_email != ''`, [seasonId]),
+    ]);
+    const seen = new Map();
+    orgMembers.rows.forEach(r => seen.set(r.email, { email: r.email, label: r.email }));
+    seasonMembers.rows.forEach(r => seen.set(r.email, { email: r.email, label: r.email }));
+    choreographers.rows.forEach(r => {
+      if (!seen.has(r.email)) seen.set(r.email, { email: r.email, label: `${r.email} (${r.piece_name} choreographer)` });
+    });
+    res.json([...seen.values()]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load faculty list.' });
+  }
+});
+
+// POST /api/season/production-notes
+app.post('/api/season/production-notes', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { note_text, category, dancer_user_id, piece_ids, notify_emails } = req.body;
+  if (!note_text || !note_text.trim()) return res.status(400).json({ error: 'Note text is required.' });
+  const cat = NOTE_CATEGORIES.includes(category) ? category : 'general';
+  try {
+    const result = await pool.query(
+      `INSERT INTO production_notes (season_id, author_user_id, note_text, category, dancer_user_id)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [seasonId, req.session.userId, note_text.trim(), cat, dancer_user_id || null]
+    );
+    const noteId = result.rows[0].id;
+
+    if (Array.isArray(piece_ids) && piece_ids.length > 0) {
+      await Promise.all(piece_ids.map(pid =>
+        pool.query(
+          `INSERT INTO production_note_pieces (note_id, piece_id)
+           SELECT $1, $2 WHERE EXISTS (SELECT 1 FROM pieces WHERE id = $2 AND season_id = $3)`,
+          [noteId, pid, seasonId]
+        )
+      ));
+    }
+
+    if (emailEnabled && Array.isArray(notify_emails) && notify_emails.length > 0) {
+      const orgRow = await pool.query(
+        `SELECT o.name AS org_name FROM seasons s JOIN orgs o ON o.id = s.org_id WHERE s.id = $1`,
+        [seasonId]
+      );
+      const orgName       = orgRow.rows[0]?.org_name || 'CastSync';
+      const categoryLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+      notify_emails.filter(Boolean).forEach(to => {
+        resend.emails.send({
+          from:    FROM_EMAIL,
+          to,
+          subject: `New Production Note (${categoryLabel}) for ${orgName}`,
+          html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
+            <h3 style="margin-bottom:4px;">New Production Note</h3>
+            <p style="color:#555;font-size:13px;margin-top:0;">${categoryLabel} · ${orgName}</p>
+            <p style="white-space:pre-wrap;border-left:3px solid #ddd;padding-left:12px;color:#333;">${note_text.trim()}</p>
+            <p style="color:#aaa;font-size:12px;">Internal faculty note from CastSync. Not visible to auditionees.</p>
+          </div>`,
+        }).catch(err => console.error('Production note email error:', err.message));
+      });
+    }
+
+    res.status(201).json({ id: noteId });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save note.' });
+  }
+});
+
+// DELETE /api/season/production-notes/:id (author only)
+app.delete('/api/season/production-notes/:id', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      `DELETE FROM production_notes WHERE id = $1 AND season_id = $2 AND author_user_id = $3 RETURNING id`,
+      [req.params.id, seasonId, req.session.userId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Note not found, or you are not its author.' });
+    res.json({ message: 'Deleted.' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to delete note.' });
   }
 });
 
@@ -3135,7 +3264,7 @@ async function runMigrations() {
     console.log('Migration step 15 (form_schema columns + legacy default/backfill) complete.');
   } catch (err) { console.error('Migration step 15 error:', err.message); }
 
-  // Step 16: required secondary email — a profile-level column (reusable across
+  // Step 16: required secondary email, a profile-level column (reusable across
   // productions, like address/phone) plus a backfill so every org/season that
   // predates this field picks it up without a director having to re-open the
   // form builder. Guarded by NOT EXISTS so re-running this on every boot is a no-op
@@ -3160,7 +3289,7 @@ async function runMigrations() {
   } catch (err) { console.error('Migration step 16 error:', err.message); }
 
   // Step 17: new orgs start with a blank default audition form (just the permanent
-  // fields — name, email, phone, availability — which aren't part of form_schema at
+  // fields: name, email, phone, availability, which aren't part of form_schema at
   // all and always render regardless of its contents). This only changes the column
   // DEFAULT, which Postgres applies only to future inserts that omit the column;
   // every existing org's already-stored default_form_schema is untouched, and new
@@ -3169,6 +3298,28 @@ async function runMigrations() {
     await pool.query(`ALTER TABLE orgs ALTER COLUMN default_form_schema SET DEFAULT '[]'::jsonb;`);
     console.log('Migration step 17 (new orgs default to a blank audition form) complete.');
   } catch (err) { console.error('Migration step 17 error:', err.message); }
+
+  // Step 18: Production Notes, lightweight internal faculty notes, never shown to
+  // auditionees. A note optionally relates to one dancer and/or several pieces.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS production_notes (
+        id              SERIAL PRIMARY KEY,
+        season_id       INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        author_user_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        note_text       TEXT NOT NULL,
+        category        VARCHAR(20) NOT NULL DEFAULT 'general',
+        dancer_user_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at      TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS production_note_pieces (
+        note_id  INTEGER NOT NULL REFERENCES production_notes(id) ON DELETE CASCADE,
+        piece_id INTEGER NOT NULL REFERENCES pieces(id) ON DELETE CASCADE,
+        PRIMARY KEY (note_id, piece_id)
+      );
+    `);
+    console.log('Migration step 18 (production_notes tables) complete.');
+  } catch (err) { console.error('Migration step 18 error:', err.message); }
 
   console.log('All migrations complete.');
 }

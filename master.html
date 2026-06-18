@@ -136,6 +136,9 @@
           <li class="nav-item">
             <a class="nav-link" href="form-builder.html?scope=season">Audition Form</a>
           </li>
+          <li class="nav-item">
+            <a class="nav-link" href="notes.html">Production Notes</a>
+          </li>
         </ul>
       </div>
       <div class="app-nav-right" id="right-nav"></div>
@@ -231,9 +234,9 @@
     // The grid's height grows with however many hours the schedule spans (8am–11pm by
     // default), which can exceed one printed landscape page. Shrink it on the fly so the
     // whole week always lands on a single page, then restore the normal size afterward.
-    // Uses `zoom` rather than `transform: scale()` — transform only shrinks the paint, not
-    // the layout box, so Chrome's print pagination still measured the full-height box and
-    // pushed the last couple hours onto a second page.
+    // Uses `zoom` rather than `transform: scale()`, since transform only shrinks the
+    // paint, not the layout box, so Chrome's print pagination still measured the
+    // full-height box and pushed the last couple hours onto a second page.
     (() => {
       const PRINT_TARGET_HEIGHT_PX = 680; // usable height on a landscape page after margins
       let savedStyle = '';

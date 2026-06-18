@@ -132,6 +132,9 @@
           <li class="nav-item">
             <a class="nav-link" href="form-builder.html?scope=season">Audition Form</a>
           </li>
+          <li class="nav-item">
+            <a class="nav-link" href="notes.html">Production Notes</a>
+          </li>
         </ul>
       </div>
       <div class="app-nav-right" id="right-nav"></div>
@@ -265,7 +268,7 @@
     let _modalUserId = null;
 
     // The season's custom (non-builtin) questions, so the profile modal can list every
-    // question with its readable label — including ones this dancer left blank, or
+    // question with its readable label, including ones this dancer left blank, or
     // that were added to the form after they submitted.
     let _customFields = null;
     async function getCustomFields() {
@@ -277,7 +280,7 @@
           const data = await res.json();
           _customFields = (data.form_schema || []).filter(f => !f.builtin);
         }
-      } catch (e) { /* fall back to empty — table just won't show custom questions */ }
+      } catch (e) { /* fall back to empty, table just won't show custom questions */ }
       return _customFields;
     }
 
