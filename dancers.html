@@ -39,6 +39,7 @@
             <table class="table table-sm table-bordered" style="font-size:13px;">
               <tbody>
                 <tr><th style="width:160px;">Email</th><td id="detail-email"></td></tr>
+                <tr><th>Secondary Email</th><td id="detail-secondary-email"></td></tr>
                 <tr><th>Phone</th><td id="detail-phone"></td></tr>
                 <tr><th>Address</th><td id="detail-address"></td></tr>
                 <tr><th>Grade</th><td id="detail-grade"></td></tr>
@@ -263,20 +264,21 @@
 
     let _modalUserId = null;
 
-    // Maps custom field id -> label for this season, so the profile modal can show a
-    // readable question instead of the raw key stored in submissions.custom_responses.
-    let _customFieldLabels = null;
-    async function getCustomFieldLabels() {
-      if (_customFieldLabels) return _customFieldLabels;
-      _customFieldLabels = {};
+    // The season's custom (non-builtin) questions, so the profile modal can list every
+    // question with its readable label — including ones this dancer left blank, or
+    // that were added to the form after they submitted.
+    let _customFields = null;
+    async function getCustomFields() {
+      if (_customFields) return _customFields;
+      _customFields = [];
       try {
         const res = await fetch('/api/season/form-schema');
         if (res.ok) {
           const data = await res.json();
-          (data.form_schema || []).forEach(f => { if (!f.builtin) _customFieldLabels[f.id] = f.label || f.id; });
+          _customFields = (data.form_schema || []).filter(f => !f.builtin);
         }
-      } catch (e) { /* fall back to raw ids */ }
-      return _customFieldLabels;
+      } catch (e) { /* fall back to empty — table just won't show custom questions */ }
+      return _customFields;
     }
 
     async function openDancerModal(id) {
@@ -326,6 +328,7 @@
         }
 
         document.getElementById('detail-email').textContent     = dancer.email             || '';
+        document.getElementById('detail-secondary-email').textContent = dancer.secondary_email || '';
         document.getElementById('detail-phone').textContent     = dancer.phone             || '';
         document.getElementById('detail-address').textContent   = dancer.address           || '';
         document.getElementById('detail-grade').textContent     = dancer.grade             || '';
@@ -334,14 +337,17 @@
         document.getElementById('detail-absences').textContent  = dancer.absences          || '';
         document.getElementById('edit-audition-number').value   = dancer.audition_number   || '';
 
-        const labels  = await getCustomFieldLabels();
-        const custom  = dancer.custom_responses || {};
-        const customTbody = document.getElementById('custom-fields-tbody');
-        customTbody.innerHTML = Object.entries(custom)
-          .filter(([, value]) => Array.isArray(value) ? value.length : value)
-          .map(([id, value]) => `
-            <tr><th>${escapeHtml(labels[id] || id)}</th><td style="white-space:pre-wrap;">${escapeHtml(Array.isArray(value) ? value.join(', ') : value)}</td></tr>
-          `).join('');
+        const customFields = await getCustomFields();
+        const custom       = dancer.custom_responses || {};
+        const customTbody  = document.getElementById('custom-fields-tbody');
+        customTbody.innerHTML = customFields.map(f => {
+          const value    = custom[f.id];
+          const hasValue = Array.isArray(value) ? value.length > 0 : !!value;
+          const display  = hasValue
+            ? escapeHtml(Array.isArray(value) ? value.join(', ') : value)
+            : '<span class="text-muted fst-italic">Unanswered</span>';
+          return `<tr><th>${escapeHtml(f.label || f.id)}</th><td style="white-space:pre-wrap;">${display}</td></tr>`;
+        }).join('');
 
         document.getElementById('dancer-full-profile').classList.remove('show');
         new bootstrap.Modal(document.getElementById('dancerModal')).show();

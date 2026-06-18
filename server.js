@@ -2022,7 +2022,7 @@ app.get('/api/dancers/:userId', requireAuth('master'), async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT dp.first_name, dp.last_name, u.email, dp.phone, dp.address, dp.grade,
-              dp.technique_classes, sub.injuries, sub.absences, sub.availability, sub.audition_number,
+              dp.technique_classes, dp.secondary_email, sub.injuries, sub.absences, sub.availability, sub.audition_number,
               sub.custom_responses
        FROM submissions sub
        JOIN dancer_profiles dp ON dp.user_id = sub.user_id
@@ -3158,6 +3158,17 @@ async function runMigrations() {
     `);
     console.log('Migration step 16 (secondary_email column + form_schema backfill) complete.');
   } catch (err) { console.error('Migration step 16 error:', err.message); }
+
+  // Step 17: new orgs start with a blank default audition form (just the permanent
+  // fields — name, email, phone, availability — which aren't part of form_schema at
+  // all and always render regardless of its contents). This only changes the column
+  // DEFAULT, which Postgres applies only to future inserts that omit the column;
+  // every existing org's already-stored default_form_schema is untouched, and new
+  // seasons keep copying whatever their own org's default is at creation time.
+  try {
+    await pool.query(`ALTER TABLE orgs ALTER COLUMN default_form_schema SET DEFAULT '[]'::jsonb;`);
+    console.log('Migration step 17 (new orgs default to a blank audition form) complete.');
+  } catch (err) { console.error('Migration step 17 error:', err.message); }
 
   console.log('All migrations complete.');
 }

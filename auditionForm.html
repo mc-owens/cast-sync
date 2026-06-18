@@ -296,7 +296,7 @@
             }
             if (field.builtin === 'absences') {
               return `<div class="mb-3">
-                <label for="absences" class="form-label">${escapeHtml(field.label || 'Known Absences')}</label>
+                <label for="absences" class="form-label">${escapeHtml(field.label || 'Known Absences')} <span class="text-muted" style="font-weight:normal;">(must also submit an official Requested Absence Form)</span></label>
                 <textarea id="absences" class="form-control" rows="2" placeholder="Example: January 5" ${req}></textarea>
               </div>`;
             }
