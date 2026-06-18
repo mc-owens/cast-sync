@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Absence Requests | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .request-card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; background: #fff; }
+    .request-meta { font-size: 12px; color: #888; }
+    .row-saved { font-size: 12px; white-space: nowrap; }
+    .status-section-header {
+      display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 0;
+      border-bottom: 1px solid #e0e0e0; margin-bottom: 10px; font-weight: 600; font-size: 14px;
+    }
+    .status-section-header .chevron { font-size: 11px; color: #888; transition: transform .15s; }
+    .status-section-header.collapsed .chevron { transform: rotate(-90deg); }
+    .status-section { margin-bottom: 18px; }
+    .status-count { font-size: 12px; color: #888; font-weight: normal; }
+  </style>
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body style="visibility:hidden">
+
+  <!-- Nav -->
+  <nav class="navbar navbar-expand-lg app-nav">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav">
+          <li class="nav-item"><a class="nav-link" href="search.html">Availability</a></li>
+          <li class="nav-item"><a class="nav-link" href="master.html">Master Schedule</a></li>
+          <li class="nav-item"><a class="nav-link" href="cast.html">Cast Builder</a></li>
+          <li class="nav-item"><a class="nav-link" href="casting.html">Casting</a></li>
+          <li class="nav-item"><a class="nav-link" href="dancers.html">Auditionees</a></li>
+          <li class="nav-item"><a class="nav-link" href="form-builder.html?scope=season">Audition Form</a></li>
+          <li class="nav-item"><a class="nav-link" href="notes.html">Production Notes</a></li>
+          <li class="nav-item"><a class="nav-link" href="attendance.html">Attendance</a></li>
+          <li class="nav-item"><a class="nav-link active" href="absence-requests.html">Absence Requests</a></li>
+        </ul>
+      </div>
+      <div class="app-nav-right" id="right-nav"></div>
+    </div>
+  </nav>
+
+  <!-- Trial banner -->
+  <div id="trial-banner" style="display:none;background:#fefce8;border-bottom:1px solid #fde68a;">
+    <div class="container-fluid px-4 py-2 d-flex align-items-center justify-content-between gap-3">
+      <span style="font-size:13px;color:#92400e;" id="trial-banner-text"></span>
+      <div class="d-flex gap-2 flex-shrink-0">
+        <a href="plan-select.html" class="btn btn-sm btn-warning" style="font-size:12px;font-weight:600;">Upgrade</a>
+        <button class="btn btn-sm btn-link p-0" style="font-size:12px;color:#92400e;text-decoration:none;" id="trial-banner-dismiss">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="container-fluid mt-4 px-4" style="max-width: 900px;">
+
+    <div class="mb-3">
+      <h5 class="mb-0 fw-semibold">Absence Requests</h5>
+      <p class="text-muted mb-0" style="font-size:13px;">
+        Every absence request submitted for this production. Update status or assign a piece to a
+        TBD request below; the auditionee (and the piece's choreographer, if one is set) get an
+        email whenever the status changes.
+      </p>
+    </div>
+
+    <div class="d-flex gap-2 mb-3">
+      <button class="btn btn-sm btn-dark" id="view-grouped-btn">By Status</button>
+      <button class="btn btn-sm btn-outline-secondary" id="view-all-btn">All</button>
+    </div>
+
+    <div id="requests-loading" class="text-muted" style="font-size:14px;">Loading…</div>
+    <div id="requests-list"></div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    const STATUS_LABELS = { pending: 'Pending', approved: 'Approved', denied: 'Denied' };
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function formatDate(iso) {
+      return new Date(`${String(iso).slice(0,10)}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function formatTimestamp(iso) {
+      return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+             ' at ' + new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+
+    let pieces = [];
+
+    async function loadPieces() {
+      try {
+        const res = await fetch('/api/pieces');
+        if (res.ok) pieces = await res.json();
+      } catch (e) { /* leave empty, reassign dropdown just won't have options */ }
+    }
+
+    function renderRequest(r) {
+      const card = document.createElement('div');
+      card.className = 'request-card';
+      card.dataset.requestId = r.id;
+
+      const pieceOptions = ['<option value="">TBD / not yet assigned</option>']
+        .concat(pieces.map(p => `<option value="${p.id}" ${p.id === r.piece_id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`));
+
+      card.innerHTML = `
+        <div class="d-flex justify-content-between align-items-start mb-1">
+          <span class="fw-semibold" style="font-size:14px;">${escapeHtml(r.first_name)} ${escapeHtml(r.last_name)}</span>
+          <span class="request-meta">Submitted ${formatTimestamp(r.created_at)}</span>
+        </div>
+        <div style="font-size:13px;margin-bottom:6px;">
+          ${formatDate(r.absence_date)}, ${escapeHtml(r.start_time)} to ${escapeHtml(r.end_time)}
+        </div>
+        <div style="font-size:13px;color:#444;margin-bottom:8px;">${escapeHtml(r.reason)}</div>
+        ${r.documentation_link ? `<div class="mb-2"><a href="${escapeHtml(r.documentation_link)}" target="_blank" rel="noopener" style="font-size:13px;">View documentation</a></div>` : ''}
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <select class="form-select form-select-sm piece-select" style="width:200px;">${pieceOptions.join('')}</select>
+          <select class="form-select form-select-sm status-select" style="width:140px;">
+            ${Object.entries(STATUS_LABELS).map(([val, label]) => `<option value="${val}" ${r.status === val ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+          <span class="row-saved text-success d-none">Saved</span>
+        </div>
+      `;
+      return card;
+    }
+
+    async function saveRequest(card) {
+      const id = card.dataset.requestId;
+      const pieceVal = card.querySelector('.piece-select').value;
+      const status   = card.querySelector('.status-select').value;
+      const savedEl   = card.querySelector('.row-saved');
+      try {
+        const res = await fetch(`/api/season/absence-requests/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status, piece_id: pieceVal ? parseInt(pieceVal) : null }),
+        });
+        if (!res.ok) { alert('Could not update this request.'); return; }
+        savedEl.classList.remove('d-none');
+        setTimeout(() => loadRequests(), 900);
+      } catch (err) {
+        alert('Could not connect to server.');
+      }
+    }
+
+    document.getElementById('requests-list').addEventListener('change', (e) => {
+      const card = e.target.closest('.request-card');
+      if (!card) return;
+      if (e.target.classList.contains('piece-select') || e.target.classList.contains('status-select')) {
+        saveRequest(card);
+      }
+    });
+
+    document.getElementById('requests-list').addEventListener('click', (e) => {
+      const header = e.target.closest('.status-section-header');
+      if (!header) return;
+      const status = header.dataset.status;
+      sectionExpanded[status] = !sectionExpanded[status];
+      render();
+    });
+
+    let allRequests = [];
+    let viewMode = 'grouped'; // 'grouped' | 'all'
+    const sectionExpanded = { pending: true, approved: false, denied: false };
+    const STATUS_ORDER = ['pending', 'approved', 'denied'];
+
+    function renderGrouped() {
+      const list = document.getElementById('requests-list');
+      list.innerHTML = '';
+      STATUS_ORDER.forEach(status => {
+        const requests = allRequests.filter(r => r.status === status);
+        const section = document.createElement('div');
+        section.className = 'status-section';
+        const expanded = sectionExpanded[status];
+        section.innerHTML = `
+          <div class="status-section-header${expanded ? '' : ' collapsed'}" data-status="${status}">
+            <span class="chevron">&#9660;</span>
+            <span>${STATUS_LABELS[status]}</span>
+            <span class="status-count">${requests.length}</span>
+          </div>
+          <div class="status-section-body${expanded ? '' : ' d-none'}"></div>
+        `;
+        const body = section.querySelector('.status-section-body');
+        if (requests.length === 0) {
+          body.innerHTML = '<p class="text-muted" style="font-size:13px;">None.</p>';
+        } else {
+          requests.forEach(r => body.appendChild(renderRequest(r)));
+        }
+        list.appendChild(section);
+      });
+    }
+
+    function renderFlat() {
+      const list = document.getElementById('requests-list');
+      list.innerHTML = '';
+      allRequests.forEach(r => list.appendChild(renderRequest(r)));
+    }
+
+    function render() {
+      const list = document.getElementById('requests-list');
+      if (allRequests.length === 0) {
+        list.innerHTML = '<p class="text-muted" style="font-size:13px;">No absence requests yet.</p>';
+        return;
+      }
+      if (viewMode === 'grouped') renderGrouped();
+      else renderFlat();
+    }
+
+    document.getElementById('view-grouped-btn').addEventListener('click', () => {
+      viewMode = 'grouped';
+      document.getElementById('view-grouped-btn').className = 'btn btn-sm btn-dark';
+      document.getElementById('view-all-btn').className = 'btn btn-sm btn-outline-secondary';
+      render();
+    });
+    document.getElementById('view-all-btn').addEventListener('click', () => {
+      viewMode = 'all';
+      document.getElementById('view-all-btn').className = 'btn btn-sm btn-dark';
+      document.getElementById('view-grouped-btn').className = 'btn btn-sm btn-outline-secondary';
+      render();
+    });
+
+    async function loadRequests() {
+      try {
+        const res = await fetch('/api/season/absence-requests');
+        if (!res.ok) throw new Error();
+        allRequests = await res.json();
+        document.getElementById('requests-loading').style.display = 'none';
+        render();
+      } catch (err) {
+        document.getElementById('requests-loading').textContent = 'Could not load absence requests.';
+      }
+    }
+
+    (async () => {
+      await loadPieces();
+      await loadRequests();
+    })();
+  </script>
+
+  <script>
+    (async () => {
+      try {
+        const res  = await fetch('/api/auth/me');
+        const user = await res.json();
+        if (!res.ok || (user.role !== 'master' && user.mode !== 'director')) { window.location.href = 'login.html'; return; }
+        if (!user.orgId) { window.location.href = 'org-select.html'; return; }
+        const nav = document.querySelector('.navbar-nav');
+        nav.insertAdjacentHTML('beforeend',
+          `<li class="nav-item"><span class="nav-link nav-context">${user.orgName} · ${user.seasonName}</span></li>`
+        );
+        document.getElementById('right-nav').innerHTML =
+          `<a href="account.html" class="btn-nav-account">Account</a>
+           <button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+        document.body.style.visibility = 'visible';
+
+        try {
+          const subRes = await fetch('/api/subscription');
+          if (subRes.ok) {
+            const sub = await subRes.json();
+            if (sub.isTrial) {
+              const days = sub.daysRemaining;
+              document.getElementById('trial-banner-text').textContent =
+                days <= 1 ? 'Explore mode: your trial expires today. Upgrade to start your first real production.' : `Explore mode: ${days} day${days === 1 ? '' : 's'} left to explore. Upgrade any time to start your first real production.`;
+              document.getElementById('trial-banner').style.display = '';
+              document.getElementById('trial-banner-dismiss').addEventListener('click', () => {
+                document.getElementById('trial-banner').style.display = 'none';
+              });
+            }
+          }
+        } catch (_) {}
+      } catch (err) {
+        window.location.href = 'login.html';
+      }
+    })();
+  </script>
+
+  <script src="tour.js"></script>
+</body>
+</html>

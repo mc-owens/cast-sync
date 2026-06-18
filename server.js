@@ -1733,6 +1733,204 @@ app.get('/api/my-casting', requireAuth('auditionee'), async (req, res) => {
   }
 });
 
+// ── Absence requests ─────────────────────────────────────────────────────────
+// Lightweight request workflow: an auditionee submits a date/time/reason and,
+// once casting is published, which of their own pieces it affects (or TBD before
+// that). Directors/co-directors review and update status; the auditionee and, if
+// a piece is set, that piece's choreographer get emailed on submission and on every
+// status change. Choreographers are notified by email only (pieces.choreographer_email)
+// since there's no choreographer account/role yet; notifyChoreographerForPiece is the
+// one place that lookup happens, so adding real accounts later is a one-function change.
+
+const ABSENCE_STATUSES = ['pending', 'approved', 'denied'];
+const ABSENCE_STATUS_LABELS = { pending: 'Pending', approved: 'Approved', denied: 'Denied' };
+
+async function getDirectorEmails(orgId, seasonId) {
+  const [orgMembers, seasonMembers] = await Promise.all([
+    pool.query(`SELECT DISTINCT u.email FROM org_members om JOIN users u ON u.id = om.user_id WHERE om.org_id = $1`, [orgId]),
+    pool.query(`SELECT DISTINCT u.email FROM season_members sm JOIN users u ON u.id = sm.user_id WHERE sm.season_id = $1`, [seasonId]),
+  ]);
+  return [...new Set([...orgMembers.rows, ...seasonMembers.rows].map(r => r.email))];
+}
+
+async function notifyChoreographerForPiece(pieceId, subject, html) {
+  if (!emailEnabled || !pieceId) return;
+  try {
+    const result = await pool.query('SELECT choreographer_email FROM pieces WHERE id = $1', [pieceId]);
+    const email = result.rows[0]?.choreographer_email;
+    if (!email) return;
+    await resend.emails.send({ from: FROM_EMAIL, to: email, subject, html }).catch(err => console.error('Choreographer email error:', err.message));
+  } catch (err) { console.error('notifyChoreographerForPiece error:', err.message); }
+}
+
+// GET /api/my-absence-context: every production the auditionee submitted to, with
+// casting-published status and the pieces they're actually cast in (for the form's
+// piece-or-TBD picker)
+app.get('/api/my-absence-context', requireAuth('auditionee'), async (req, res) => {
+  try {
+    const subsResult = await pool.query(
+      `SELECT sub.org_id, sub.season_id, o.name AS org_name, s.name AS season_name, s.casting_published
+       FROM submissions sub
+       JOIN seasons s ON s.id = sub.season_id
+       JOIN orgs o ON o.id = sub.org_id
+       WHERE sub.user_id = $1
+       ORDER BY sub.created_at DESC`,
+      [req.session.userId]
+    );
+
+    const results = [];
+    for (const row of subsResult.rows) {
+      const piecesResult = await pool.query(
+        `SELECT p.id, p.name FROM pieces p
+         JOIN piece_casts pc ON pc.piece_id = p.id
+         WHERE p.season_id = $1 AND pc.user_id = $2
+         ORDER BY p.name`,
+        [row.season_id, req.session.userId]
+      );
+      results.push({
+        org_id: row.org_id,
+        season_id: row.season_id,
+        org_name: row.org_name,
+        season_name: row.season_name,
+        casting_published: row.casting_published,
+        my_pieces: piecesResult.rows,
+      });
+    }
+    res.json(results);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load production context.' });
+  }
+});
+
+// POST /api/absence-requests: auditionee submits a new request
+app.post('/api/absence-requests', requireAuth('auditionee'), async (req, res) => {
+  const { season_id, absence_date, start_time, end_time, reason, piece_id, documentation_link } = req.body;
+  if (!season_id || !absence_date || !start_time || !end_time || !reason || !reason.trim()) {
+    return res.status(400).json({ error: 'season_id, absence_date, start_time, end_time, and reason are required.' });
+  }
+  const docLink = documentation_link ? documentation_link.trim() : '';
+  if (docLink && !/^https?:\/\//i.test(docLink)) {
+    return res.status(400).json({ error: 'Documentation link must start with http:// or https://.' });
+  }
+  try {
+    const seasonRow = await pool.query(
+      `SELECT s.org_id, s.name AS season_name, s.casting_published, o.name AS org_name
+       FROM seasons s JOIN orgs o ON o.id = s.org_id
+       JOIN submissions sub ON sub.season_id = s.id AND sub.user_id = $2
+       WHERE s.id = $1`,
+      [season_id, req.session.userId]
+    );
+    if (seasonRow.rows.length === 0) return res.status(403).json({ error: 'You have not submitted to this production.' });
+    const { org_id, org_name, season_name, casting_published } = seasonRow.rows[0];
+
+    // Only honor piece_id once casting is published, and only for a piece this
+    // dancer is actually cast in, regardless of what the client sent.
+    let finalPieceId = null;
+    if (casting_published && piece_id) {
+      const pieceCheck = await pool.query(
+        `SELECT p.id, p.name FROM pieces p JOIN piece_casts pc ON pc.piece_id = p.id
+         WHERE p.id = $1 AND p.season_id = $2 AND pc.user_id = $3`,
+        [piece_id, season_id, req.session.userId]
+      );
+      if (pieceCheck.rows.length > 0) finalPieceId = pieceCheck.rows[0].id;
+    }
+
+    const result = await pool.query(
+      `INSERT INTO absence_requests (user_id, org_id, season_id, absence_date, start_time, end_time, reason, piece_id, documentation_link)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [req.session.userId, org_id, season_id, absence_date, start_time, end_time, reason.trim(), finalPieceId, docLink || null]
+    );
+    const requestId = result.rows[0].id;
+
+    const profileRow = await pool.query('SELECT first_name, last_name FROM dancer_profiles WHERE user_id = $1', [req.session.userId]);
+    const dancerName = profileRow.rows[0] ? `${profileRow.rows[0].first_name} ${profileRow.rows[0].last_name}` : 'A dancer';
+    const userRow = await pool.query('SELECT email, secondary_email FROM users u LEFT JOIN dancer_profiles dp ON dp.user_id = u.id WHERE u.id = $1', [req.session.userId]);
+    const { email: dancerEmail, secondary_email: dancerSecondaryEmail } = userRow.rows[0] || {};
+    const pieceLabel = finalPieceId
+      ? (await pool.query('SELECT name FROM pieces WHERE id = $1', [finalPieceId])).rows[0]?.name
+      : 'TBD / not yet assigned';
+    const docLinkHtml = docLink
+      ? `<p style="color:#555;font-size:13px;">Documentation: <a href="${docLink}">${docLink}</a></p>`
+      : '';
+
+    if (emailEnabled) {
+      const recipients = [dancerEmail, dancerSecondaryEmail].filter(Boolean);
+      resend.emails.send({
+        from: FROM_EMAIL,
+        to: recipients,
+        subject: `Absence Request Received for ${org_name}`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
+          <h3 style="margin-bottom:4px;">Absence Request Received</h3>
+          <p style="color:#555;font-size:13px;margin-top:0;">${org_name}, ${season_name}</p>
+          <p>We've received your absence request for <strong>${absence_date}</strong>, ${start_time} to ${end_time}.</p>
+          <p style="color:#555;font-size:13px;">Reason: ${reason.trim()}</p>
+          <p style="color:#555;font-size:13px;">Piece: ${pieceLabel}</p>
+          ${docLinkHtml}
+          <p style="color:#aaa;font-size:12px;">You'll get an email when your director updates the status. This is an automated message.</p>
+        </div>`,
+      }).catch(err => console.error('Absence confirmation email error:', err.message));
+
+      getDirectorEmails(org_id, season_id).then(directorEmails => {
+        directorEmails.filter(Boolean).forEach(to => {
+          resend.emails.send({
+            from: FROM_EMAIL,
+            to,
+            subject: `New Absence Request from ${dancerName} for ${org_name}`,
+            html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
+              <h3 style="margin-bottom:4px;">New Absence Request</h3>
+              <p style="color:#555;font-size:13px;margin-top:0;">${org_name}, ${season_name}</p>
+              <p><strong>${dancerName}</strong> requested an absence for <strong>${absence_date}</strong>, ${start_time} to ${end_time}.</p>
+              <p style="color:#555;font-size:13px;">Reason: ${reason.trim()}</p>
+              <p style="color:#555;font-size:13px;">Piece: ${pieceLabel}</p>
+              ${docLinkHtml}
+              <p style="color:#aaa;font-size:12px;">Review and update its status on the Absence Requests tab.</p>
+            </div>`,
+          }).catch(err => console.error('Director absence-notify email error:', err.message));
+        });
+      });
+
+      if (finalPieceId) {
+        notifyChoreographerForPiece(finalPieceId, `Absence Request for ${pieceLabel} in ${org_name}`,
+          `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
+            <h3 style="margin-bottom:4px;">Absence Request</h3>
+            <p style="color:#555;font-size:13px;margin-top:0;">${org_name}, ${season_name} · ${pieceLabel}</p>
+            <p><strong>${dancerName}</strong> requested an absence for <strong>${absence_date}</strong>, ${start_time} to ${end_time}.</p>
+            <p style="color:#555;font-size:13px;">Reason: ${reason.trim()}</p>
+            ${docLinkHtml}
+          </div>`
+        );
+      }
+    }
+
+    res.status(201).json({ id: requestId });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save absence request.' });
+  }
+});
+
+// GET /api/my-absence-requests: auditionee's own past requests, across every production
+app.get('/api/my-absence-requests', requireAuth('auditionee'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT ar.id, ar.absence_date, ar.start_time, ar.end_time, ar.reason, ar.status, ar.created_at,
+              ar.documentation_link, o.name AS org_name, s.name AS season_name, p.name AS piece_name
+       FROM absence_requests ar
+       JOIN orgs o ON o.id = ar.org_id
+       JOIN seasons s ON s.id = ar.season_id
+       LEFT JOIN pieces p ON p.id = ar.piece_id
+       WHERE ar.user_id = $1
+       ORDER BY ar.created_at DESC`,
+      [req.session.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load your absence requests.' });
+  }
+});
+
 // ── Master dancer routes (org/season scoped) ──────────────────────────────────
 
 // GET /api/dancers — all submissions for current org/season
@@ -2627,6 +2825,107 @@ app.post('/api/season/attendance', requireAuth('master'), async (req, res) => {
   }
 });
 
+// ── Absence requests (director side) ────────────────────────────────────────────
+
+// GET /api/season/absence-requests: every request for the active season, newest first
+app.get('/api/season/absence-requests', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      `SELECT ar.id, ar.absence_date, ar.start_time, ar.end_time, ar.reason, ar.status,
+              ar.created_at, ar.piece_id, ar.documentation_link, dp.first_name, dp.last_name, p.name AS piece_name
+       FROM absence_requests ar
+       JOIN dancer_profiles dp ON dp.user_id = ar.user_id
+       LEFT JOIN pieces p ON p.id = ar.piece_id
+       WHERE ar.season_id = $1
+       ORDER BY ar.created_at DESC`,
+      [seasonId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load absence requests.' });
+  }
+});
+
+// PATCH /api/season/absence-requests/:id: update status and/or assign a piece (e.g. resolving a TBD)
+app.patch('/api/season/absence-requests/:id', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { status, piece_id } = req.body;
+  if (status !== undefined && !ABSENCE_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status.' });
+
+  try {
+    const existing = await pool.query(
+      `SELECT ar.*, dp.first_name, dp.last_name, u.email, u.id AS user_id, s.name AS season_name, o.name AS org_name, o.id as org_id
+       FROM absence_requests ar
+       JOIN users u ON u.id = ar.user_id
+       JOIN dancer_profiles dp ON dp.user_id = ar.user_id
+       JOIN seasons s ON s.id = ar.season_id
+       JOIN orgs o ON o.id = ar.org_id
+       WHERE ar.id = $1 AND ar.season_id = $2`,
+      [req.params.id, seasonId]
+    );
+    if (existing.rows.length === 0) return res.status(404).json({ error: 'Request not found.' });
+    const reqRow = existing.rows[0];
+
+    let newPieceId = reqRow.piece_id;
+    if (piece_id !== undefined) {
+      if (piece_id === null) {
+        newPieceId = null;
+      } else {
+        const pieceCheck = await pool.query('SELECT id FROM pieces WHERE id = $1 AND season_id = $2', [piece_id, seasonId]);
+        if (pieceCheck.rows.length === 0) return res.status(400).json({ error: 'Piece not in this season.' });
+        newPieceId = piece_id;
+      }
+    }
+    const newStatus = status !== undefined ? status : reqRow.status;
+
+    await pool.query(
+      `UPDATE absence_requests SET status = $1, piece_id = $2, updated_at = NOW() WHERE id = $3`,
+      [newStatus, newPieceId, req.params.id]
+    );
+
+    const dancerName = `${reqRow.first_name} ${reqRow.last_name}`;
+    const pieceLabel = newPieceId
+      ? (await pool.query('SELECT name FROM pieces WHERE id = $1', [newPieceId])).rows[0]?.name
+      : 'TBD / not yet assigned';
+    const statusLabel = ABSENCE_STATUS_LABELS[newStatus];
+
+    if (emailEnabled && status !== undefined) {
+      const dancerProfile = await pool.query('SELECT secondary_email FROM dancer_profiles WHERE user_id = $1', [reqRow.user_id]);
+      const recipients = [reqRow.email, dancerProfile.rows[0]?.secondary_email].filter(Boolean);
+      resend.emails.send({
+        from: FROM_EMAIL,
+        to: recipients,
+        subject: `Your Absence Request Has Been Updated for ${reqRow.org_name}`,
+        html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
+          <h3 style="margin-bottom:4px;">Absence Request Update</h3>
+          <p style="color:#555;font-size:13px;margin-top:0;">${reqRow.org_name}, ${reqRow.season_name}</p>
+          <p>Your absence request for <strong>${reqRow.absence_date.toISOString().slice(0,10)}</strong>, ${reqRow.start_time} to ${reqRow.end_time} is now: <strong>${statusLabel}</strong>.</p>
+          <p style="color:#555;font-size:13px;">Piece: ${pieceLabel}</p>
+        </div>`,
+      }).catch(err => console.error('Absence status-update email error:', err.message));
+
+      if (newPieceId) {
+        notifyChoreographerForPiece(newPieceId, `Absence Request Update for ${pieceLabel} in ${reqRow.org_name}`,
+          `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
+            <h3 style="margin-bottom:4px;">Absence Request Update</h3>
+            <p style="color:#555;font-size:13px;margin-top:0;">${reqRow.org_name}, ${reqRow.season_name} · ${pieceLabel}</p>
+            <p><strong>${dancerName}</strong>'s absence request for <strong>${reqRow.absence_date.toISOString().slice(0,10)}</strong>, ${reqRow.start_time} to ${reqRow.end_time} is now: <strong>${statusLabel}</strong>.</p>
+          </div>`
+        );
+      }
+    }
+
+    res.json({ message: 'Updated.', status: newStatus, piece_id: newPieceId });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to update absence request.' });
+  }
+});
+
 // ── Dancer conflict route ─────────────────────────────────────────────────────
 
 // GET /api/conflicts/dancers — check if any dancers are double-booked at a proposed time
@@ -3437,6 +3736,37 @@ async function runMigrations() {
     `);
     console.log('Migration step 19 (attendance_records table) complete.');
   } catch (err) { console.error('Migration step 19 error:', err.message); }
+
+  // Step 20: Absence requests. piece_id is nullable: NULL means the auditionee
+  // submitted as TBD (casting not published yet, or they weren't sure), and a
+  // director can assign it to a real piece later. There's no choreographer_user_id
+  // column here on purpose: choreographer identity for notifications is always
+  // looked up live via pieces.choreographer_email (see notifyChoreographerForPiece
+  // below), so adding real choreographer accounts later only means changing that one
+  // lookup, not this table or any of the call sites.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS absence_requests (
+        id            SERIAL PRIMARY KEY,
+        user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        org_id        INTEGER NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+        season_id     INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        absence_date  DATE NOT NULL,
+        start_time    VARCHAR(20) NOT NULL,
+        end_time      VARCHAR(20) NOT NULL,
+        reason        TEXT NOT NULL,
+        piece_id      INTEGER REFERENCES pieces(id) ON DELETE SET NULL,
+        status        VARCHAR(20) NOT NULL DEFAULT 'pending',
+        documentation_link TEXT,
+        created_at    TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      DO $$ BEGIN
+        ALTER TABLE absence_requests ADD COLUMN documentation_link TEXT;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 20 (absence_requests table) complete.');
+  } catch (err) { console.error('Migration step 20 error:', err.message); }
 
   console.log('All migrations complete.');
 }

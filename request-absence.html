@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Request Absence | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .absence-card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; background: #fff; }
+    .absence-meta { font-size: 12px; color: #888; }
+  </style>
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body style="visibility:hidden">
+
+  <nav class="navbar navbar-expand-lg app-nav">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item"><a class="nav-link" href="auditionForm.html">Audition Form</a></li>
+          <li class="nav-item"><a class="nav-link" href="my-submissions.html">My Submissions</a></li>
+          <li class="nav-item"><a class="nav-link" href="my-casting.html">Casting</a></li>
+          <li class="nav-item"><a class="nav-link active" href="request-absence.html">Request Absence</a></li>
+          <li class="nav-item"><a class="nav-link" href="upgrade.html">Director Access</a></li>
+          <li class="nav-item d-flex align-items-center d-none" id="switch-director-item">
+            <button class="btn btn-outline-secondary btn-sm ms-1" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center gap-3" id="right-nav"></div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4" style="max-width:640px;">
+    <h5 class="mb-1 fw-semibold">Submit New Absence Request</h5>
+    <p class="text-muted mb-3" style="font-size:13px;">
+      Let your director know ahead of a rehearsal you'll have to miss. You'll get an email confirming
+      it was received, and another if the status changes. Past requests can't be edited; submit a new
+      one or contact your director if something needs to change.
+    </p>
+
+    <div id="no-productions-msg" class="alert alert-info d-none">
+      You haven't submitted an audition form yet. Head to the <a href="auditionForm.html" class="alert-link">Audition Form</a> to get started.
+    </div>
+
+    <form id="absence-form" class="border rounded p-3 mb-4 d-none" style="background:#fafafa;">
+      <div class="mb-3">
+        <label class="form-label mb-1" style="font-size:13px;font-weight:600;">Production</label>
+        <select id="absence-production" class="form-select form-select-sm"></select>
+      </div>
+
+      <div class="row g-2 mb-3">
+        <div class="col-sm-4">
+          <label class="form-label mb-1" style="font-size:12px;color:#666;">Date</label>
+          <input type="date" id="absence-date" class="form-control form-control-sm" required>
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label mb-1" style="font-size:12px;color:#666;">Start Time</label>
+          <input type="time" id="absence-start" class="form-control form-control-sm" required>
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label mb-1" style="font-size:12px;color:#666;">End Time</label>
+          <input type="time" id="absence-end" class="form-control form-control-sm" required>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label mb-1" style="font-size:12px;color:#666;">Reason</label>
+        <textarea id="absence-reason" class="form-control form-control-sm" rows="2" required></textarea>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label mb-1" style="font-size:12px;color:#666;">Piece / Rehearsal Affected</label>
+        <select id="absence-piece" class="form-select form-select-sm"></select>
+        <div id="absence-piece-hint" class="form-text"></div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label mb-1" style="font-size:12px;color:#666;">Documentation Link (optional)</label>
+        <div class="form-text mt-0 mb-1">Some directors may require proof or documentation. Please attach a viewable Google Drive link to the proper documentation needed.</div>
+        <input type="url" id="absence-doc-link" class="form-control form-control-sm" placeholder="https://drive.google.com/...">
+      </div>
+
+      <button type="submit" class="btn btn-dark btn-sm">Submit Request</button>
+      <span id="absence-error" class="text-danger ms-2 d-none" style="font-size:13px;"></span>
+      <span id="absence-success" class="text-success ms-2 d-none" style="font-size:13px;">Request submitted.</span>
+    </form>
+
+    <h5 class="mb-1 fw-semibold">My Absence Requests</h5>
+    <div id="my-requests-loading" class="text-muted" style="font-size:14px;">Loading…</div>
+    <div id="my-requests-list"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    const STATUS_BADGE_CLASS = { pending: 'text-bg-secondary', approved: 'text-bg-success', denied: 'text-bg-danger' };
+    const STATUS_LABELS = { pending: 'Pending', approved: 'Approved', denied: 'Denied' };
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function formatDate(iso) {
+      return new Date(`${String(iso).slice(0, 10)}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function formatTimestamp(iso) {
+      return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+             ' at ' + new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+
+    // "14:30" (native time input) -> "2:30 PM" (matches the rest of the app's display format)
+    function to12Hour(hhmm) {
+      const [h, m] = hhmm.split(':').map(Number);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const hr = h % 12 === 0 ? 12 : h % 12;
+      return `${hr}:${String(m).padStart(2, '0')} ${ampm}`;
+    }
+
+    let productions = [];
+
+    function populatePieceSelect() {
+      const prodSelect  = document.getElementById('absence-production');
+      const pieceSelect = document.getElementById('absence-piece');
+      const hint        = document.getElementById('absence-piece-hint');
+      const prod = productions.find(p => String(p.season_id) === prodSelect.value);
+      if (!prod) return;
+
+      const options = [{ value: '', label: 'TBD / Not sure yet' }, ...prod.my_pieces.map(p => ({ value: p.id, label: p.name }))];
+      pieceSelect.innerHTML = options.map(o => `<option value="${o.value}">${escapeHtml(o.label)}</option>`).join('');
+
+      if (!prod.casting_published) {
+        pieceSelect.value = '';
+        pieceSelect.disabled = true;
+        hint.textContent = 'Casting hasn\'t been published yet, so this will be marked TBD until it is.';
+      } else {
+        pieceSelect.disabled = false;
+        hint.textContent = prod.my_pieces.length === 0
+          ? 'You\'re not currently cast in this production, so this will be marked TBD.'
+          : '';
+      }
+    }
+
+    async function loadContext() {
+      try {
+        const res = await fetch('/api/my-absence-context');
+        if (!res.ok) throw new Error();
+        productions = await res.json();
+        if (productions.length === 0) {
+          document.getElementById('no-productions-msg').classList.remove('d-none');
+          return;
+        }
+        const prodSelect = document.getElementById('absence-production');
+        prodSelect.innerHTML = productions.map(p =>
+          `<option value="${p.season_id}">${escapeHtml(p.org_name)}, ${escapeHtml(p.season_name)}</option>`
+        ).join('');
+        populatePieceSelect();
+        document.getElementById('absence-form').classList.remove('d-none');
+      } catch (err) {
+        document.getElementById('no-productions-msg').classList.remove('d-none');
+        document.getElementById('no-productions-msg').textContent = 'Could not load your productions.';
+      }
+    }
+
+    document.getElementById('absence-production').addEventListener('change', populatePieceSelect);
+
+    document.getElementById('absence-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById('absence-error');
+      const okEl  = document.getElementById('absence-success');
+      errEl.classList.add('d-none');
+      okEl.classList.add('d-none');
+
+      const seasonId  = document.getElementById('absence-production').value;
+      const date      = document.getElementById('absence-date').value;
+      const startRaw  = document.getElementById('absence-start').value;
+      const endRaw    = document.getElementById('absence-end').value;
+      const reason    = document.getElementById('absence-reason').value.trim();
+      const pieceVal  = document.getElementById('absence-piece').value;
+      const docLink   = document.getElementById('absence-doc-link').value.trim();
+
+      if (!seasonId || !date || !startRaw || !endRaw || !reason) {
+        errEl.textContent = 'Please fill in every field.';
+        errEl.classList.remove('d-none');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/absence-requests', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            season_id: parseInt(seasonId),
+            absence_date: date,
+            start_time: to12Hour(startRaw),
+            end_time: to12Hour(endRaw),
+            reason,
+            piece_id: pieceVal ? parseInt(pieceVal) : null,
+            documentation_link: docLink || null,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          errEl.textContent = data.error || 'Could not submit your request.';
+          errEl.classList.remove('d-none');
+          return;
+        }
+        document.getElementById('absence-form').reset();
+        populatePieceSelect();
+        okEl.classList.remove('d-none');
+        setTimeout(() => okEl.classList.add('d-none'), 3000);
+        loadMyRequests();
+      } catch (err) {
+        errEl.textContent = 'Could not connect to server.';
+        errEl.classList.remove('d-none');
+      }
+    });
+
+    function renderMyRequests(requests) {
+      const list = document.getElementById('my-requests-list');
+      if (requests.length === 0) {
+        list.innerHTML = '<p class="text-muted" style="font-size:13px;">No absence requests yet.</p>';
+        return;
+      }
+      list.innerHTML = requests.map(r => `
+        <div class="absence-card">
+          <div class="d-flex justify-content-between align-items-start">
+            <span class="fw-semibold" style="font-size:14px;">${formatDate(r.absence_date)}, ${escapeHtml(r.start_time)} to ${escapeHtml(r.end_time)}</span>
+            <span class="badge ${STATUS_BADGE_CLASS[r.status] || 'text-bg-secondary'}">${STATUS_LABELS[r.status] || r.status}</span>
+          </div>
+          <div style="font-size:13px;margin:4px 0;">${escapeHtml(r.reason)}</div>
+          <div class="absence-meta">${escapeHtml(r.org_name)}, ${escapeHtml(r.season_name)} · ${escapeHtml(r.piece_name || 'TBD')}</div>
+          ${r.documentation_link ? `<div class="absence-meta"><a href="${escapeHtml(r.documentation_link)}" target="_blank" rel="noopener">View documentation</a></div>` : ''}
+          <div class="absence-meta">Submitted ${formatTimestamp(r.created_at)}</div>
+        </div>
+      `).join('');
+    }
+
+    async function loadMyRequests() {
+      try {
+        const res = await fetch('/api/my-absence-requests');
+        if (!res.ok) throw new Error();
+        const requests = await res.json();
+        document.getElementById('my-requests-loading').style.display = 'none';
+        renderMyRequests(requests);
+      } catch (err) {
+        document.getElementById('my-requests-loading').textContent = 'Could not load your requests.';
+      }
+    }
+
+    loadContext();
+    loadMyRequests();
+  </script>
+
+  <script>
+    (async () => {
+      try {
+        const res  = await fetch('/api/auth/me');
+        const user = await res.json();
+        if (!res.ok) { window.location.href = 'login.html'; return; }
+        if (user.mode === 'director' || (user.role === 'master' && user.mode !== 'auditionee')) { window.location.href = 'org-select.html'; return; }
+
+        document.getElementById('right-nav').className = 'app-nav-right';
+        document.getElementById('right-nav').innerHTML =
+          `<a href="account.html">Account</a>
+           <button id="logout-btn">Log Out</button>`;
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+        if (user.isDirector) {
+          document.getElementById('switch-director-item').classList.remove('d-none');
+          document.getElementById('switch-mode-btn').addEventListener('click', async () => {
+            await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'director' }) });
+            window.location.href = 'org-select.html';
+          });
+        }
+        document.body.style.visibility = 'visible';
+      } catch (err) { window.location.href = 'login.html'; }
+    })();
+  </script>
+
+</body>
+</html>
