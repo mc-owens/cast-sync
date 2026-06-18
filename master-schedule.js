@@ -245,6 +245,32 @@ document.addEventListener('DOMContentLoaded', async () => {
       name.style.cssText = 'font-size:13px;flex:1;';
       name.textContent   = p.name;
 
+      const editBtn = document.createElement('button');
+      editBtn.className   = 'btn btn-link p-0';
+      editBtn.style.cssText = 'font-size:13px;color:#888;line-height:1;text-decoration:none;';
+      editBtn.textContent = '✎';
+      editBtn.title       = `Rename ${p.name}`;
+      editBtn.addEventListener('click', async () => {
+        const newName = prompt('Piece name:', p.name);
+        if (newName === null) return;
+        const trimmed = newName.trim();
+        if (!trimmed || trimmed === p.name) return;
+        try {
+          const res = await fetch(`/api/pieces/${p.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: trimmed }),
+          });
+          if (!res.ok) { alert('Could not rename piece.'); return; }
+          p.name = trimmed;
+          renderLegend();
+          populatePieceSelect();
+          document.querySelectorAll(`.master-block[data-piece-id="${p.id}"] span:first-child`).forEach(span => {
+            span.textContent = trimmed;
+          });
+        } catch (err) { alert('Could not connect to server.'); }
+      });
+
       const delBtn = document.createElement('button');
       delBtn.className   = 'btn btn-link p-0';
       delBtn.style.cssText = 'font-size:14px;color:#dc3545;line-height:1;text-decoration:none;';
@@ -268,6 +294,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       item.appendChild(dot);
       item.appendChild(name);
+      item.appendChild(editBtn);
       item.appendChild(delBtn);
       legendEl.appendChild(item);
     });

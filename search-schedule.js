@@ -276,12 +276,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     const li = document.createElement('li');
     li.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;';
 
+    const isConflicted = !!dancer.conflict_piece_name;
+
     const link = document.createElement('span');
-    link.textContent   = (_sortMode === 'num' && dancer.audition_number)
+    const baseName = (_sortMode === 'num' && dancer.audition_number)
       ? `#${dancer.audition_number} ${dancer.first_name} ${dancer.last_name}`
       : `${dancer.first_name} ${dancer.last_name}`;
-    link.style.cssText = 'cursor:pointer;text-decoration:underline;color:#0d6efd;font-size:13px;flex:1;';
-    link.title         = 'Click to view schedule';
+    link.textContent   = isConflicted ? `${baseName} — already cast in "${dancer.conflict_piece_name}"` : baseName;
+    link.style.cssText = isConflicted
+      ? 'cursor:pointer;text-decoration:underline;color:#999;font-size:13px;flex:1;'
+      : 'cursor:pointer;text-decoration:underline;color:#0d6efd;font-size:13px;flex:1;';
+    link.title         = isConflicted
+      ? `Already cast in "${dancer.conflict_piece_name}" at an overlapping time — click to view schedule`
+      : 'Click to view schedule';
     link.addEventListener('click', () => {
       bootstrap.Modal.getInstance(document.getElementById('availabilityModal')).hide();
       document.getElementById('availabilityModal').addEventListener(

@@ -52,9 +52,10 @@ const emailEnabled = !!process.env.RESEND_API_KEY;
 const resend       = emailEnabled ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM_EMAIL   = 'CastSync <support@cast-sync.com>';
 
-async function sendConfirmationEmail(toEmail, data, orgName, seasonName, isUpdate = false) {
+async function sendConfirmationEmail(toEmail, secondaryEmail, data, orgName, seasonName, isUpdate = false) {
   if (!emailEnabled) return;
   const { first_name, last_name, phone, address, grade, technique_classes, injuries, absences, availability } = data;
+  const recipients = [toEmail, secondaryEmail].filter(Boolean);
   const availLines = (availability || []).map(a => `${a.day}: ${a.startTime} – ${a.endTime}`).join('<br>') || 'None provided';
   const row = (label, value) =>
     `<tr><td style="padding:8px 12px;font-weight:bold;color:#555;white-space:nowrap;vertical-align:top;border-bottom:1px solid #f0f0f0;">${label}</td>
@@ -67,7 +68,7 @@ async function sendConfirmationEmail(toEmail, data, orgName, seasonName, isUpdat
   try {
     await resend.emails.send({
       from:    FROM_EMAIL,
-      to:      toEmail,
+      to:      recipients,
       subject: `CastSync Submission ${subjectTag} — ${orgName}`,
       html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#222;">
         <h2 style="margin-bottom:4px;">${heading}</h2>
@@ -76,6 +77,7 @@ async function sendConfirmationEmail(toEmail, data, orgName, seasonName, isUpdat
         <table style="width:100%;border-collapse:collapse;border:1px solid #e0e0e0;border-radius:6px;overflow:hidden;margin-top:16px;">
           ${row('Name', `${first_name} ${last_name}`)}
           ${row('Email', toEmail)}
+          ${row('Secondary Email', secondaryEmail)}
           ${row('Phone', phone)}
           ${row('Address', address)}
           ${row('Grade', grade)}
@@ -1400,7 +1402,7 @@ app.get('/api/profile', requireAuth('auditionee'), async (req, res) => {
 app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
   const { join_code, first_name, last_name, phone, address, grade,
           technique_classes, injuries, absences, availability, audition_number,
-          custom_responses } = req.body;
+          custom_responses, secondary_email } = req.body;
 
   if (!join_code)   return res.status(400).json({ error: 'Join code is required.' });
   if (!first_name || !last_name) return res.status(400).json({ error: 'Name is required.' });
@@ -1421,11 +1423,11 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
 
     // Upsert dancer profile (reusable across orgs)
     await pool.query(
-      `INSERT INTO dancer_profiles (user_id, first_name, last_name, phone, address, grade, technique_classes, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+      `INSERT INTO dancer_profiles (user_id, first_name, last_name, phone, address, grade, technique_classes, secondary_email, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
        ON CONFLICT (user_id) DO UPDATE SET
-         first_name=$2, last_name=$3, phone=$4, address=$5, grade=$6, technique_classes=$7, updated_at=NOW()`,
-      [req.session.userId, first_name, last_name, phone||null, address||null, grade||null, technique_classes||null]
+         first_name=$2, last_name=$3, phone=$4, address=$5, grade=$6, technique_classes=$7, secondary_email=$8, updated_at=NOW()`,
+      [req.session.userId, first_name, last_name, phone||null, address||null, grade||null, technique_classes||null, secondary_email||null]
     );
 
     // Check for existing submission this season
@@ -1483,7 +1485,7 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
     const userResult = await pool.query('SELECT email FROM users WHERE id = $1', [req.session.userId]);
     const userEmail  = userResult.rows[0].email;
 
-    sendConfirmationEmail(userEmail,
+    sendConfirmationEmail(userEmail, secondary_email,
       { first_name, last_name, phone, address, grade, technique_classes, injuries, absences, availability },
       org.name, season.name, isUpdate
     );
@@ -1599,20 +1601,22 @@ app.post('/api/publish/send', requireAuth('master'), async (req, res) => {
         [seasonId]
       ),
       pool.query(
-        'SELECT DISTINCT u.email FROM submissions sub JOIN users u ON u.id=sub.user_id WHERE sub.org_id=$1 AND sub.season_id=$2',
+        `SELECT DISTINCT u.email, dp.secondary_email
+         FROM submissions sub JOIN users u ON u.id=sub.user_id
+         LEFT JOIN dancer_profiles dp ON dp.user_id = u.id
+         WHERE sub.org_id=$1 AND sub.season_id=$2`,
         [orgId, seasonId]
       ),
     ]);
     const orgName = orgRes.rows[0]?.org_name || 'CastSync';
-    const emails  = emailRes.rows.map(r => r.email);
-    if (emails.length === 0) return res.status(400).json({ error: 'No auditionees to email.' });
+    if (emailRes.rows.length === 0) return res.status(400).json({ error: 'No auditionees to email.' });
 
     const html = buildCastingEmailHTML(orgName, blurb, piecesRes.rows);
-    await Promise.all(emails.map(to =>
-      resend.emails.send({ from: FROM_EMAIL, to, subject: `Casting Results — ${orgName}`, html })
-        .catch(err => console.error(`Email to ${to} failed:`, err.message))
+    await Promise.all(emailRes.rows.map(({ email, secondary_email }) =>
+      resend.emails.send({ from: FROM_EMAIL, to: [email, secondary_email].filter(Boolean), subject: `Casting Results — ${orgName}`, html })
+        .catch(err => console.error(`Email to ${email} failed:`, err.message))
     ));
-    res.json({ message: `Sent to ${emails.length} auditionee${emails.length === 1 ? '' : 's'}.` });
+    res.json({ message: `Sent to ${emailRes.rows.length} auditionee${emailRes.rows.length === 1 ? '' : 's'}.` });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to send emails.' });
@@ -2116,13 +2120,27 @@ app.post('/api/pieces', requireAuth('master'), async (req, res) => {
 });
 
 app.patch('/api/pieces/:id', requireAuth('master'), async (req, res) => {
-  const { choreographer_name, choreographer_email, room } = req.body;
+  const { choreographer_name, choreographer_email, room, name } = req.body;
+  if (name !== undefined && !name.trim()) return res.status(400).json({ error: 'Piece name cannot be empty.' });
+
+  // Only touch fields actually present in the request — distinguishes "not sent"
+  // (leave alone, e.g. the rename button only sends `name`) from "sent as empty
+  // string" (clear it, e.g. casting.html's choreographer auto-save on blur).
+  const sets = [];
+  const values = [];
+  if (choreographer_name !== undefined)  { sets.push(`choreographer_name = $${sets.length + 1}`);  values.push(choreographer_name || null); }
+  if (choreographer_email !== undefined) { sets.push(`choreographer_email = $${sets.length + 1}`); values.push(choreographer_email || null); }
+  if (room !== undefined)                { sets.push(`room = $${sets.length + 1}`);                values.push(room || null); }
+  if (name !== undefined)                { sets.push(`name = $${sets.length + 1}`);                values.push(name.trim()); }
+  if (sets.length === 0) return res.status(400).json({ error: 'No fields to update.' });
+
   try {
-    await pool.query(
-      'UPDATE pieces SET choreographer_name=$1, choreographer_email=$2, room=$3 WHERE id=$4 AND master_id=$5',
-      [choreographer_name || null, choreographer_email || null, room || null, req.params.id, req.session.userId]
+    const result = await pool.query(
+      `UPDATE pieces SET ${sets.join(', ')} WHERE id=$${values.length + 1} AND master_id=$${values.length + 2} RETURNING id, name`,
+      [...values, req.params.id, req.session.userId]
     );
-    res.json({ message: 'Updated.' });
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Piece not found.' });
+    res.json({ message: 'Updated.', name: result.rows[0].name });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update piece.' });
   }
@@ -2475,11 +2493,34 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
 
     const dancersResult = await pool.query(
       `SELECT dp.id, u.id AS user_id, dp.first_name, dp.last_name, sub.availability,
-              sub.audition_number, pc.cast_role AS existing_cast_role, pc.id AS cast_id
+              sub.audition_number, pc.cast_role AS existing_cast_role, pc.id AS cast_id,
+              conflict.piece_name AS conflict_piece_name
        FROM submissions sub
        JOIN dancer_profiles dp ON dp.user_id = sub.user_id
        JOIN users u ON u.id = sub.user_id
        LEFT JOIN piece_casts pc ON pc.piece_id = $3 AND pc.user_id = u.id
+       LEFT JOIN LATERAL (
+         SELECT p.name AS piece_name
+         FROM piece_casts pc2
+         JOIN pieces p ON p.id = pc2.piece_id
+         JOIN seasons s ON s.id = p.season_id
+         WHERE pc2.user_id = u.id
+           AND s.org_id = $1
+           AND pc2.piece_id != $3
+           AND (s.status IS NULL OR s.status = 'active')
+           AND EXISTS (
+             SELECT 1 FROM master_blocks mb_other
+             WHERE mb_other.piece_id = pc2.piece_id
+               AND EXISTS (
+                 SELECT 1 FROM master_blocks mb_this
+                 WHERE mb_this.piece_id = $3
+                   AND mb_this.day = mb_other.day
+                   AND time_to_minutes(mb_this.start_time) < time_to_minutes(mb_other.end_time)
+                   AND time_to_minutes(mb_this.end_time)   > time_to_minutes(mb_other.start_time)
+               )
+           )
+         LIMIT 1
+       ) conflict ON true
        WHERE sub.org_id = $1 AND sub.season_id = $2 AND sub.availability IS NOT NULL`,
       [orgId, seasonId, req.params.pieceId]
     );
@@ -2500,6 +2541,7 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
         audition_number: dancer.audition_number || null,
         cast_role: dancer.existing_cast_role || null,
         cast_id: dancer.cast_id || null,
+        conflict_piece_name: dancer.conflict_piece_name || null,
       };
       if (covered === pieceBlocks.length) fully.push(entry);
       else if (covered > 0)              partially.push(entry);
@@ -2552,10 +2594,11 @@ app.post('/api/piece-casts', requireAuth('master'), async (req, res) => {
     // Hard block: dancer already in any other piece with overlapping rehearsal blocks (same or other production)
     if (orgId) {
       const overlaps = await pool.query(
-        `SELECT DISTINCT s.name AS season_name, p.name AS piece_name
+        `SELECT DISTINCT s.name AS season_name, p.name AS piece_name, dp.first_name, dp.last_name
          FROM piece_casts pc2
          JOIN pieces p ON p.id = pc2.piece_id
          JOIN seasons s ON s.id = p.season_id
+         JOIN dancer_profiles dp ON dp.user_id = pc2.user_id
          WHERE pc2.user_id = $1
            AND s.org_id = $2
            AND pc2.piece_id != $3
@@ -2575,9 +2618,10 @@ app.post('/api/piece-casts', requireAuth('master'), async (req, res) => {
         [user_id, orgId, piece_id]
       );
       if (overlaps.rows.length > 0) {
+        const dancerName   = `${overlaps.rows[0].first_name} ${overlaps.rows[0].last_name}`;
         const conflictList = overlaps.rows.map(r => `"${r.piece_name}"`).join(' and ');
         return res.status(409).json({
-          error: `Scheduling conflict: this dancer is already rehearsing in ${conflictList} at an overlapping time. A dancer cannot be in two places at once.`,
+          error: `Error: ${dancerName} is already cast in ${conflictList} and cannot be double booked!`,
         });
       }
     }
@@ -2786,8 +2830,10 @@ const LEGACY_FORM_SCHEMA = [
   { id: 'technique_classes', builtin: 'technique_classes', label: 'Current Technique Classes', type: 'textarea', required: false },
   { id: 'injuries', builtin: 'injuries', label: 'Recent Injuries', type: 'textarea', required: false },
   { id: 'absences', builtin: 'absences', label: 'Known Absences', type: 'textarea', required: false },
+  { id: 'secondary_email', builtin: 'secondary_email', label: 'Secondary Email', type: 'text', required: true },
 ];
 const LEGACY_FORM_SCHEMA_SQL = JSON.stringify(LEGACY_FORM_SCHEMA).replace(/'/g, "''");
+const SECONDARY_EMAIL_FIELD_SQL = JSON.stringify([LEGACY_FORM_SCHEMA[5]]).replace(/'/g, "''");
 
 async function runMigrations() {
   // Step 1: base tables
@@ -3088,6 +3134,30 @@ async function runMigrations() {
     `);
     console.log('Migration step 15 (form_schema columns + legacy default/backfill) complete.');
   } catch (err) { console.error('Migration step 15 error:', err.message); }
+
+  // Step 16: required secondary email — a profile-level column (reusable across
+  // productions, like address/phone) plus a backfill so every org/season that
+  // predates this field picks it up without a director having to re-open the
+  // form builder. Guarded by NOT EXISTS so re-running this on every boot is a no-op
+  // once applied.
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE dancer_profiles ADD COLUMN secondary_email VARCHAR(255);
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      ALTER TABLE orgs ALTER COLUMN default_form_schema SET DEFAULT '${LEGACY_FORM_SCHEMA_SQL}'::jsonb;
+      ALTER TABLE seasons ALTER COLUMN form_schema SET DEFAULT '${LEGACY_FORM_SCHEMA_SQL}'::jsonb;
+      UPDATE orgs SET default_form_schema = default_form_schema || '${SECONDARY_EMAIL_FIELD_SQL}'::jsonb
+        WHERE NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements(default_form_schema) elem WHERE elem->>'builtin' = 'secondary_email'
+        );
+      UPDATE seasons SET form_schema = form_schema || '${SECONDARY_EMAIL_FIELD_SQL}'::jsonb
+        WHERE NOT EXISTS (
+          SELECT 1 FROM jsonb_array_elements(form_schema) elem WHERE elem->>'builtin' = 'secondary_email'
+        );
+    `);
+    console.log('Migration step 16 (secondary_email column + form_schema backfill) complete.');
+  } catch (err) { console.error('Migration step 16 error:', err.message); }
 
   console.log('All migrations complete.');
 }

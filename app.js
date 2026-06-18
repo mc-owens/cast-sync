@@ -61,6 +61,7 @@ async function addDancer() {
   const last_name         = document.getElementById('lname').value.trim();
   const phone             = document.getElementById('phonenumber').value.trim();
   const address           = document.getElementById('address')?.value.trim() || '';
+  const secondary_email   = document.getElementById('secondary-email')?.value.trim() || '';
   const technique_classes = document.getElementById('techniqueclasses')?.value.trim() || '';
   const injuries          = document.getElementById('injuries')?.value.trim() || '';
   const absences          = document.getElementById('absences')?.value.trim() || '';
@@ -105,7 +106,7 @@ async function addDancer() {
 
   const custom_responses = typeof window.collectCustomResponses === 'function' ? window.collectCustomResponses() : {};
 
-  const data = { join_code, first_name, last_name, phone, address, grade,
+  const data = { join_code, first_name, last_name, phone, address, secondary_email, grade,
                  technique_classes, injuries, absences, availability, audition_number,
                  custom_responses };
 

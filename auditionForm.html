@@ -263,6 +263,13 @@
                 <input type="text" id="address" class="form-control" ${req} />
               </div></div>`;
             }
+            if (field.builtin === 'secondary_email') {
+              return `<div class="row g-3 mb-3"><div class="col-sm-6">
+                <label for="secondary-email" class="form-label">${escapeHtml(field.label || 'Secondary Email')}</label>
+                <input type="email" id="secondary-email" class="form-control" ${req} />
+                <div class="form-text">A parent/guardian email also works — we'll send casting updates here too.</div>
+              </div></div>`;
+            }
             if (field.builtin === 'grade') {
               return `<div class="mb-3">
                 <label class="form-label">${escapeHtml(field.label || 'Grade')}</label>
@@ -327,6 +334,8 @@
             const p = cachedProfile;
             const addressEl = document.getElementById('address');
             if (addressEl && p.address) addressEl.value = p.address;
+            const secEmailEl = document.getElementById('secondary-email');
+            if (secEmailEl && p.secondary_email) secEmailEl.value = p.secondary_email;
             const techEl = document.getElementById('techniqueclasses');
             if (techEl && p.technique_classes) techEl.value = p.technique_classes;
             if (p.grade) {
@@ -466,6 +475,7 @@
               lname: document.getElementById('lname').value,
               phone: document.getElementById('phonenumber').value,
               address: document.getElementById('address')?.value || '',
+              secondaryEmail: document.getElementById('secondary-email')?.value || '',
               techniqueclasses: document.getElementById('techniqueclasses')?.value || '',
               injuries: document.getElementById('injuries')?.value || '',
               absences: document.getElementById('absences')?.value || '',
@@ -530,6 +540,8 @@
             if (d.phone) document.getElementById('phonenumber').value = d.phone;
             const addressEl = document.getElementById('address');
             if (addressEl && d.address) addressEl.value = d.address;
+            const secEmailEl = document.getElementById('secondary-email');
+            if (secEmailEl && d.secondaryEmail) secEmailEl.value = d.secondaryEmail;
             const techEl = document.getElementById('techniqueclasses');
             if (techEl && d.techniqueclasses) techEl.value = d.techniqueclasses;
             const injuriesEl = document.getElementById('injuries');
