@@ -85,7 +85,10 @@
         <div id="loading-msg" class="text-muted" style="font-size:14px;">Loading…</div>
         <div id="fields-list"></div>
 
-        <button id="add-field-btn" class="btn btn-outline-secondary btn-sm mt-2 d-none">+ Add Question</button>
+        <div class="dropdown mt-2 d-none" id="add-field-dropdown">
+          <button class="btn btn-outline-secondary btn-sm dropdown-toggle" id="add-field-btn" data-bs-toggle="dropdown">+ Add Question</button>
+          <ul class="dropdown-menu" id="add-field-menu" style="font-size:13px;max-height:340px;overflow-y:auto;"></ul>
+        </div>
 
         <div class="border-top mt-4 pt-4 pb-5 d-flex align-items-center gap-3">
           <button id="save-btn" class="btn btn-dark d-none">Save</button>
@@ -176,6 +179,68 @@
 
     const GRADE_OPTIONS = ['Freshman Major','Freshman Minor','Sophomore Major','Sophomore Minor',
                             'Junior Major','Junior Minor','Senior Major','Senior Minor','Other'];
+
+    // True builtins — wired into backend behavior (profile prefill, special rendering,
+    // and for secondary_email, dual-notification emails). Re-adding one must reinsert
+    // this exact shape, not a custom field that merely looks similar, or that behavior
+    // won't fire.
+    const PRESET_BUILTINS = [
+      { id: 'secondary_email', builtin: 'secondary_email', label: 'Secondary Email', type: 'text', required: true },
+      { id: 'address', builtin: 'address', label: 'Permanent Address', type: 'text', required: true },
+      { id: 'grade', builtin: 'grade', label: 'Grade', type: 'select', required: true, options: GRADE_OPTIONS },
+      { id: 'technique_classes', builtin: 'technique_classes', label: 'Current Technique Classes', type: 'textarea', required: true },
+      { id: 'injuries', builtin: 'injuries', label: 'Recent Injuries', type: 'textarea', required: true },
+      { id: 'absences', builtin: 'absences', label: 'Known Absences', type: 'textarea', required: true },
+    ];
+
+    // Plain custom-question presets — just a head start on label/type, no special
+    // backend meaning. Stored like any other typed-in question.
+    const PRESET_CUSTOM = [
+      { label: 'School Address', type: 'text' },
+      { label: 'Emergency Contact Name', type: 'text' },
+      { label: 'Emergency Contact Phone', type: 'text' },
+      { label: 'Parent/Guardian Contact', type: 'text' },
+      { label: 'Allergies', type: 'text' },
+      { label: 'T-Shirt Size', type: 'select', options: ['XS','S','M','L','XL','XXL'] },
+    ];
+
+    function populateAddFieldMenu() {
+      const menu = document.getElementById('add-field-menu');
+      const existingBuiltins = new Set(fields.filter(f => f.builtin).map(f => f.builtin));
+      const existingLabels   = new Set(fields.filter(f => !f.builtin).map(f => (f.label || '').trim().toLowerCase()));
+
+      const availableBuiltins = PRESET_BUILTINS.filter(p => !existingBuiltins.has(p.builtin));
+      const availableCustom   = PRESET_CUSTOM.filter(p => !existingLabels.has(p.label.toLowerCase()));
+
+      const builtinItems = availableBuiltins.map(p =>
+        `<li><a class="dropdown-item" href="#" data-preset-builtin="${escapeHtml(p.builtin)}">${escapeHtml(p.label)}</a></li>`
+      ).join('');
+      const customItems = availableCustom.map(p =>
+        `<li><a class="dropdown-item" href="#" data-preset-custom="${escapeHtml(p.label)}">${escapeHtml(p.label)}</a></li>`
+      ).join('');
+
+      menu.innerHTML =
+        (builtinItems || customItems ? `<li><h6 class="dropdown-header">Common questions</h6></li>${builtinItems}${customItems}<li><hr class="dropdown-divider"></li>` : '') +
+        `<li><a class="dropdown-item" href="#" data-preset-blank="1">+ Custom question</a></li>`;
+    }
+
+    document.getElementById('add-field-dropdown').addEventListener('show.bs.dropdown', populateAddFieldMenu);
+
+    document.getElementById('add-field-menu').addEventListener('click', (e) => {
+      const link = e.target.closest('a[data-preset-builtin], a[data-preset-custom], a[data-preset-blank]');
+      if (!link) return;
+      e.preventDefault();
+      if (link.dataset.presetBuiltin) {
+        const preset = PRESET_BUILTINS.find(p => p.builtin === link.dataset.presetBuiltin);
+        if (preset) fields.push({ ...preset, options: preset.options ? [...preset.options] : undefined });
+      } else if (link.dataset.presetCustom) {
+        const preset = PRESET_CUSTOM.find(p => p.label === link.dataset.presetCustom);
+        fields.push({ id: newFieldId(), builtin: null, label: preset.label, type: preset.type, required: true, options: preset.options ? [...preset.options] : undefined });
+      } else {
+        fields.push({ id: newFieldId(), builtin: null, label: '', type: 'text', required: true });
+      }
+      render();
+    });
 
     function renderPreviewBuiltin(f) {
       if (f.builtin === 'address') {
@@ -302,11 +367,6 @@
       else if (e.target.classList.contains('field-required')) fields[i].required = e.target.checked;
     });
 
-    document.getElementById('add-field-btn').addEventListener('click', () => {
-      fields.push({ id: newFieldId(), builtin: null, label: '', type: 'text', required: false });
-      render();
-    });
-
     document.getElementById('save-btn').addEventListener('click', async () => {
       const btn = document.getElementById('save-btn');
       const msg = document.getElementById('save-msg');
@@ -334,7 +394,7 @@
         const data = await res.json();
         fields = data.form_schema || [];
         document.getElementById('loading-msg').style.display = 'none';
-        document.getElementById('add-field-btn').classList.remove('d-none');
+        document.getElementById('add-field-dropdown').classList.remove('d-none');
         document.getElementById('save-btn').classList.remove('d-none');
         render();
       } catch (err) {

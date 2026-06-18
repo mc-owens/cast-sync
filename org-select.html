@@ -258,7 +258,9 @@
         <div id="prod-name-display-${s.id}">
           <div class="prod-info" style="flex:1;min-width:0;${isArchived ? 'opacity:0.55;' : ''}">
             <div class="prod-name">${s.name}${isArchived ? ' <span style="font-size:11px;background:#e9ecef;color:#666;border-radius:4px;padding:1px 6px;font-weight:500;">Archived</span>' : ''}</div>
-            <div class="prod-meta">Code: <strong>${s.join_code || ''}</strong> &nbsp;·&nbsp; ${s.submission_count} auditionee${s.submission_count == 1 ? '' : 's'}</div>
+            <div class="prod-meta">Code: <strong>${s.join_code || ''}</strong>
+              <button class="btn btn-link btn-sm p-0 ms-1" style="font-size:12px;text-decoration:none;" title="Copy join code" data-copy-code="${s.join_code || ''}">📋 Copy</button>
+              &nbsp;·&nbsp; ${s.submission_count} auditionee${s.submission_count == 1 ? '' : 's'}</div>
           </div>
         </div>`;
 
@@ -341,6 +343,21 @@
           const res = await fetch(`/api/orgs/${id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
           if (res.ok) window.location.reload();
           else alert((await res.json()).error);
+        });
+      });
+
+      // Copy join code
+      document.querySelectorAll('[data-copy-code]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          try {
+            await navigator.clipboard.writeText(btn.dataset.copyCode);
+            const original = btn.textContent;
+            btn.textContent = '✓ Copied';
+            setTimeout(() => { btn.textContent = original; }, 1500);
+          } catch (err) {
+            alert('Could not copy code. Please select and copy it manually.');
+          }
         });
       });
 
