@@ -2533,6 +2533,100 @@ app.delete('/api/season/production-notes/:id', requireAuth('master'), async (req
   }
 });
 
+// ── Attendance ─────────────────────────────────────────────────────────────────
+// Tracks who showed up to rehearsal, by calendar date, scoped per piece: multiple
+// pieces can rehearse the same day (even the same time, in different rooms), and a
+// dancer's attendance can differ between them. Never exposed to auditionees.
+
+const ATTENDANCE_STATUSES = ['none', 'injured', 'illness', 'other'];
+
+// GET /api/season/attendance?date=YYYY-MM-DD&piece_id=123
+app.get('/api/season/attendance', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  const { date, piece_id } = req.query;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  if (!date || !piece_id) return res.status(400).json({ error: 'date and piece_id are required.' });
+  try {
+    const pieceCheck = await pool.query('SELECT id FROM pieces WHERE id = $1 AND season_id = $2', [piece_id, seasonId]);
+    if (pieceCheck.rows.length === 0) return res.status(403).json({ error: 'Piece not in active season.' });
+
+    const result = await pool.query(
+      `SELECT u.id AS user_id, dp.first_name, dp.last_name, pc.cast_role,
+              COALESCE(ar.present, TRUE) AS present,
+              COALESCE(ar.status, 'none') AS status,
+              ar.status_note
+       FROM piece_casts pc
+       JOIN users u ON u.id = pc.user_id
+       JOIN dancer_profiles dp ON dp.user_id = u.id
+       LEFT JOIN attendance_records ar ON ar.user_id = u.id AND ar.piece_id = $1 AND ar.rehearsal_date = $2
+       WHERE pc.piece_id = $1
+       ORDER BY dp.last_name, dp.first_name`,
+      [piece_id, date]
+    );
+
+    // Context: every piece rehearsing on this date's day of week, with times, so
+    // overlapping/simultaneous rehearsals in other rooms are visible at a glance.
+    // Day-of-week only, since recurring weekly blocks aren't tied to specific dates.
+    const dayOfWeek = new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
+    const piecesToday = await pool.query(
+      `SELECT p.id, p.name, mb.start_time, mb.end_time FROM pieces p JOIN master_blocks mb ON mb.piece_id = p.id
+       WHERE p.season_id = $1 AND mb.day = $2 ORDER BY mb.start_time, p.name`,
+      [seasonId, dayOfWeek]
+    );
+
+    res.json({ date, day_of_week: dayOfWeek, pieces_today: piecesToday.rows, dancers: result.rows });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load attendance.' });
+  }
+});
+
+// GET /api/season/attendance/dates?piece_id=123: every date with a saved record for this piece, newest first
+app.get('/api/season/attendance/dates', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  const { piece_id } = req.query;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  if (!piece_id) return res.status(400).json({ error: 'piece_id is required.' });
+  try {
+    const result = await pool.query(
+      `SELECT DISTINCT ar.rehearsal_date FROM attendance_records ar
+       JOIN pieces p ON p.id = ar.piece_id
+       WHERE ar.piece_id = $1 AND p.season_id = $2
+       ORDER BY ar.rehearsal_date DESC LIMIT 30`,
+      [piece_id, seasonId]
+    );
+    res.json(result.rows.map(r => r.rehearsal_date));
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load dates.' });
+  }
+});
+
+// POST /api/season/attendance: upsert one dancer's record for one piece/date
+app.post('/api/season/attendance', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { date, piece_id, user_id, present, status, status_note } = req.body;
+  if (!date || !piece_id || !user_id) return res.status(400).json({ error: 'date, piece_id, and user_id are required.' });
+  const st = ATTENDANCE_STATUSES.includes(status) ? status : 'none';
+  try {
+    const pieceCheck = await pool.query('SELECT id FROM pieces WHERE id = $1 AND season_id = $2', [piece_id, seasonId]);
+    if (pieceCheck.rows.length === 0) return res.status(403).json({ error: 'Piece not in active season.' });
+
+    await pool.query(
+      `INSERT INTO attendance_records (season_id, piece_id, user_id, rehearsal_date, present, status, status_note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (piece_id, user_id, rehearsal_date)
+       DO UPDATE SET present = $5, status = $6, status_note = $7, updated_at = NOW()`,
+      [seasonId, piece_id, user_id, date, present !== false, st, status_note || null]
+    );
+    res.json({ message: 'Saved.' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save attendance.' });
+  }
+});
+
 // ── Dancer conflict route ─────────────────────────────────────────────────────
 
 // GET /api/conflicts/dancers — check if any dancers are double-booked at a proposed time
@@ -3320,6 +3414,29 @@ async function runMigrations() {
     `);
     console.log('Migration step 18 (production_notes tables) complete.');
   } catch (err) { console.error('Migration step 18 error:', err.message); }
+
+  // Step 19: Attendance. One row per dancer per piece per rehearsal date, scoped to
+  // the piece since multiple pieces can rehearse the same day (even the same time, in
+  // different rooms) and a dancer's attendance can differ between them. Present
+  // defaults to true and status defaults to none, matching the UI's defaults, so a
+  // date with no rows yet is indistinguishable from a date where everyone showed up.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS attendance_records (
+        id             SERIAL PRIMARY KEY,
+        season_id      INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        piece_id       INTEGER NOT NULL REFERENCES pieces(id) ON DELETE CASCADE,
+        user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        rehearsal_date DATE NOT NULL,
+        present        BOOLEAN NOT NULL DEFAULT TRUE,
+        status         VARCHAR(20) NOT NULL DEFAULT 'none',
+        status_note    TEXT,
+        updated_at     TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE (piece_id, user_id, rehearsal_date)
+      );
+    `);
+    console.log('Migration step 19 (attendance_records table) complete.');
+  } catch (err) { console.error('Migration step 19 error:', err.message); }
 
   console.log('All migrations complete.');
 }
