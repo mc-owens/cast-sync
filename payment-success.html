@@ -70,7 +70,8 @@
         }
 
         // Redirect automatically after 2 seconds
-        setTimeout(() => { window.location.href = 'master.html'; }, 2000);
+        const dest = data.form_source === 'default_customize' ? 'form-builder.html?scope=season' : 'master.html';
+        setTimeout(() => { window.location.href = dest; }, 2000);
 
       } catch (err) {
         showError('Could not connect to server. Try refreshing.');

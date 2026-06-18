@@ -166,69 +166,9 @@
           </div>
         </div>
 
-        <div class="row g-3 mb-3">
-          <div class="col-sm-6">
-            <label for="address" class="form-label">Address</label>
-            <input type="text" id="address" class="form-control" />
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label class="form-label">Grade</label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;max-width:400px;">
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault1" />
-              <label class="form-check-label" for="flexRadioDefault1">Freshman Major</label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault2" />
-              <label class="form-check-label" for="flexRadioDefault2">Freshman Minor</label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault3" />
-              <label class="form-check-label" for="flexRadioDefault3">Sophomore Major</label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault4" />
-              <label class="form-check-label" for="flexRadioDefault4">Sophomore Minor</label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault5" />
-              <label class="form-check-label" for="flexRadioDefault5">Junior Major</label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault6" />
-              <label class="form-check-label" for="flexRadioDefault6">Junior Minor</label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault7" />
-              <label class="form-check-label" for="flexRadioDefault7">Senior Major</label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault8" />
-              <label class="form-check-label" for="flexRadioDefault8">Senior Minor</label>
-            </div>
-            <div class="form-check" style="grid-column:1/-1;">
-              <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault9" />
-              <label class="form-check-label" for="flexRadioDefault9">Other</label>
-            </div>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label for="techniqueclasses" class="form-label">Current Technique Classes</label>
-          <textarea id="techniqueclasses" class="form-control" rows="3"></textarea>
-        </div>
-
-        <div class="mb-3">
-          <label for="injuries" class="form-label">Recent Injuries</label>
-          <textarea id="injuries" class="form-control" rows="2"></textarea>
-        </div>
-
-        <div class="mb-3">
-          <label for="absences" class="form-label">Known Absences</label>
-          <textarea id="absences" class="form-control" rows="2" placeholder="Example: January 5"></textarea>
-        </div>
+        <!-- Director-customized questions for this production, rendered once a valid
+             join code resolves (see renderDynamicFields() below). -->
+        <div id="dynamic-fields-container"></div>
 
         <div class="mb-4">
           <label class="form-label">Availability: select all times you are free</label>
@@ -296,30 +236,153 @@
           }
           document.body.style.visibility = 'visible';
 
+          // ── Dynamic (director-customized) fields ───────────────────────────
+          const GRADE_OPTIONS = ['Freshman Major','Freshman Minor','Sophomore Major','Sophomore Minor',
+                                  'Junior Major','Junior Minor','Senior Major','Senior Minor','Other'];
+          const GRADE_MAP = {
+            'Freshman Major':'flexRadioDefault1','Freshman Minor':'flexRadioDefault2',
+            'Sophomore Major':'flexRadioDefault3','Sophomore Minor':'flexRadioDefault4',
+            'Junior Major':'flexRadioDefault5','Junior Minor':'flexRadioDefault6',
+            'Senior Major':'flexRadioDefault7','Senior Minor':'flexRadioDefault8',
+            'Other':'flexRadioDefault9',
+            // backward compat for old data
+            'Freshman':'flexRadioDefault1','Sophomore':'flexRadioDefault3',
+            'Junior':'flexRadioDefault5','Senior':'flexRadioDefault7',
+          };
+          let cachedProfile = null;
+
+          function escapeHtml(s) {
+            return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+          }
+
+          function renderBuiltinField(field) {
+            const req = field.required ? 'required' : '';
+            if (field.builtin === 'address') {
+              return `<div class="row g-3 mb-3"><div class="col-sm-6">
+                <label for="address" class="form-label">${escapeHtml(field.label || 'Address')}</label>
+                <input type="text" id="address" class="form-control" ${req} />
+              </div></div>`;
+            }
+            if (field.builtin === 'grade') {
+              return `<div class="mb-3">
+                <label class="form-label">${escapeHtml(field.label || 'Grade')}</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;max-width:400px;">
+                  ${GRADE_OPTIONS.map((opt, idx) => `
+                  <div class="form-check"${idx === GRADE_OPTIONS.length - 1 ? ' style="grid-column:1/-1;"' : ''}>
+                    <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault${idx + 1}" ${req} />
+                    <label class="form-check-label" for="flexRadioDefault${idx + 1}">${opt}</label>
+                  </div>`).join('')}
+                </div>
+              </div>`;
+            }
+            if (field.builtin === 'technique_classes') {
+              return `<div class="mb-3">
+                <label for="techniqueclasses" class="form-label">${escapeHtml(field.label || 'Current Technique Classes')}</label>
+                <textarea id="techniqueclasses" class="form-control" rows="3" ${req}></textarea>
+              </div>`;
+            }
+            if (field.builtin === 'injuries') {
+              return `<div class="mb-3">
+                <label for="injuries" class="form-label">${escapeHtml(field.label || 'Recent Injuries')}</label>
+                <textarea id="injuries" class="form-control" rows="2" ${req}></textarea>
+              </div>`;
+            }
+            if (field.builtin === 'absences') {
+              return `<div class="mb-3">
+                <label for="absences" class="form-label">${escapeHtml(field.label || 'Known Absences')}</label>
+                <textarea id="absences" class="form-control" rows="2" placeholder="Example: January 5" ${req}></textarea>
+              </div>`;
+            }
+            return '';
+          }
+
+          function renderCustomField(field) {
+            const req     = field.required ? 'required' : '';
+            const reqMark = field.required ? ' <span style="color:#dc3545;">*</span>' : '';
+            const label   = `<label class="form-label">${escapeHtml(field.label || 'Question')}${reqMark}</label>`;
+            const id      = field.id;
+            if (field.type === 'textarea') {
+              return `<div class="mb-3">${label}<textarea class="form-control custom-field-input" data-custom-field-id="${id}" rows="2" ${req}></textarea></div>`;
+            }
+            if (field.type === 'select') {
+              const opts = (field.options || []).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+              return `<div class="mb-3">${label}<select class="form-select custom-field-input" data-custom-field-id="${id}" ${req}><option value="">Select…</option>${opts}</select></div>`;
+            }
+            if (field.type === 'checkbox') {
+              const opts = (field.options || []).map((o, i) => `
+                <div class="form-check">
+                  <input class="form-check-input custom-field-checkbox" type="checkbox" data-custom-field-id="${id}" value="${escapeHtml(o)}" id="ccb-${id}-${i}">
+                  <label class="form-check-label" for="ccb-${id}-${i}">${escapeHtml(o)}</label>
+                </div>`).join('');
+              return `<div class="mb-3">${label}${opts}</div>`;
+            }
+            if (field.type === 'number') {
+              return `<div class="mb-3">${label}<input type="number" class="form-control custom-field-input" data-custom-field-id="${id}" ${req} /></div>`;
+            }
+            return `<div class="mb-3">${label}<input type="text" class="form-control custom-field-input" data-custom-field-id="${id}" ${req} /></div>`;
+          }
+
+          function applyBuiltinPrefill() {
+            if (!cachedProfile) return;
+            const p = cachedProfile;
+            const addressEl = document.getElementById('address');
+            if (addressEl && p.address) addressEl.value = p.address;
+            const techEl = document.getElementById('techniqueclasses');
+            if (techEl && p.technique_classes) techEl.value = p.technique_classes;
+            if (p.grade) {
+              const radioId = GRADE_MAP[p.grade];
+              const radioEl = radioId && document.getElementById(radioId);
+              if (radioEl) radioEl.checked = true;
+            }
+          }
+
+          function renderDynamicFields(schema) {
+            const container = document.getElementById('dynamic-fields-container');
+            container.innerHTML = (schema || []).map(f => f.builtin ? renderBuiltinField(f) : renderCustomField(f)).join('');
+            applyBuiltinPrefill();
+          }
+
+          // Reads every rendered custom (non-builtin) field into a plain object keyed
+          // by field id. Exposed on window so app.js's addDancer() can reuse it.
+          function collectCustomResponses() {
+            const out = {};
+            document.querySelectorAll('.custom-field-input').forEach(el => {
+              out[el.dataset.customFieldId] = el.value.trim();
+            });
+            document.querySelectorAll('[data-custom-field-id].custom-field-checkbox').forEach(el => {
+              const id = el.dataset.customFieldId;
+              if (!Array.isArray(out[id])) out[id] = [];
+              if (el.checked) out[id].push(el.value);
+            });
+            return out;
+          }
+          window.collectCustomResponses = collectCustomResponses;
+
+          // Restores values saved into a draft's custom_responses back onto the
+          // currently-rendered custom fields (must run after renderDynamicFields).
+          function restoreCustomResponses(responses) {
+            if (!responses) return;
+            Object.entries(responses).forEach(([id, value]) => {
+              if (Array.isArray(value)) {
+                document.querySelectorAll(`.custom-field-checkbox[data-custom-field-id="${id}"]`).forEach(el => {
+                  el.checked = value.includes(el.value);
+                });
+              } else {
+                const el = document.querySelector(`.custom-field-input[data-custom-field-id="${id}"]`);
+                if (el) el.value = value;
+              }
+            });
+          }
+
           // ── Profile pre-fill ──────────────────────────────────────────────
           try {
             const profileRes = await fetch('/api/profile');
             if (profileRes.ok) {
               const p = await profileRes.json();
-              if (p.first_name) document.getElementById('fname').value        = p.first_name;
-              if (p.last_name)  document.getElementById('lname').value        = p.last_name;
-              if (p.phone)      document.getElementById('phonenumber').value   = p.phone;
-              if (p.address)    document.getElementById('address').value       = p.address;
-              if (p.technique_classes) document.getElementById('techniqueclasses').value = p.technique_classes;
-              if (p.grade) {
-                const gradeMap = {
-                  'Freshman Major':'flexRadioDefault1','Freshman Minor':'flexRadioDefault2',
-                  'Sophomore Major':'flexRadioDefault3','Sophomore Minor':'flexRadioDefault4',
-                  'Junior Major':'flexRadioDefault5','Junior Minor':'flexRadioDefault6',
-                  'Senior Major':'flexRadioDefault7','Senior Minor':'flexRadioDefault8',
-                  'Other':'flexRadioDefault9',
-                  // backward compat for old data
-                  'Freshman':'flexRadioDefault1','Sophomore':'flexRadioDefault3',
-                  'Junior':'flexRadioDefault5','Senior':'flexRadioDefault7',
-                };
-                const radioId = gradeMap[p.grade];
-                if (radioId) document.getElementById(radioId).checked = true;
-              }
+              cachedProfile = p;
+              if (p.first_name) document.getElementById('fname').value      = p.first_name;
+              if (p.last_name)  document.getElementById('lname').value      = p.last_name;
+              if (p.phone)      document.getElementById('phonenumber').value = p.phone;
               if (p.first_name || p.last_name) {
                 document.getElementById('profile-prefill-notice').classList.remove('d-none');
               }
@@ -334,7 +397,12 @@
           codeInput.addEventListener('input', () => {
             clearTimeout(previewTimer);
             const code = codeInput.value.trim();
-            if (code.length < 6) { previewEl.style.display = 'none'; hideDraftBanner(); return; }
+            if (code.length < 6) {
+              previewEl.style.display = 'none';
+              renderDynamicFields([]);
+              hideDraftBanner();
+              return;
+            }
             previewTimer = setTimeout(async () => {
               try {
                 const r    = await fetch(`/api/orgs/preview?join_code=${encodeURIComponent(code)}`);
@@ -343,10 +411,12 @@
                   previewEl.style.display = 'block';
                   previewEl.innerHTML =
                     `<span style="color:#198754;">&#10003; Joining: <strong>${data.org_name}</strong>, ${data.season_name}</span>`;
+                  renderDynamicFields(data.form_schema || []);
                 } else {
                   previewEl.style.display = 'block';
                   previewEl.innerHTML =
                     `<span style="color:#dc3545;">&#10007; That code doesn't match any active organization. Check with your director.</span>`;
+                  renderDynamicFields([]);
                 }
               } catch (e) { previewEl.style.display = 'none'; }
               checkForDraft(code);
@@ -395,11 +465,12 @@
               fname: document.getElementById('fname').value,
               lname: document.getElementById('lname').value,
               phone: document.getElementById('phonenumber').value,
-              address: document.getElementById('address').value,
-              techniqueclasses: document.getElementById('techniqueclasses').value,
-              injuries: document.getElementById('injuries').value,
-              absences: document.getElementById('absences').value,
+              address: document.getElementById('address')?.value || '',
+              techniqueclasses: document.getElementById('techniqueclasses')?.value || '',
+              injuries: document.getElementById('injuries')?.value || '',
+              absences: document.getElementById('absences')?.value || '',
               grade: gradeRadio ? gradeRadio.nextElementSibling.textContent.trim() : null,
+              custom_responses: collectCustomResponses(),
               availability: serializeBlocks(),
               savedAt: new Date().toISOString(),
             };
@@ -457,22 +528,20 @@
             if (d.fname) document.getElementById('fname').value = d.fname;
             if (d.lname) document.getElementById('lname').value = d.lname;
             if (d.phone) document.getElementById('phonenumber').value = d.phone;
-            if (d.address) document.getElementById('address').value = d.address;
-            if (d.techniqueclasses) document.getElementById('techniqueclasses').value = d.techniqueclasses;
-            if (d.injuries) document.getElementById('injuries').value = d.injuries;
-            if (d.absences) document.getElementById('absences').value = d.absences;
+            const addressEl = document.getElementById('address');
+            if (addressEl && d.address) addressEl.value = d.address;
+            const techEl = document.getElementById('techniqueclasses');
+            if (techEl && d.techniqueclasses) techEl.value = d.techniqueclasses;
+            const injuriesEl = document.getElementById('injuries');
+            if (injuriesEl && d.injuries) injuriesEl.value = d.injuries;
+            const absencesEl = document.getElementById('absences');
+            if (absencesEl && d.absences) absencesEl.value = d.absences;
             if (d.grade) {
-              const gm = {
-                'Freshman Major':'flexRadioDefault1','Freshman Minor':'flexRadioDefault2',
-                'Sophomore Major':'flexRadioDefault3','Sophomore Minor':'flexRadioDefault4',
-                'Junior Major':'flexRadioDefault5','Junior Minor':'flexRadioDefault6',
-                'Senior Major':'flexRadioDefault7','Senior Minor':'flexRadioDefault8',
-                'Other':'flexRadioDefault9',
-                'Freshman':'flexRadioDefault1','Sophomore':'flexRadioDefault3',
-                'Junior':'flexRadioDefault5','Senior':'flexRadioDefault7',
-              };
-              if (gm[d.grade]) document.getElementById(gm[d.grade]).checked = true;
+              const radioId = GRADE_MAP[d.grade];
+              const radioEl = radioId && document.getElementById(radioId);
+              if (radioEl) radioEl.checked = true;
             }
+            restoreCustomResponses(d.custom_responses);
             if (d.availability?.length) restoreAvailabilityBlocks(d.availability);
             hideDraftBanner();
           });

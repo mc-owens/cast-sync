@@ -46,6 +46,7 @@
                 <tr><th>Recent Injuries</th><td id="detail-injuries" style="white-space:pre-wrap;"></td></tr>
                 <tr><th>Known Absences</th><td id="detail-absences" style="white-space:pre-wrap;"></td></tr>
               </tbody>
+              <tbody id="custom-fields-tbody"></tbody>
             </table>
           </div>
         </div>
@@ -126,6 +127,9 @@
           </li>
           <li class="nav-item">
             <a class="nav-link active" href="dancers.html">Auditionees</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="form-builder.html?scope=season">Audition Form</a>
           </li>
         </ul>
       </div>
@@ -253,7 +257,27 @@
       container.appendChild(wrapper);
     }
 
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
     let _modalUserId = null;
+
+    // Maps custom field id -> label for this season, so the profile modal can show a
+    // readable question instead of the raw key stored in submissions.custom_responses.
+    let _customFieldLabels = null;
+    async function getCustomFieldLabels() {
+      if (_customFieldLabels) return _customFieldLabels;
+      _customFieldLabels = {};
+      try {
+        const res = await fetch('/api/season/form-schema');
+        if (res.ok) {
+          const data = await res.json();
+          (data.form_schema || []).forEach(f => { if (!f.builtin) _customFieldLabels[f.id] = f.label || f.id; });
+        }
+      } catch (e) { /* fall back to raw ids */ }
+      return _customFieldLabels;
+    }
 
     async function openDancerModal(id) {
       _modalUserId = id;
@@ -309,6 +333,16 @@
         document.getElementById('detail-injuries').textContent  = dancer.injuries          || '';
         document.getElementById('detail-absences').textContent  = dancer.absences          || '';
         document.getElementById('edit-audition-number').value   = dancer.audition_number   || '';
+
+        const labels  = await getCustomFieldLabels();
+        const custom  = dancer.custom_responses || {};
+        const customTbody = document.getElementById('custom-fields-tbody');
+        customTbody.innerHTML = Object.entries(custom)
+          .filter(([, value]) => Array.isArray(value) ? value.length : value)
+          .map(([id, value]) => `
+            <tr><th>${escapeHtml(labels[id] || id)}</th><td style="white-space:pre-wrap;">${escapeHtml(Array.isArray(value) ? value.join(', ') : value)}</td></tr>
+          `).join('');
+
         document.getElementById('dancer-full-profile').classList.remove('show');
         new bootstrap.Modal(document.getElementById('dancerModal')).show();
       } catch (err) {

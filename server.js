@@ -628,13 +628,18 @@ app.get('/api/orgs/preview', async (req, res) => {
   try {
     // Look up by season join code (production code)
     const result = await pool.query(
-      `SELECT o.name AS org_name, s.name AS season_name
+      `SELECT o.name AS org_name, s.name AS season_name, s.form_schema
        FROM seasons s JOIN orgs o ON o.id = s.org_id
        WHERE UPPER(s.join_code) = UPPER($1) LIMIT 1`,
       [join_code.trim()]
     );
     if (result.rows.length === 0) return res.json({ found: false });
-    res.json({ found: true, org_name: result.rows[0].org_name, season_name: result.rows[0].season_name });
+    res.json({
+      found: true,
+      org_name: result.rows[0].org_name,
+      season_name: result.rows[0].season_name,
+      form_schema: result.rows[0].form_schema || [],
+    });
   } catch (err) {
     res.json({ found: false });
   }
@@ -888,6 +893,44 @@ app.get('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => {
   }
 });
 
+// GET /api/orgs/:orgId/form-template — org-wide default audition form (reused as a
+// starting point whenever a new production is created)
+app.get('/api/orgs/:orgId/form-template', requireAuth('master'), async (req, res) => {
+  try {
+    const isOrgMember = await pool.query(
+      'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2',
+      [req.params.orgId, req.session.userId]
+    );
+    if (isOrgMember.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
+
+    const result = await pool.query('SELECT default_form_schema FROM orgs WHERE id = $1', [req.params.orgId]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Organization not found.' });
+    res.json({ form_schema: result.rows[0].default_form_schema || [] });
+  } catch (err) {
+    console.error('GET org form-template error:', err.message);
+    res.status(500).json({ error: 'Failed to load form template.' });
+  }
+});
+
+// PUT /api/orgs/:orgId/form-template — director edits the org-wide default form
+app.put('/api/orgs/:orgId/form-template', requireAuth('master'), async (req, res) => {
+  const { form_schema } = req.body;
+  if (!Array.isArray(form_schema)) return res.status(400).json({ error: 'form_schema must be an array.' });
+  try {
+    const isOrgMember = await pool.query(
+      'SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2',
+      [req.params.orgId, req.session.userId]
+    );
+    if (isOrgMember.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
+
+    await pool.query('UPDATE orgs SET default_form_schema = $1 WHERE id = $2', [JSON.stringify(form_schema), req.params.orgId]);
+    res.json({ form_schema });
+  } catch (err) {
+    console.error('PUT org form-template error:', err.message);
+    res.status(500).json({ error: 'Failed to save form template.' });
+  }
+});
+
 // ── Stripe routes ─────────────────────────────────────────────────────────────
 
 // GET /api/subscription — return current user's plan status
@@ -921,7 +964,7 @@ function parseDiscountCodes() {
   return map;
 }
 
-// POST /api/promo/check — validate any code; returns type ('free' | 'discount') + value
+// POST /api/promo/check — validate any code; returns type ('free' | 'annual' | 'discount') + value
 app.post('/api/promo/check', requireAuth('master'), (req, res) => {
   const { code } = req.body;
   if (!code) return res.status(400).json({ error: 'Code is required.' });
@@ -932,6 +975,11 @@ app.post('/api/promo/check', requireAuth('master'), (req, res) => {
     return res.json({ type: 'free' });
   }
 
+  const annualCodes = (process.env.ANNUAL_CODES || '').split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+  if (annualCodes.includes(upper)) {
+    return res.json({ type: 'annual' });
+  }
+
   const discountMap = parseDiscountCodes();
   if (discountMap.has(upper)) {
     return res.json({ type: 'discount', percent: discountMap.get(upper) });
@@ -940,22 +988,36 @@ app.post('/api/promo/check', requireAuth('master'), (req, res) => {
   res.status(400).json({ error: 'Invalid or expired promo code.' });
 });
 
-// POST /api/promo/redeem — apply a free-access promo code to the user's account
+// POST /api/promo/redeem — apply a free-access or annual promo code to the user's account
 app.post('/api/promo/redeem', requireAuth('master'), async (req, res) => {
   const { code } = req.body;
   if (!code) return res.status(400).json({ error: 'Code is required.' });
+  const upper = code.trim().toUpperCase();
 
   const freeCodes = (process.env.PROMO_CODES || '').split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
-  if (!freeCodes.includes(code.trim().toUpperCase())) {
+  const annualCodes = (process.env.ANNUAL_CODES || '').split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+
+  const isFree   = freeCodes.includes(upper);
+  const isAnnual = annualCodes.includes(upper);
+
+  if (!isFree && !isAnnual) {
     return res.status(400).json({ error: 'Invalid or expired promo code.' });
   }
 
   try {
-    await pool.query(
-      `UPDATE users SET plan_type = 'free', plan_expires_at = NULL WHERE id = $1`,
-      [req.session.userId]
-    );
-    res.json({ ok: true, message: 'Promo code applied! You have free unlimited access.' });
+    if (isAnnual) {
+      await pool.query(
+        `UPDATE users SET plan_type = 'annual', plan_expires_at = NOW() + INTERVAL '1 year' WHERE id = $1`,
+        [req.session.userId]
+      );
+      res.json({ ok: true, message: 'Promo code applied! You have one full year of Pro access.' });
+    } else {
+      await pool.query(
+        `UPDATE users SET plan_type = 'free', plan_expires_at = NULL WHERE id = $1`,
+        [req.session.userId]
+      );
+      res.json({ ok: true, message: 'Promo code applied! You have free unlimited access.' });
+    }
   } catch (err) {
     res.status(500).json({ error: 'Could not apply promo code.' });
   }
@@ -964,7 +1026,7 @@ app.post('/api/promo/redeem', requireAuth('master'), async (req, res) => {
 // POST /api/checkout/create-session — start Stripe checkout for a new production
 app.post('/api/checkout/create-session', requireAuth('master'), async (req, res) => {
   if (!stripe) return res.status(503).json({ error: 'Payments not configured.' });
-  const { orgId, productionName, plan, discountCode } = req.body;
+  const { orgId, productionName, plan, discountCode, formSource } = req.body;
   if (!orgId || !productionName || !plan) return res.status(400).json({ error: 'orgId, productionName and plan required.' });
   if (!['payasyougo', 'annual'].includes(plan)) return res.status(400).json({ error: 'Invalid plan.' });
 
@@ -1012,6 +1074,7 @@ app.post('/api/checkout/create-session', requireAuth('master'), async (req, res)
         user_id:         String(req.session.userId),
         production_name: productionName,
         plan:            plan,
+        form_source:     formSource || 'org_default',
       },
     };
     if (existingCustomer) sessionParams.customer = existingCustomer;
@@ -1036,7 +1099,7 @@ app.get('/api/checkout/complete', requireAuth('master'), async (req, res) => {
       return res.status(402).json({ error: 'Payment not completed.' });
     }
 
-    const { org_id, production_name, plan } = session.metadata;
+    const { org_id, production_name, plan, form_source } = session.metadata;
 
     // Activate annual plan if applicable
     if (plan === 'annual') {
@@ -1067,7 +1130,7 @@ app.get('/api/checkout/complete', requireAuth('master'), async (req, res) => {
       const seaR = await pool.query('SELECT name FROM seasons WHERE id = $1', [s.id]);
       req.session.orgName    = orgR.rows[0]?.name;
       req.session.seasonName = seaR.rows[0]?.name;
-      return res.json({ seasonId: s.id, plan: plan || 'payasyougo' });
+      return res.json({ seasonId: s.id, plan: plan || 'payasyougo', form_source: form_source || 'org_default' });
     }
 
     // Create the season
@@ -1076,8 +1139,11 @@ app.get('/api/checkout/complete', requireAuth('master'), async (req, res) => {
       try {
         const code = generateJoinCode();
         const result = await pool.query(
-          'INSERT INTO seasons (org_id, name, is_active, join_code, stripe_session_id) VALUES ($1,$2,TRUE,$3,$4) RETURNING id, name',
-          [org_id, production_name, code, session_id]
+          `INSERT INTO seasons (org_id, name, is_active, join_code, stripe_session_id, form_schema)
+           VALUES ($1,$2,TRUE,$3,$4,
+             CASE WHEN $5 = 'blank' THEN '[]'::jsonb ELSE (SELECT default_form_schema FROM orgs WHERE id = $1) END)
+           RETURNING id, name`,
+          [org_id, production_name, code, session_id, form_source || 'org_default']
         );
         row = result.rows[0];
         inserted = true;
@@ -1093,7 +1159,7 @@ app.get('/api/checkout/complete', requireAuth('master'), async (req, res) => {
     req.session.seasonName = row.name;
     req.session.roomCount  = 1;
 
-    res.json({ seasonId: row.id, plan: plan || 'payasyougo' });
+    res.json({ seasonId: row.id, plan: plan || 'payasyougo', form_source: form_source || 'org_default' });
   } catch (err) {
     console.error('Checkout complete error:', err.message);
     res.status(500).json({ error: 'Could not finalize production.' });
@@ -1120,7 +1186,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
     const session = event.data.object;
     if (session.payment_status !== 'paid') return res.json({ received: true });
 
-    const { org_id, production_name, plan, user_id } = session.metadata;
+    const { org_id, production_name, plan, user_id, form_source } = session.metadata;
     const sessionId = session.id;
 
     try {
@@ -1152,8 +1218,10 @@ app.post('/api/stripe/webhook', async (req, res) => {
         try {
           const code = generateJoinCode();
           await pool.query(
-            'INSERT INTO seasons (org_id, name, is_active, join_code, stripe_session_id) VALUES ($1,$2,TRUE,$3,$4)',
-            [org_id, production_name, code, sessionId]
+            `INSERT INTO seasons (org_id, name, is_active, join_code, stripe_session_id, form_schema)
+             VALUES ($1,$2,TRUE,$3,$4,
+               CASE WHEN $5 = 'blank' THEN '[]'::jsonb ELSE (SELECT default_form_schema FROM orgs WHERE id = $1) END)`,
+            [org_id, production_name, code, sessionId, form_source || 'org_default']
           );
           inserted = true;
         } catch (e) {
@@ -1171,7 +1239,7 @@ app.post('/api/stripe/webhook', async (req, res) => {
 
 // POST /api/orgs/:orgId/seasons — create a new production with its own join code
 app.post('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => {
-  const { name } = req.body;
+  const { name, form_source } = req.body;
   if (!name) return res.status(400).json({ error: 'Production name is required.' });
   try {
     let row, inserted = false;
@@ -1179,8 +1247,11 @@ app.post('/api/orgs/:orgId/seasons', requireAuth('master'), async (req, res) => 
       try {
         const code = generateJoinCode();
         const result = await pool.query(
-          'INSERT INTO seasons (org_id, name, is_active, join_code) VALUES ($1, $2, TRUE, $3) RETURNING id, name, join_code',
-          [req.params.orgId, name.trim(), code]
+          `INSERT INTO seasons (org_id, name, is_active, join_code, form_schema)
+           VALUES ($1, $2, TRUE, $3,
+             CASE WHEN $4 = 'blank' THEN '[]'::jsonb ELSE (SELECT default_form_schema FROM orgs WHERE id = $1) END)
+           RETURNING id, name, join_code`,
+          [req.params.orgId, name.trim(), code, form_source || 'org_default']
         );
         row = result.rows[0];
         inserted = true;
@@ -1214,7 +1285,7 @@ app.post('/api/orgs/:orgId/seasons/free', requireAuth('master'), async (req, res
     );
     if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
 
-    const { name } = req.body;
+    const { name, form_source } = req.body;
     if (!name) return res.status(400).json({ error: 'Production name is required.' });
 
     let row, inserted = false;
@@ -1222,8 +1293,11 @@ app.post('/api/orgs/:orgId/seasons/free', requireAuth('master'), async (req, res
       try {
         const code = generateJoinCode();
         const result = await pool.query(
-          'INSERT INTO seasons (org_id, name, is_active, join_code) VALUES ($1,$2,TRUE,$3) RETURNING id, name, join_code',
-          [req.params.orgId, name.trim(), code]
+          `INSERT INTO seasons (org_id, name, is_active, join_code, form_schema)
+           VALUES ($1,$2,TRUE,$3,
+             CASE WHEN $4 = 'blank' THEN '[]'::jsonb ELSE (SELECT default_form_schema FROM orgs WHERE id = $1) END)
+           RETURNING id, name, join_code`,
+          [req.params.orgId, name.trim(), code, form_source || 'org_default']
         );
         row = result.rows[0];
         inserted = true;
@@ -1325,7 +1399,8 @@ app.get('/api/profile', requireAuth('auditionee'), async (req, res) => {
 // POST /api/submissions — auditionee submits (or updates) for a specific org season
 app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
   const { join_code, first_name, last_name, phone, address, grade,
-          technique_classes, injuries, absences, availability, audition_number } = req.body;
+          technique_classes, injuries, absences, availability, audition_number,
+          custom_responses } = req.body;
 
   if (!join_code)   return res.status(400).json({ error: 'Join code is required.' });
   if (!first_name || !last_name) return res.status(400).json({ error: 'Name is required.' });
@@ -1389,17 +1464,18 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
     }
 
     const audNum = audition_number ? audition_number.toString().trim() : null;
+    const customResponsesJson = JSON.stringify(custom_responses || {});
     if (isUpdate) {
       await pool.query(
-        `UPDATE submissions SET injuries=$1, absences=$2, availability=$3, audition_number=$4
-         WHERE user_id=$5 AND season_id=$6`,
-        [injuries||null, absences||null, JSON.stringify(availability||[]), audNum, req.session.userId, season.id]
+        `UPDATE submissions SET injuries=$1, absences=$2, availability=$3, audition_number=$4, custom_responses=$5
+         WHERE user_id=$6 AND season_id=$7`,
+        [injuries||null, absences||null, JSON.stringify(availability||[]), audNum, customResponsesJson, req.session.userId, season.id]
       );
     } else {
       await pool.query(
-        `INSERT INTO submissions (user_id, org_id, season_id, injuries, absences, availability, audition_number)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [req.session.userId, org.id, season.id, injuries||null, absences||null, JSON.stringify(availability||[]), audNum]
+        `INSERT INTO submissions (user_id, org_id, season_id, injuries, absences, availability, audition_number, custom_responses)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [req.session.userId, org.id, season.id, injuries||null, absences||null, JSON.stringify(availability||[]), audNum, customResponsesJson]
       );
     }
 
@@ -1477,7 +1553,7 @@ app.get('/api/publish', requireAuth('master'), async (req, res) => {
       pool.query(
         `SELECT p.id, p.name, p.choreographer_name, p.choreographer_email,
            COALESCE(json_agg(DISTINCT jsonb_build_object('day',mb.day,'start_time',mb.start_time,'end_time',mb.end_time)) FILTER (WHERE mb.id IS NOT NULL),'[]') AS blocks,
-           COALESCE(json_agg(DISTINCT jsonb_build_object('first_name',dp.first_name,'last_name',dp.last_name,'cast_role',pc.cast_role)) FILTER (WHERE pc.id IS NOT NULL),'[]') AS casts
+           COALESCE(json_agg(DISTINCT jsonb_build_object('first_name',dp.first_name,'last_name',dp.last_name,'cast_role',pc.cast_role,'role_name',pc.role_name)) FILTER (WHERE pc.id IS NOT NULL),'[]') AS casts
          FROM pieces p
          LEFT JOIN master_blocks mb ON mb.piece_id=p.id
          LEFT JOIN piece_casts pc ON pc.piece_id=p.id
@@ -1514,7 +1590,7 @@ app.post('/api/publish/send', requireAuth('master'), async (req, res) => {
       pool.query(
         `SELECT p.id, p.name, p.choreographer_name, p.choreographer_email,
            COALESCE(json_agg(DISTINCT jsonb_build_object('day',mb.day,'start_time',mb.start_time,'end_time',mb.end_time)) FILTER (WHERE mb.id IS NOT NULL),'[]') AS blocks,
-           COALESCE(json_agg(DISTINCT jsonb_build_object('first_name',dp.first_name,'last_name',dp.last_name,'cast_role',pc.cast_role)) FILTER (WHERE pc.id IS NOT NULL),'[]') AS casts
+           COALESCE(json_agg(DISTINCT jsonb_build_object('first_name',dp.first_name,'last_name',dp.last_name,'cast_role',pc.cast_role,'role_name',pc.role_name)) FILTER (WHERE pc.id IS NOT NULL),'[]') AS casts
          FROM pieces p
          LEFT JOIN master_blocks mb ON mb.piece_id=p.id
          LEFT JOIN piece_casts pc ON pc.piece_id=p.id
@@ -1543,6 +1619,10 @@ app.post('/api/publish/send', requireAuth('master'), async (req, res) => {
   }
 });
 
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function buildCastingEmailHTML(orgName, blurb, pieces) {
   const piecesHTML = pieces.map(p => {
     const blocks     = p.blocks  || [];
@@ -1553,8 +1633,8 @@ function buildCastingEmailHTML(orgName, blurb, pieces) {
       ? blocks.map(b => `${b.day} ${b.start_time}–${b.end_time}`).join(', ')
       : 'TBD';
     const castLines = [
-      ...members.map(c => `<p style="margin:2px 0;">${c.first_name} ${c.last_name}</p>`),
-      ...understudies.map(c => `<p style="margin:2px 0;">${c.first_name} ${c.last_name} <span style="color:#888;">(understudy)</span></p>`),
+      ...members.map(c => `<p style="margin:2px 0;">${c.first_name} ${c.last_name}${c.role_name ? `, ${escapeHtml(c.role_name)}` : ''}</p>`),
+      ...understudies.map(c => `<p style="margin:2px 0;">${c.first_name} ${c.last_name}${c.role_name ? `, ${escapeHtml(c.role_name)}` : ''} <span style="color:#888;">(understudy)</span></p>`),
     ].join('') || '<p style="color:#888;font-style:italic;">No cast assigned.</p>';
     return `
       <div style="margin-bottom:28px;padding-top:16px;border-top:1px solid #e0e0e0;">
@@ -1626,7 +1706,7 @@ app.get('/api/my-casting', requireAuth('auditionee'), async (req, res) => {
       const piecesResult = await pool.query(
         `SELECT p.id, p.name, p.color, p.choreographer_name, p.choreographer_email,
            COALESCE(json_agg(DISTINCT jsonb_build_object('day',mb.day,'start_time',mb.start_time,'end_time',mb.end_time)) FILTER (WHERE mb.id IS NOT NULL),'[]') AS blocks,
-           COALESCE(json_agg(DISTINCT jsonb_build_object('first_name',dp.first_name,'last_name',dp.last_name,'cast_role',pc.cast_role)) FILTER (WHERE pc.id IS NOT NULL),'[]') AS casts,
+           COALESCE(json_agg(DISTINCT jsonb_build_object('first_name',dp.first_name,'last_name',dp.last_name,'cast_role',pc.cast_role,'role_name',pc.role_name)) FILTER (WHERE pc.id IS NOT NULL),'[]') AS casts,
            (SELECT cast_role FROM piece_casts WHERE piece_id=p.id AND user_id=$2) AS my_role
          FROM pieces p
          LEFT JOIN master_blocks mb ON mb.piece_id=p.id
@@ -1660,7 +1740,7 @@ app.get('/api/dancers', requireAuth('master'), async (req, res) => {
       `SELECT dp.id AS profile_id, u.id AS user_id,
               dp.first_name, dp.last_name, u.email, dp.phone, dp.address,
               dp.grade, dp.technique_classes, sub.injuries, sub.absences,
-              sub.created_at, sub.audition_number,
+              sub.created_at, sub.audition_number, sub.custom_responses,
               (SELECT COUNT(*) FROM piece_casts pc
                JOIN pieces p ON p.id = pc.piece_id
                WHERE pc.user_id = u.id AND p.season_id = $2) AS piece_count,
@@ -1938,7 +2018,8 @@ app.get('/api/dancers/:userId', requireAuth('master'), async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT dp.first_name, dp.last_name, u.email, dp.phone, dp.address, dp.grade,
-              dp.technique_classes, sub.injuries, sub.absences, sub.availability, sub.audition_number
+              dp.technique_classes, sub.injuries, sub.absences, sub.availability, sub.audition_number,
+              sub.custom_responses
        FROM submissions sub
        JOIN dancer_profiles dp ON dp.user_id = sub.user_id
        JOIN users u ON u.id = sub.user_id
@@ -2276,6 +2357,32 @@ app.patch('/api/season/room-count', requireAuth('master'), async (req, res) => {
     res.json({ room_count: n });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update room count.' });
+  }
+});
+
+// GET /api/season/form-schema — return current production's audition form schema
+app.get('/api/season/form-schema', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query('SELECT form_schema FROM seasons WHERE id = $1', [seasonId]);
+    res.json({ form_schema: result.rows[0]?.form_schema || [] });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch form schema.' });
+  }
+});
+
+// PATCH /api/season/form-schema — director customizes this production's form only
+app.patch('/api/season/form-schema', requireAuth('master'), async (req, res) => {
+  const { form_schema } = req.body;
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  if (!Array.isArray(form_schema)) return res.status(400).json({ error: 'form_schema must be an array.' });
+  try {
+    await pool.query('UPDATE seasons SET form_schema = $1 WHERE id = $2', [JSON.stringify(form_schema), seasonId]);
+    res.json({ form_schema });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update form schema.' });
   }
 });
 
@@ -2667,6 +2774,21 @@ app.get('/admin/masters', async (req, res) => {
 
 // ── Auto-migration ────────────────────────────────────────────────────────────
 
+// Today's hardcoded audition-form fields, expressed as form-schema entries. Used as
+// the DEFAULT for orgs.default_form_schema / seasons.form_schema so existing (and
+// brand-new) productions keep asking exactly these questions until a director opens
+// the form builder and changes something.
+const LEGACY_FORM_SCHEMA = [
+  { id: 'address', builtin: 'address', label: 'Address', type: 'text', required: false },
+  { id: 'grade', builtin: 'grade', label: 'Grade', type: 'select', required: false,
+    options: ['Freshman Major', 'Freshman Minor', 'Sophomore Major', 'Sophomore Minor',
+              'Junior Major', 'Junior Minor', 'Senior Major', 'Senior Minor', 'Other'] },
+  { id: 'technique_classes', builtin: 'technique_classes', label: 'Current Technique Classes', type: 'textarea', required: false },
+  { id: 'injuries', builtin: 'injuries', label: 'Recent Injuries', type: 'textarea', required: false },
+  { id: 'absences', builtin: 'absences', label: 'Known Absences', type: 'textarea', required: false },
+];
+const LEGACY_FORM_SCHEMA_SQL = JSON.stringify(LEGACY_FORM_SCHEMA).replace(/'/g, "''");
+
 async function runMigrations() {
   // Step 1: base tables
   try {
@@ -2947,6 +3069,25 @@ async function runMigrations() {
     `);
     console.log('Migration step 14 (users.is_mock) complete.');
   } catch (err) { console.error('Migration step 14 error:', err.message); }
+
+  // Step 15: customizable audition forms — org default template, per-season override,
+  // and a home for custom-field answers on submissions. The column DEFAULT is the
+  // legacy field set itself, so both pre-existing rows (backfilled by Postgres at
+  // ALTER TABLE time) and brand-new orgs/seasons start out looking like today's form.
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE orgs ADD COLUMN default_form_schema JSONB NOT NULL DEFAULT '${LEGACY_FORM_SCHEMA_SQL}'::jsonb;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE seasons ADD COLUMN form_schema JSONB NOT NULL DEFAULT '${LEGACY_FORM_SCHEMA_SQL}'::jsonb;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN
+        ALTER TABLE submissions ADD COLUMN custom_responses JSONB NOT NULL DEFAULT '{}';
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 15 (form_schema columns + legacy default/backfill) complete.');
+  } catch (err) { console.error('Migration step 15 error:', err.message); }
 
   console.log('All migrations complete.');
 }

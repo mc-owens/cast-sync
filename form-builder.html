@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audition Form | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .field-card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; background: #fff; }
+    .field-card.dragging { opacity: .4; }
+    .field-card.drag-over { border-top: 2px solid #0d6efd; }
+    .field-top-row { display: flex; gap: 10px; align-items: flex-start; }
+    .drag-handle { display: flex; align-items: center; padding-top: 4px; color: #aaa; cursor: grab; }
+    .drag-handle:active { cursor: grabbing; }
+    .builtin-badge { font-size: 10px; color: #888; background: #f3f3f3; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+    .options-editor { display: none; margin-top: 8px; }
+    .field-card.has-options .options-editor { display: block; }
+    .remove-field-btn { background: none; border: none; color: #aaa; font-size: 16px; line-height: 1; padding: 0 4px; cursor: pointer; }
+    .remove-field-btn:hover { color: #dc3545; }
+    .preview-pane { position: sticky; top: 20px; border: 1px solid #e0e0e0; border-radius: 10px; background: #fafafa; max-height: calc(100vh - 40px); overflow-y: auto; }
+    .preview-pane-header { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #888; padding: 12px 16px; border-bottom: 1px solid #e6e6e6; background: #fff; border-radius: 10px 10px 0 0; }
+    .preview-pane-body { padding: 16px; }
+    .preview-availability-box { border: 1px dashed #ccc; border-radius: 6px; padding: 22px; text-align: center; color: #999; font-size: 12px; background: #fff; }
+  </style>
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body style="visibility:hidden">
+
+  <!-- Nav -->
+  <nav class="navbar navbar-expand-lg app-nav">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav">
+          <li class="nav-item"><a class="nav-link" href="search.html">Availability</a></li>
+          <li class="nav-item"><a class="nav-link" href="master.html">Master Schedule</a></li>
+          <li class="nav-item"><a class="nav-link" href="cast.html">Cast Builder</a></li>
+          <li class="nav-item"><a class="nav-link" href="casting.html">Casting</a></li>
+          <li class="nav-item"><a class="nav-link" href="dancers.html">Auditionees</a></li>
+          <li class="nav-item"><a class="nav-link active" id="form-nav-link" href="form-builder.html?scope=season">Audition Form</a></li>
+        </ul>
+      </div>
+      <div class="app-nav-right" id="right-nav"></div>
+    </div>
+  </nav>
+
+  <!-- Trial banner -->
+  <div id="trial-banner" style="display:none;background:#fefce8;border-bottom:1px solid #fde68a;">
+    <div class="container-fluid px-4 py-2 d-flex align-items-center justify-content-between gap-3">
+      <span style="font-size:13px;color:#92400e;" id="trial-banner-text"></span>
+      <div class="d-flex gap-2 flex-shrink-0">
+        <a href="plan-select.html" class="btn btn-sm btn-warning" style="font-size:12px;font-weight:600;">Upgrade</a>
+        <button class="btn btn-sm btn-link p-0" style="font-size:12px;color:#92400e;text-decoration:none;" id="trial-banner-dismiss">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="container-fluid mt-4 px-4" style="max-width: 1140px;">
+
+    <div class="mb-3 d-flex justify-content-between align-items-start">
+      <div>
+        <h5 class="mb-0 fw-semibold" id="page-title">Audition Form</h5>
+        <p class="text-muted mb-0" style="font-size:13px;" id="page-subtitle">Loading…</p>
+      </div>
+      <div id="header-actions"></div>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-lg-7">
+
+        <div class="alert alert-secondary py-2 px-3 mb-3" style="font-size:13px;">
+          First name, last name, email, phone number, and the availability grid are always
+          included on the form and can't be removed. Manage every other question below.
+          Drag <span style="color:#888;">⠿</span> to reorder.
+        </div>
+
+        <div id="loading-msg" class="text-muted" style="font-size:14px;">Loading…</div>
+        <div id="fields-list"></div>
+
+        <button id="add-field-btn" class="btn btn-outline-secondary btn-sm mt-2 d-none">+ Add Question</button>
+
+        <div class="border-top mt-4 pt-4 pb-5 d-flex align-items-center gap-3">
+          <button id="save-btn" class="btn btn-dark d-none">Save</button>
+          <span id="save-msg" class="text-success d-none" style="font-size:13px;">Saved.</span>
+        </div>
+
+      </div>
+
+      <div class="col-lg-5">
+        <div class="preview-pane">
+          <div class="preview-pane-header">Live Preview — what auditionees will see</div>
+          <div class="preview-pane-body" id="preview-body"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    const params  = new URLSearchParams(window.location.search);
+    const scope   = params.get('scope') === 'org' ? 'org' : 'season';
+    const orgId   = params.get('orgId');
+    const loadUrl = scope === 'org' ? `/api/orgs/${orgId}/form-template` : '/api/season/form-schema';
+    const saveUrl = loadUrl;
+    const saveMethod = scope === 'org' ? 'PUT' : 'PATCH';
+
+    let fields = [];
+
+    const TYPE_LABELS = { text: 'Short text', textarea: 'Paragraph', select: 'Dropdown', checkbox: 'Checkboxes', number: 'Number' };
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function newFieldId() {
+      return `custom_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    }
+
+    function render() {
+      const list = document.getElementById('fields-list');
+      if (fields.length === 0) {
+        list.innerHTML = '<p class="text-muted" style="font-size:13px;">No extra questions yet — click "+ Add Question" to add one.</p>';
+        renderPreview();
+        return;
+      }
+      list.innerHTML = fields.map((f, i) => {
+        const hasOptions = f.type === 'select' || f.type === 'checkbox';
+        return `
+        <div class="field-card${hasOptions ? ' has-options' : ''}" data-index="${i}" draggable="true">
+          <div class="field-top-row">
+            <div class="drag-handle" title="Drag to reorder">
+              <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor">
+                <circle cx="2" cy="2" r="1.5"/><circle cx="8" cy="2" r="1.5"/>
+                <circle cx="2" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/>
+                <circle cx="2" cy="14" r="1.5"/><circle cx="8" cy="14" r="1.5"/>
+              </svg>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div class="d-flex gap-2 mb-2">
+                <input type="text" class="form-control form-control-sm field-label" data-index="${i}"
+                  value="${escapeHtml(f.label || '')}" placeholder="Question label" style="flex:2;">
+                <select class="form-select form-select-sm field-type" data-index="${i}" style="flex:1;" ${f.builtin ? 'disabled title="Built-in field — type is fixed"' : ''}>
+                  ${Object.entries(TYPE_LABELS).map(([val, label]) =>
+                    `<option value="${val}" ${f.type === val ? 'selected' : ''}>${label}</option>`).join('')}
+                </select>
+              </div>
+              <div class="d-flex align-items-center justify-content-between">
+                <label class="form-check form-check-inline mb-0" style="font-size:12px;color:#666;">
+                  <input type="checkbox" class="form-check-input field-required" data-index="${i}" ${f.required ? 'checked' : ''}>
+                  Required
+                </label>
+                ${f.builtin ? `<span class="builtin-badge">Built-in: ${escapeHtml(f.builtin)}</span>` : ''}
+                <button class="remove-field-btn" data-action="remove" data-index="${i}" title="Remove question">&#x2715;</button>
+              </div>
+              <div class="options-editor">
+                <label class="form-label mb-1" style="font-size:11px;color:#888;">Options (one per line)</label>
+                <textarea class="form-control form-control-sm field-options" data-index="${i}" rows="3"
+                  placeholder="Option A&#10;Option B">${escapeHtml((f.options || []).join('\n'))}</textarea>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+      renderPreview();
+    }
+
+    const GRADE_OPTIONS = ['Freshman Major','Freshman Minor','Sophomore Major','Sophomore Minor',
+                            'Junior Major','Junior Minor','Senior Major','Senior Minor','Other'];
+
+    function renderPreviewBuiltin(f) {
+      if (f.builtin === 'address') {
+        return `<div class="mb-3"><label class="form-label" style="font-size:13px;">${escapeHtml(f.label || 'Address')}</label>
+          <input type="text" class="form-control form-control-sm" disabled></div>`;
+      }
+      if (f.builtin === 'grade') {
+        return `<div class="mb-3"><label class="form-label" style="font-size:13px;">${escapeHtml(f.label || 'Grade')}</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
+            ${GRADE_OPTIONS.map(opt => `<div class="form-check"><input class="form-check-input" type="radio" disabled><label class="form-check-label" style="font-size:12px;">${opt}</label></div>`).join('')}
+          </div></div>`;
+      }
+      const textareaLabels = { technique_classes: 'Current Technique Classes', injuries: 'Recent Injuries', absences: 'Known Absences' };
+      if (textareaLabels[f.builtin]) {
+        return `<div class="mb-3"><label class="form-label" style="font-size:13px;">${escapeHtml(f.label || textareaLabels[f.builtin])}</label>
+          <textarea class="form-control form-control-sm" rows="2" disabled></textarea></div>`;
+      }
+      return '';
+    }
+
+    function renderPreviewField(f) {
+      const reqMark = f.required ? ' <span style="color:#dc3545;">*</span>' : '';
+      const label = `<label class="form-label" style="font-size:13px;">${escapeHtml(f.label || 'Question')}${reqMark}</label>`;
+      if (f.type === 'textarea') {
+        return `<div class="mb-3">${label}<textarea class="form-control form-control-sm" rows="2" disabled></textarea></div>`;
+      }
+      if (f.type === 'select') {
+        const opts = (f.options || []).map(o => `<option>${escapeHtml(o)}</option>`).join('');
+        return `<div class="mb-3">${label}<select class="form-select form-select-sm" disabled><option>Select…</option>${opts}</select></div>`;
+      }
+      if (f.type === 'checkbox') {
+        const opts = (f.options || []).map((o, i) => `
+          <div class="form-check"><input class="form-check-input" type="checkbox" disabled id="pv-${f.id}-${i}">
+          <label class="form-check-label" style="font-size:12px;" for="pv-${f.id}-${i}">${escapeHtml(o)}</label></div>`).join('');
+        return `<div class="mb-3">${label}${opts}</div>`;
+      }
+      if (f.type === 'number') {
+        return `<div class="mb-3">${label}<input type="number" class="form-control form-control-sm" disabled></div>`;
+      }
+      return `<div class="mb-3">${label}<input type="text" class="form-control form-control-sm" disabled></div>`;
+    }
+
+    function renderPreview() {
+      const body = document.getElementById('preview-body');
+      if (!body) return;
+      const fieldsHtml = fields.map(f => f.builtin ? renderPreviewBuiltin(f) : renderPreviewField(f)).join('');
+      body.innerHTML = `
+        <div class="row g-2 mb-3">
+          <div class="col-6"><label class="form-label" style="font-size:13px;">First Name</label><input class="form-control form-control-sm" disabled></div>
+          <div class="col-6"><label class="form-label" style="font-size:13px;">Last Name</label><input class="form-control form-control-sm" disabled></div>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-6"><label class="form-label" style="font-size:13px;">Email</label><input class="form-control form-control-sm" disabled></div>
+          <div class="col-6"><label class="form-label" style="font-size:13px;">Phone Number</label><input class="form-control form-control-sm" disabled></div>
+        </div>
+        ${fieldsHtml}
+        <div class="mb-2">
+          <label class="form-label" style="font-size:13px;">Availability</label>
+          <div class="preview-availability-box">Weekly availability grid</div>
+        </div>`;
+    }
+
+    let draggedIndex = null;
+
+    document.getElementById('fields-list').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action="remove"]');
+      if (!btn) return;
+      fields.splice(parseInt(btn.dataset.index), 1);
+      render();
+    });
+
+    document.getElementById('fields-list').addEventListener('dragstart', (e) => {
+      const card = e.target.closest('.field-card');
+      if (!card) return;
+      draggedIndex = parseInt(card.dataset.index);
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    document.getElementById('fields-list').addEventListener('dragend', (e) => {
+      const card = e.target.closest('.field-card');
+      if (card) card.classList.remove('dragging');
+      document.querySelectorAll('.field-card.drag-over').forEach(c => c.classList.remove('drag-over'));
+      draggedIndex = null;
+    });
+
+    document.getElementById('fields-list').addEventListener('dragover', (e) => {
+      if (draggedIndex === null) return;
+      e.preventDefault();
+      const card = e.target.closest('.field-card');
+      if (!card) return;
+      document.querySelectorAll('.field-card.drag-over').forEach(c => c.classList.remove('drag-over'));
+      card.classList.add('drag-over');
+    });
+
+    document.getElementById('fields-list').addEventListener('drop', (e) => {
+      if (draggedIndex === null) return;
+      e.preventDefault();
+      const card = e.target.closest('.field-card');
+      if (!card) return;
+      const targetIndex = parseInt(card.dataset.index);
+      if (targetIndex !== draggedIndex) {
+        const [moved] = fields.splice(draggedIndex, 1);
+        fields.splice(targetIndex, 0, moved);
+        render();
+      }
+    });
+
+    document.getElementById('fields-list').addEventListener('input', (e) => {
+      const i = parseInt(e.target.dataset.index);
+      if (Number.isNaN(i)) return;
+      if (e.target.classList.contains('field-label')) fields[i].label = e.target.value;
+      else if (e.target.classList.contains('field-options')) fields[i].options = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
+    });
+
+    document.getElementById('fields-list').addEventListener('change', (e) => {
+      const i = parseInt(e.target.dataset.index);
+      if (Number.isNaN(i)) return;
+      if (e.target.classList.contains('field-type')) { fields[i].type = e.target.value; render(); }
+      else if (e.target.classList.contains('field-required')) fields[i].required = e.target.checked;
+    });
+
+    document.getElementById('add-field-btn').addEventListener('click', () => {
+      fields.push({ id: newFieldId(), builtin: null, label: '', type: 'text', required: false });
+      render();
+    });
+
+    document.getElementById('save-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('save-btn');
+      const msg = document.getElementById('save-msg');
+      btn.disabled = true;
+      try {
+        const res = await fetch(saveUrl, {
+          method: saveMethod,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ form_schema: fields }),
+        });
+        if (!res.ok) throw new Error();
+        msg.classList.remove('d-none');
+        setTimeout(() => msg.classList.add('d-none'), 2500);
+      } catch (err) {
+        alert('Could not save the form. Please try again.');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    async function loadFields() {
+      try {
+        const res = await fetch(loadUrl);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        fields = data.form_schema || [];
+        document.getElementById('loading-msg').style.display = 'none';
+        document.getElementById('add-field-btn').classList.remove('d-none');
+        document.getElementById('save-btn').classList.remove('d-none');
+        render();
+      } catch (err) {
+        document.getElementById('loading-msg').textContent = 'Could not load the form.';
+      }
+    }
+
+    if (scope === 'org') {
+      document.getElementById('page-title').textContent = 'Default Audition Form';
+      document.getElementById('page-subtitle').textContent =
+        'Reusable starting template for every new production in this organization. Editing it does not change productions that already exist.';
+      document.getElementById('form-nav-link').classList.remove('active');
+      document.getElementById('header-actions').innerHTML =
+        `<a href="org-select.html" class="btn btn-sm btn-outline-secondary">← Back</a>`;
+    } else {
+      document.getElementById('page-subtitle').textContent = 'Customize the questions auditionees answer for this production only.';
+    }
+  </script>
+
+  <script>
+    (async () => {
+      try {
+        const res  = await fetch('/api/auth/me');
+        const user = await res.json();
+        if (!res.ok || (user.role !== 'master' && user.mode !== 'director')) { window.location.href = 'login.html'; return; }
+        if (scope === 'season' && !user.orgId) { window.location.href = 'org-select.html'; return; }
+        if (scope === 'season') {
+          const nav = document.querySelector('.navbar-nav');
+          nav.insertAdjacentHTML('beforeend',
+            `<li class="nav-item"><span class="nav-link nav-context">${user.orgName} · ${user.seasonName}</span></li>`
+          );
+        }
+        document.getElementById('right-nav').innerHTML =
+          `<a href="account.html" class="btn-nav-account">Account</a>
+           <button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+        document.body.style.visibility = 'visible';
+        loadFields();
+
+        try {
+          const subRes = await fetch('/api/subscription');
+          if (subRes.ok) {
+            const sub = await subRes.json();
+            if (sub.isTrial) {
+              const days = sub.daysRemaining;
+              document.getElementById('trial-banner-text').textContent =
+                days <= 1 ? 'Explore mode: your trial expires today. Upgrade to start your first real production.' : `Explore mode: ${days} day${days === 1 ? '' : 's'} left to explore. Upgrade any time to start your first real production.`;
+              document.getElementById('trial-banner').style.display = '';
+              document.getElementById('trial-banner-dismiss').addEventListener('click', () => {
+                document.getElementById('trial-banner').style.display = 'none';
+              });
+            }
+          }
+        } catch (_) {}
+      } catch (err) {
+        window.location.href = 'login.html';
+      }
+    })();
+  </script>
+
+  <script src="tour.js"></script>
+</body>
+</html>

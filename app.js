@@ -60,10 +60,10 @@ async function addDancer() {
   const first_name        = document.getElementById('fname').value.trim();
   const last_name         = document.getElementById('lname').value.trim();
   const phone             = document.getElementById('phonenumber').value.trim();
-  const address           = document.getElementById('address').value.trim();
-  const technique_classes = document.getElementById('techniqueclasses').value.trim();
-  const injuries          = document.getElementById('injuries').value.trim();
-  const absences          = document.getElementById('absences').value.trim();
+  const address           = document.getElementById('address')?.value.trim() || '';
+  const technique_classes = document.getElementById('techniqueclasses')?.value.trim() || '';
+  const injuries          = document.getElementById('injuries')?.value.trim() || '';
+  const absences          = document.getElementById('absences')?.value.trim() || '';
 
   if (!join_code)                { alert('Please enter your director\'s join code.'); return; }
   if (!first_name || !last_name) { alert('First and last name are required.'); return; }
@@ -103,8 +103,11 @@ async function addDancer() {
   const auditionNumEl   = document.getElementById('audition-number');
   const audition_number = auditionNumEl ? auditionNumEl.value.trim() || null : null;
 
+  const custom_responses = typeof window.collectCustomResponses === 'function' ? window.collectCustomResponses() : {};
+
   const data = { join_code, first_name, last_name, phone, address, grade,
-                 technique_classes, injuries, absences, availability, audition_number };
+                 technique_classes, injuries, absences, availability, audition_number,
+                 custom_responses };
 
   // Check for existing submission with this join code
   try {

@@ -33,6 +33,7 @@
           <li class="nav-item"><a class="nav-link" href="cast.html">Cast Builder</a></li>
           <li class="nav-item"><a class="nav-link" href="casting.html">Casting</a></li>
           <li class="nav-item"><a class="nav-link" href="dancers.html">Auditionees</a></li>
+          <li class="nav-item"><a class="nav-link" href="form-builder.html?scope=season">Audition Form</a></li>
         </ul>
       </div>
       <div class="app-nav-right" id="right-nav"></div>
@@ -80,6 +81,10 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
     let publishData = null;
 
     function renderPreview(blurb) {
@@ -119,10 +124,12 @@
           html += `<p style="font-size:13px;color:#aaa;font-style:italic;">No cast assigned yet.</p>`;
         } else {
           members.forEach(c => {
-            html += `<p class="cast-name">${c.first_name} ${c.last_name}</p>`;
+            const role = c.role_name ? `<span style="color:#777;font-size:12px;">, ${escapeHtml(c.role_name)}</span>` : '';
+            html += `<p class="cast-name">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}${role}</p>`;
           });
           understudies.forEach(c => {
-            html += `<p class="cast-name">${c.first_name} ${c.last_name} <span style="color:#888;font-size:12px;">(understudy)</span></p>`;
+            const role = c.role_name ? `<span style="color:#777;font-size:12px;">, ${escapeHtml(c.role_name)}</span>` : '';
+            html += `<p class="cast-name">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}${role} <span style="color:#888;font-size:12px;">(understudy)</span></p>`;
           });
         }
         html += `</div>`;
@@ -168,15 +175,15 @@
     document.getElementById('csv-btn').addEventListener('click', () => {
       if (!publishData) return;
       const { org_name, season_name, pieces } = publishData;
-      const rows = [['Org','Production','Piece','Choreographer','Choreo Email','Rehearsals','First Name','Last Name','Role']];
+      const rows = [['Org','Production','Piece','Choreographer','Choreo Email','Rehearsals','First Name','Last Name','Role Name','Cast Role']];
       pieces.forEach(p => {
         const rehearsalStr = (p.blocks||[]).map(b=>`${b.day} ${b.start_time}-${b.end_time}`).join(' | ');
         const casts = p.casts || [];
         if (casts.length === 0) {
-          rows.push([org_name, season_name, p.name, p.choreographer_name||'', p.choreographer_email||'', rehearsalStr, '', '', '']);
+          rows.push([org_name, season_name, p.name, p.choreographer_name||'', p.choreographer_email||'', rehearsalStr, '', '', '', '']);
         } else {
           casts.forEach(c => {
-            rows.push([org_name, season_name, p.name, p.choreographer_name||'', p.choreographer_email||'', rehearsalStr, c.first_name, c.last_name, c.cast_role]);
+            rows.push([org_name, season_name, p.name, p.choreographer_name||'', p.choreographer_email||'', rehearsalStr, c.first_name, c.last_name, c.role_name||'', c.cast_role]);
           });
         }
       });

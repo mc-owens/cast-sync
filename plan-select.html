@@ -102,6 +102,23 @@
         <div id="annual-error" class="alert alert-danger d-none"></div>
         <label class="form-label fw-medium">Production name</label>
         <input type="text" class="form-control mb-3" id="annual-prod-name" placeholder="e.g. Spring Showcase 2027" />
+
+        <label class="form-label fw-medium">Audition form</label>
+        <div class="mb-3" id="annual-form-choice">
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="annual-form-choice" id="annual-form-default" value="default" checked>
+            <label class="form-check-label" for="annual-form-default" style="font-size:14px;">Use my organization's default form</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="annual-form-choice" id="annual-form-customize" value="default_customize">
+            <label class="form-check-label" for="annual-form-customize" style="font-size:14px;">Use the default and customize it for this production</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="annual-form-choice" id="annual-form-blank" value="blank">
+            <label class="form-check-label" for="annual-form-blank" style="font-size:14px;">Start with a blank form</label>
+          </div>
+        </div>
+
         <button class="btn btn-dark w-100" id="annual-create-btn">Create Production →</button>
       </div>
     </div>
@@ -120,6 +137,22 @@
       <div class="mb-4">
         <label class="form-label fw-medium">Production name</label>
         <input type="text" class="form-control" id="prod-name" placeholder="e.g. Spring Showcase 2027" />
+      </div>
+
+      <div class="mb-4">
+        <label class="form-label fw-medium">Audition form</label>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="plan-form-choice" id="plan-form-default" value="default" checked>
+          <label class="form-check-label" for="plan-form-default" style="font-size:14px;">Use my organization's default form</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="plan-form-choice" id="plan-form-customize" value="default_customize">
+          <label class="form-check-label" for="plan-form-customize" style="font-size:14px;">Use the default and customize it for this production</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="plan-form-choice" id="plan-form-blank" value="blank">
+          <label class="form-check-label" for="plan-form-blank" style="font-size:14px;">Start with a blank form</label>
+        </div>
       </div>
 
       <p class="fw-medium mb-3" style="font-size:14px;">Choose a plan</p>
@@ -285,10 +318,12 @@
       btn.disabled    = true;
       btn.textContent = 'Creating…';
 
+      const formChoice = document.querySelector('input[name="annual-form-choice"]:checked').value;
+
       try {
         const res  = await fetch(`/api/orgs/${orgId}/seasons/free`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
+          body: JSON.stringify({ name, form_source: formChoice }),
         });
         const data = await res.json();
         if (!res.ok) {
@@ -296,12 +331,12 @@
           errorEl.classList.remove('d-none');
           return;
         }
-        // Set session and go to master
+        // Set session and go to master (or the form builder, if they chose to customize)
         await fetch('/api/session/org', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orgId, seasonId: data.id }),
         });
-        window.location.href = 'master.html';
+        window.location.href = formChoice === 'default_customize' ? 'form-builder.html?scope=season' : 'master.html';
       } catch (err) {
         errorEl.textContent = 'Could not connect to the server.';
         errorEl.classList.remove('d-none');
@@ -322,10 +357,12 @@
       btn.disabled    = true;
       btn.textContent = 'Redirecting to payment…';
 
+      const formChoice = document.querySelector('input[name="plan-form-choice"]:checked').value;
+
       try {
         const res  = await fetch('/api/checkout/create-session', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orgId, productionName: name, plan: selectedPlan, discountCode: activeDiscountCode }),
+          body: JSON.stringify({ orgId, productionName: name, plan: selectedPlan, discountCode: activeDiscountCode, formSource: formChoice }),
         });
         const data = await res.json();
         if (!res.ok) {
