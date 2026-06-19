@@ -6,6 +6,7 @@
   <title>Cast Builder | CastSync</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="app-shell.css">
   <style>
     .search-wrapper { position: relative; }
 
@@ -91,6 +92,11 @@
   <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>
 <body style="visibility:hidden">
+
+  <div id="app-shell-root"></div>
+  <script src="app-shell.js"></script>
+
+  <div class="app-main">
 
   <!-- Add Rehearsal Block modal -->
   <div class="modal fade" id="addToScheduleModal" tabindex="-1" aria-hidden="true">
@@ -190,47 +196,6 @@
     </div>
   </div>
 
-  <!-- Nav -->
-  <nav class="navbar navbar-expand-lg app-nav">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="#"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-      <div class="collapse navbar-collapse" id="navbarNav">
-        <ul class="navbar-nav">
-          <li class="nav-item">
-            <a class="nav-link" href="search.html">Availability</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="master.html">Master Schedule</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link active" href="cast.html">Cast Builder</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="casting.html">Casting</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="dancers.html">Auditionees</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="form-builder.html?scope=season">Audition Form</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="notes.html">Production Notes</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="attendance.html">Attendance</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="absence-requests.html">Absence Requests</a>
-          </li>
-        </ul>
-      </div>
-      <div class="app-nav-right" id="right-nav"></div>
-    </div>
-  </nav>
 
   <!-- Trial banner -->
   <div id="trial-banner" style="display:none;background:#fefce8;border-bottom:1px solid #fde68a;">
@@ -398,5 +363,7 @@
 
   <script src="tour.js"></script>
   <script>CastSyncTour.maybeStartWorkspace('cast');</script>
+
+  </div>
 </body>
 </html>

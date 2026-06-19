@@ -45,10 +45,10 @@
 
     'master': [
       {
-        selector: '.navbar-collapse',
-        position: 'bottom',
+        selector: '.app-sidebar',
+        position: 'right',
         title: 'Your Workspace',
-        body: 'These tabs are your entire workflow. We\'re starting on <strong>Master Schedule</strong>, your production\'s choreographic timeline.',
+        body: 'This sidebar is your entire workflow. We\'re starting on <strong>Master Schedule</strong>, your production\'s choreographic timeline.',
       },
       {
         selector: '#grid',
