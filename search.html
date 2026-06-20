@@ -47,6 +47,7 @@
           <div class="d-flex justify-content-between mt-1" style="font-size:10px;color:#aaa;padding:0 2px;">
             <span>8 AM</span><span>12 PM</span><span>6 PM</span><span>11 PM</span>
           </div>
+          <div id="detailed-schedule-breakdown" class="mt-2" style="font-size:12.5px;display:none;"></div>
           <hr class="my-3">
           <button class="btn btn-sm btn-outline-secondary" type="button"
             data-bs-toggle="collapse" data-bs-target="#dancer-full-profile">
@@ -135,6 +136,7 @@
     <p class="text-muted mb-3" style="font-size:13px;">
       Click any rehearsal block to see which dancers are available during that time.
       This schedule is read-only. Edit it on the <a href="master.html">Master Schedule</a> page.
+      <span id="availability-mode-label" class="d-none">Availability format for this production: <strong id="availability-mode-label-text"></strong> (change on the <a href="form-builder.html?scope=season">Audition Form</a> page)</span>
     </p>
 
     <div id="no-schedule-msg" class="alert alert-info d-none">
@@ -187,6 +189,15 @@
           window.location.href = 'login.html';
         });
         document.body.style.visibility = 'visible';
+        try {
+          const modeRes = await fetch('/api/season/availability-mode');
+          if (modeRes.ok) {
+            const modeData = await modeRes.json();
+            document.getElementById('availability-mode-label-text').textContent =
+              modeData.availability_mode === 'detailed' ? 'Detailed Weekly Schedule' : 'Simple Grid';
+            document.getElementById('availability-mode-label').classList.remove('d-none');
+          }
+        } catch (_) {}
         try {
           const subRes = await fetch('/api/subscription');
           if (subRes.ok) {

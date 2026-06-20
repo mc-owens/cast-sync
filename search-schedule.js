@@ -410,6 +410,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('dancer-modal-name').textContent =
         `${dancer.first_name} ${dancer.last_name}`;
       renderMiniSchedule(dancer.availability || []);
+      renderScheduleBreakdown(dancer.availability || []);
       populateDancerDetails(dancer);
       document.getElementById('dancer-full-profile').classList.remove('show');
       new bootstrap.Modal(document.getElementById('dancerModal')).show();
@@ -417,6 +418,38 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error(err);
       alert('Could not load dancer profile.');
     }
+  }
+
+  // Detailed weekly schedule mode: blocks carry a category. Simple grid mode (the
+  // default, and the only mode that ever existed before) never sets one, so this map's
+  // fallback color keeps every existing dancer's mini-schedule looking exactly as before.
+  const CATEGORY_COLORS = { academic_class: '#3498db', dance_class: '#9b59b6', work: '#e67e22', available: '#2ecc71', other: '#95a5a6' };
+  const CATEGORY_LABELS = { academic_class: 'Academic Class', dance_class: 'Dance Class', work: 'Work', available: 'Available To Rehearse', other: 'Other' };
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // The mini-schedule's chips are too small to read labels in, so the detailed weekly
+  // schedule's "why aren't they free" context (the whole point of letting auditionees
+  // label blocks) needs a real, readable list. Simple-grid dancers have no category on
+  // any block, so this stays hidden and their view is unchanged.
+  function renderScheduleBreakdown(availability) {
+    const el = document.getElementById('detailed-schedule-breakdown');
+    const hasCategories = (availability || []).some(b => b.category);
+    if (!hasCategories) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    el.style.display = '';
+    el.innerHTML = DAYS.map((day, i) => {
+      const blocks = (availability || [])
+        .filter(b => b.day === day)
+        .sort((a, b) => timeStringToMinutes(a.startTime) - timeStringToMinutes(b.startTime));
+      if (blocks.length === 0) return '';
+      const lineItems = blocks.map(b => {
+        const catLabel = b.category ? (CATEGORY_LABELS[b.category] || 'Other') : 'Available';
+        const note = b.label ? ` (${escapeHtml(b.label)})` : '';
+        return `${b.startTime} - ${b.endTime} <strong>${escapeHtml(catLabel)}</strong>${note}`;
+      }).join('<br>');
+      return `<div class="mb-1"><span class="text-muted">${DAYS_SHORT[i]}:</span> ${lineItems}</div>`;
+    }).join('');
   }
 
   function renderMiniSchedule(availability) {
@@ -445,9 +478,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (clampStart >= clampEnd) return;
         const topPct    = ((clampStart - MINI_START) / MINI_RANGE) * 100;
         const heightPct = ((clampEnd - clampStart) / MINI_RANGE) * 100;
+        const color     = block.category ? CATEGORY_COLORS[block.category] || CATEGORY_COLORS.other : '#3498db';
         const blockEl   = document.createElement('div');
-        blockEl.style.cssText = `position:absolute;left:2px;right:2px;top:${topPct}%;height:${heightPct}%;min-height:2px;background:rgba(52,152,219,0.55);border:1px solid #3498db;border-radius:2px;`;
-        blockEl.title = `${block.startTime} – ${block.endTime}`;
+        blockEl.style.cssText = `position:absolute;left:2px;right:2px;top:${topPct}%;height:${heightPct}%;min-height:2px;background:${hexToRgba(color, 0.55)};border:1px solid ${color};border-radius:2px;`;
+        const catText = block.category ? ` ${CATEGORY_LABELS[block.category] || 'Other'}` : '';
+        blockEl.title = `${block.startTime} – ${block.endTime}${catText}` + (block.label ? `: ${block.label}` : '');
         blockArea.appendChild(blockEl);
       });
 

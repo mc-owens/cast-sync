@@ -174,7 +174,7 @@
         <div id="dynamic-fields-container"></div>
 
         <div class="mb-4">
-          <label class="form-label">Availability: select all times you are free</label>
+          <label class="form-label" id="availability-section-label">Availability: select all times you are free</label>
           <div class="schedule-wrapper">
             <div class="day-header-row" id="day-header-row"></div>
             <div class="schedule-container">
@@ -203,6 +203,7 @@
     </div>
 
     <script src="schedule.js?v=2"></script>
+    <script src="detailed-schedule.js"></script>
     <script src="app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -406,12 +407,32 @@
           const codeInput   = document.getElementById('join-code');
           const previewEl   = document.getElementById('join-code-preview');
 
+          // Which availability UI is currently mounted. The simple grid is the page's
+          // default (schedule.js auto-inits it before any join code can possibly
+          // resolve), so this only ever needs to swap once a code resolves to a
+          // different mode than what's already showing, and swap back if cleared.
+          let currentAvailabilityUI = 'grid';
+          window._activeAvailabilityMode = 'grid';
+          function setAvailabilityUI(mode) {
+            if (mode === currentAvailabilityUI) return;
+            if (currentAvailabilityUI === 'grid') window.teardownSimpleAvailability();
+            else window.teardownDetailedAvailability();
+            if (mode === 'detailed') window.initDetailedAvailability();
+            else window.initSimpleAvailability();
+            currentAvailabilityUI = mode;
+            window._activeAvailabilityMode = mode;
+            document.getElementById('availability-section-label').textContent = mode === 'detailed'
+              ? 'Availability: please fill in the calendar completely for every day of the week'
+              : 'Availability: select all times you are free';
+          }
+
           codeInput.addEventListener('input', () => {
             clearTimeout(previewTimer);
             const code = codeInput.value.trim();
             if (code.length < 6) {
               previewEl.style.display = 'none';
               renderDynamicFields([]);
+              setAvailabilityUI('grid');
               hideDraftBanner();
               return;
             }
@@ -424,11 +445,13 @@
                   previewEl.innerHTML =
                     `<span style="color:#198754;">&#10003; Joining: <strong>${data.org_name}</strong>, ${data.season_name}</span>`;
                   renderDynamicFields(data.form_schema || []);
+                  setAvailabilityUI(data.availability_mode === 'detailed' ? 'detailed' : 'grid');
                 } else {
                   previewEl.style.display = 'block';
                   previewEl.innerHTML =
                     `<span style="color:#dc3545;">&#10007; That code doesn't match any active organization. Check with your director.</span>`;
                   renderDynamicFields([]);
+                  setAvailabilityUI('grid');
                 }
               } catch (e) { previewEl.style.display = 'none'; }
               checkForDraft(code);
@@ -446,6 +469,10 @@
           const DRAFT_KEY = code => `castsync_draft_${code.toUpperCase()}`;
 
           function serializeBlocks() {
+            // Detailed weekly schedule mode (desktop paint grid or mobile extended dropdown)
+            if (currentAvailabilityUI === 'detailed' && typeof window._getDetailedAvailability === 'function') {
+              return window._getDetailedAvailability();
+            }
             // Mobile: read from dropdown UI
             if (window._mobileAvailUI && typeof window._getMobileAvailability === 'function') {
               const toT = m => { const h=Math.floor(m/60),mn=m%60,ap=h>=12?'PM':'AM',hr=h%12||12; return `${hr}:${mn.toString().padStart(2,'0')} ${ap}`; };
@@ -495,6 +522,11 @@
 
           function restoreAvailabilityBlocks(availability) {
             const parseMins = str => { const [t,ap]=str.trim().split(' '); const [h,m]=t.split(':').map(Number); let hr=h; if(ap==='PM'&&hr!==12)hr+=12; if(ap==='AM'&&hr===12)hr=0; return hr*60+m; };
+            // Detailed weekly schedule mode
+            if (currentAvailabilityUI === 'detailed' && typeof window._setDetailedAvailability === 'function') {
+              window._setDetailedAvailability(availability);
+              return;
+            }
             // Mobile: populate dropdown UI
             if (window._mobileAvailUI && typeof window._setMobileAvailability === 'function') {
               window._setMobileAvailability(availability.map(({ day, startTime, endTime }) => ({
@@ -557,7 +589,16 @@
               if (radioEl) radioEl.checked = true;
             }
             restoreCustomResponses(d.custom_responses);
-            if (d.availability?.length) restoreAvailabilityBlocks(d.availability);
+            if (d.availability?.length) {
+              // A draft saved under a different availability mode than the production
+              // currently uses (e.g. the director switched modes since) can't be
+              // restored without lossy guessing, so skip it and start that editor
+              // empty instead. "Matches" means every block agrees with the current mode.
+              const allTagged  = d.availability.every(b => b.category);
+              const noneTagged = d.availability.every(b => !b.category);
+              const shapeMatches = currentAvailabilityUI === 'detailed' ? allTagged : noneTagged;
+              if (shapeMatches) restoreAvailabilityBlocks(d.availability);
+            }
             hideDraftBanner();
           });
           document.getElementById('dismiss-draft-btn').addEventListener('click', hideDraftBanner);

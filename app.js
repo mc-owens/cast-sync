@@ -74,10 +74,14 @@ async function addDancer() {
   const gradeRadio = document.querySelector('input[name="flexRadioDefault"]:checked');
   const grade      = gradeRadio ? gradeRadio.nextElementSibling.textContent.trim() : null;
 
-  // ── Serialize availability (mobile dropdowns OR desktop drag grid) ─────────
+  // ── Serialize availability (detailed schedule, mobile dropdowns, or desktop drag grid) ─
   const availability = [];
 
-  if (window._mobileAvailUI && typeof window._getMobileAvailability === 'function') {
+  if (window._activeAvailabilityMode === 'detailed' && typeof window._getDetailedAvailability === 'function') {
+    const validationError = typeof window._getDetailedAvailabilityError === 'function' ? window._getDetailedAvailabilityError() : null;
+    if (validationError) { alert(`Please finish your weekly schedule before submitting: ${validationError}`); return; }
+    availability.push(...window._getDetailedAvailability());
+  } else if (window._mobileAvailUI && typeof window._getMobileAvailability === 'function') {
     window._getMobileAvailability().forEach(({ day, startMins, endMins }) => {
       availability.push({ day, startTime: toTimeString(startMins), endTime: toTimeString(endMins) });
     });

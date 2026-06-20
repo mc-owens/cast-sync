@@ -56,7 +56,9 @@ async function sendConfirmationEmail(toEmail, secondaryEmail, data, orgName, sea
   if (!emailEnabled) return;
   const { first_name, last_name, phone, address, grade, technique_classes, injuries, absences, availability } = data;
   const recipients = [toEmail, secondaryEmail].filter(Boolean);
-  const availLines = (availability || []).map(a => `${a.day}: ${a.startTime} – ${a.endTime}`).join('<br>') || 'None provided';
+  const availLines = (availability || []).map(a =>
+    `${a.day}: ${a.startTime} – ${a.endTime}${a.category ? ` (${CATEGORY_LABELS[a.category] || a.category})` : ''}`
+  ).join('<br>') || 'None provided';
   const row = (label, value) =>
     `<tr><td style="padding:8px 12px;font-weight:bold;color:#555;white-space:nowrap;vertical-align:top;border-bottom:1px solid #f0f0f0;">${label}</td>
          <td style="padding:8px 12px;color:#222;border-bottom:1px solid #f0f0f0;">${value || '—'}</td></tr>`;
@@ -109,6 +111,54 @@ function timeToMinutes(t) {
   if (ampm === 'PM' && hour !== 12) hour += 12;
   if (ampm === 'AM' && hour === 12) hour = 0;
   return hour * 60 + m;
+}
+
+// Detailed weekly schedule mode (seasons.availability_mode = 'detailed'): blocks carry
+// a category. Simple grid mode (the only mode that ever existed before, and still the
+// default) never sets category at all. A block with no category always counts as
+// available, so every existing submission keeps working with zero migration and no
+// reader needs to know which mode produced the data, only whether each block is tagged.
+const AVAILABILITY_CATEGORIES = ['academic_class', 'dance_class', 'work', 'available', 'other'];
+const CATEGORY_LABELS = { academic_class: 'Academic Class', dance_class: 'Dance Class', work: 'Work', available: 'Available To Rehearse', other: 'Other' };
+
+function isAvailableBlock(block) {
+  return !block.category || block.category === 'available';
+}
+
+const AVAILABILITY_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const AVAILABILITY_WINDOW_START = 480;  // 8:00 AM, in minutes
+const AVAILABILITY_WINDOW_END   = 1380; // 11:00 PM, in minutes
+
+function minutesToTimeString(mins) {
+  const h = Math.floor(mins / 60), m = mins % 60;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hr   = h % 12 === 0 ? 12 : h % 12;
+  return `${hr}:${m.toString().padStart(2, '0')} ${ampm}`;
+}
+
+// Detailed mode only: every day must tile [8:00 AM, 11:00 PM) exactly, no gaps or
+// overlaps, every block tagged with a real category. Returns an error string naming
+// the day and problem, or null if valid. Client-side painting can't produce an invalid
+// state, but this never trusts the client.
+function validateDetailedAvailability(availability) {
+  for (const day of AVAILABILITY_DAYS) {
+    const intervals = [];
+    for (const b of availability.filter(b => b.day === day)) {
+      if (!AVAILABILITY_CATEGORIES.includes(b.category)) return `${day}: every block needs a valid category.`;
+      const start = timeToMinutes(b.startTime), end = timeToMinutes(b.endTime);
+      if (!(end > start)) return `${day}: a block's end time must be after its start time.`;
+      intervals.push({ start, end });
+    }
+    intervals.sort((a, b) => a.start - b.start);
+    let expected = AVAILABILITY_WINDOW_START;
+    for (const iv of intervals) {
+      if (iv.start > expected) return `${day}: there's a gap before ${minutesToTimeString(iv.start)}.`;
+      if (iv.start < expected) return `${day}: two blocks overlap around ${minutesToTimeString(iv.start)}.`;
+      expected = iv.end;
+    }
+    if (expected < AVAILABILITY_WINDOW_END) return `${day}: the schedule doesn't reach all the way to 11:00 PM.`;
+  }
+  return null;
 }
 
 // Formats a Date as YYYY-MM-DD using its LOCAL calendar fields, never toISOString()
@@ -723,7 +773,7 @@ app.get('/api/orgs/preview', async (req, res) => {
   try {
     // Look up by season join code (production code)
     const result = await pool.query(
-      `SELECT o.name AS org_name, s.name AS season_name, s.form_schema
+      `SELECT o.name AS org_name, s.name AS season_name, s.form_schema, s.availability_mode
        FROM seasons s JOIN orgs o ON o.id = s.org_id
        WHERE UPPER(s.join_code) = UPPER($1) LIMIT 1`,
       [join_code.trim()]
@@ -734,6 +784,7 @@ app.get('/api/orgs/preview', async (req, res) => {
       org_name: result.rows[0].org_name,
       season_name: result.rows[0].season_name,
       form_schema: result.rows[0].form_schema || [],
+      availability_mode: result.rows[0].availability_mode || 'grid',
     });
   } catch (err) {
     res.json({ found: false });
@@ -1507,7 +1558,7 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
   try {
     // Look up production by its join code
     const seasonLookup = await pool.query(
-      `SELECT s.id AS season_id, s.name AS season_name, o.id AS org_id, o.name AS org_name
+      `SELECT s.id AS season_id, s.name AS season_name, s.availability_mode, o.id AS org_id, o.name AS org_name
        FROM seasons s JOIN orgs o ON o.id = s.org_id
        WHERE UPPER(s.join_code) = UPPER($1) LIMIT 1`,
       [join_code.trim()]
@@ -1517,6 +1568,11 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
 
     const org    = { id: seasonLookup.rows[0].org_id,    name: seasonLookup.rows[0].org_name };
     const season = { id: seasonLookup.rows[0].season_id, name: seasonLookup.rows[0].season_name };
+
+    if (seasonLookup.rows[0].availability_mode === 'detailed') {
+      const validationError = validateDetailedAvailability(availability || []);
+      if (validationError) return res.status(400).json({ error: validationError });
+    }
 
     // Upsert dancer profile (reusable across orgs)
     await pool.query(
@@ -2788,6 +2844,32 @@ app.patch('/api/season/room-count', requireAuth('master'), async (req, res) => {
   }
 });
 
+// GET /api/season/availability-mode: return current production's availability collection mode
+app.get('/api/season/availability-mode', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query('SELECT availability_mode FROM seasons WHERE id = $1', [seasonId]);
+    res.json({ availability_mode: result.rows[0]?.availability_mode || 'grid' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch availability mode.' });
+  }
+});
+
+// PATCH /api/season/availability-mode: director switches between simple grid and detailed schedule
+app.patch('/api/season/availability-mode', requireAuth('master'), async (req, res) => {
+  const { availability_mode } = req.body;
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  if (!['grid', 'detailed'].includes(availability_mode)) return res.status(400).json({ error: 'availability_mode must be grid or detailed.' });
+  try {
+    await pool.query('UPDATE seasons SET availability_mode = $1 WHERE id = $2', [availability_mode, seasonId]);
+    res.json({ availability_mode });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update availability mode.' });
+  }
+});
+
 // GET /api/season/production-dates: return current production's date-range fields
 app.get('/api/season/production-dates', requireAuth('master'), async (req, res) => {
   const { seasonId } = req.session;
@@ -3257,15 +3339,6 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
 
-  function timeToMinutes(t) {
-    const [time, ampm] = t.trim().split(' ');
-    const [h, m] = time.split(':').map(Number);
-    let hour = h;
-    if (ampm === 'PM' && hour !== 12) hour += 12;
-    if (ampm === 'AM' && hour === 12) hour = 0;
-    return hour * 60 + m;
-  }
-
   try {
     const blocksResult = await pool.query(
       'SELECT day, start_time, end_time FROM master_blocks WHERE piece_id = $1',
@@ -3311,7 +3384,7 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
 
     const fully = [], partially = [];
     dancersResult.rows.forEach(dancer => {
-      const avail = dancer.availability || [];
+      const avail = (dancer.availability || []).filter(isAvailableBlock);
       let covered = 0;
       pieceBlocks.forEach(block => {
         const bs = timeToMinutes(block.start_time), be = timeToMinutes(block.end_time);
@@ -4029,6 +4102,20 @@ async function runMigrations() {
     `);
     console.log('Migration step 20 (absence_requests table) complete.');
   } catch (err) { console.error('Migration step 20 error:', err.message); }
+
+  // Step 21: optional detailed weekly schedule, per production. 'grid' (the only mode
+  // that ever existed before this) is the default for every existing and future row,
+  // so nothing changes for anyone unless a director opts in. See isAvailableBlock
+  // near the top of this file for why no migration of existing submissions.availability
+  // data is needed.
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE seasons ADD COLUMN availability_mode VARCHAR(20) NOT NULL DEFAULT 'grid';
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 21 (seasons.availability_mode) complete.');
+  } catch (err) { console.error('Migration step 21 error:', err.message); }
 
   // Step 22: production-level date fields. All nullable, all default NULL, so nothing
   // changes for any existing production until a director sets them in Production Settings.

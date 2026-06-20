@@ -229,6 +229,19 @@ body {
   border-bottom: 1px solid #e8e8e8;
 }
 
+/* Detailed weekly schedule mode: paintable grid cells (.time-slot is shared with the
+   simple grid's static labels, which aren't clickable, so the affordance lives here). */
+.detailed-slot {
+  cursor: pointer;
+}
+.detailed-slot:hover {
+  outline: 1px solid rgba(0,0,0,0.15);
+}
+.category-btn {
+  font-weight: 600;
+  transition: background-color .1s, color .1s;
+}
+
 .block {
   position: absolute;
   background: rgba(37, 99, 235, 0.13);

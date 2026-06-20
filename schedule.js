@@ -1,18 +1,24 @@
-document.addEventListener("DOMContentLoaded", () => {
+(function () {
   const DAYS        = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   const START_HOUR  = 8;
   const END_HOUR    = 23;
   const INCREMENT   = 15;
   const SLOT_HEIGHT = 12.5;
 
-  // Touch device or narrow screen → mobile dropdown UI
-  const isMobile = window.innerWidth < 1024;
+  // Captured once, before the first init, so teardown can restore the wrapper to its
+  // pristine static markup regardless of whether desktop or mobile (which replaces the
+  // wrapper's entire innerHTML) ran last. Lets auditionForm.html swap this UI out for
+  // detailed-schedule.js's UI and back again cleanly.
+  let originalWrapperHtml = null;
+  let mouseupHandler = null;
 
-  if (isMobile) {
-    window._mobileAvailUI = true;
-    initMobileUI();
-  } else {
-    initDesktopGrid();
+  function fmt(h, m) {
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const hr = h % 12 === 0 ? 12 : h % 12;
+    return `${hr}:${m.toString().padStart(2,'0')} ${ampm}`;
+  }
+  function fmt2(totalMins) {
+    return fmt(Math.floor(totalMins / 60), totalMins % 60);
   }
 
   // ─── Desktop drag grid ────────────────────────────────────────────────────
@@ -21,7 +27,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const grid       = document.getElementById('grid');
     const headerRow  = document.getElementById('day-header-row');
 
-    // Header row
     headerRow.appendChild(document.createElement('div'));
     DAYS.forEach(day => {
       const header = document.createElement('div');
@@ -30,7 +35,6 @@ document.addEventListener("DOMContentLoaded", () => {
       headerRow.appendChild(header);
     });
 
-    // Time column
     for (let h = START_HOUR; h <= END_HOUR; h++) {
       const label = document.createElement('div');
       label.className = 'time-label';
@@ -38,7 +42,6 @@ document.addEventListener("DOMContentLoaded", () => {
       timeColumn.appendChild(label);
     }
 
-    // Grid columns
     DAYS.forEach(() => {
       const col = document.createElement('div');
       col.className = 'day-column';
@@ -53,7 +56,6 @@ document.addEventListener("DOMContentLoaded", () => {
       grid.appendChild(col);
     });
 
-    // Interaction
     let isSelecting = false, startSlot = 0, currentBlock = null;
     let isResizing = false, resizeDirection = null, offsetY = 0;
 
@@ -123,9 +125,10 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    document.addEventListener('mouseup', () => {
+    mouseupHandler = () => {
       isSelecting = false; isResizing = false; offsetY = 0; currentBlock = null;
-    });
+    };
+    document.addEventListener('mouseup', mouseupHandler);
 
     grid.addEventListener('click', e => {
       if (e.target.classList.contains('delete-btn')) e.target.parentElement.remove();
@@ -144,7 +147,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const wrapper = document.querySelector('.schedule-wrapper');
     if (!wrapper) return;
 
-    // Build time option list: 8:00 AM → 11:45 PM in 15-min steps
     const timeOpts = [];
     for (let mins = START_HOUR * 60; mins <= END_HOUR * 60 + 45; mins += INCREMENT) {
       timeOpts.push({ label: fmt2(mins), mins });
@@ -169,8 +171,8 @@ document.addEventListener("DOMContentLoaded", () => {
       row.className = 'mob-slot';
       row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;';
 
-      const fromSel = makeSelect(fromMins ?? 9 * 60);   // default 9:00 AM
-      const toSel   = makeSelect(toMins   ?? 10 * 60);  // default 10:00 AM
+      const fromSel = makeSelect(fromMins ?? 9 * 60);
+      const toSel   = makeSelect(toMins   ?? 10 * 60);
 
       const sep = document.createElement('span');
       sep.textContent = 'to';
@@ -190,7 +192,6 @@ document.addEventListener("DOMContentLoaded", () => {
       slotsEl.appendChild(row);
     }
 
-    // Replace wrapper contents with mobile UI
     wrapper.innerHTML = '';
     wrapper.style.cssText = 'box-shadow:none;border-radius:0;overflow:visible;border:none;';
 
@@ -227,7 +228,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     wrapper.appendChild(container);
 
-    // ── Public API used by app.js and auditionForm.html inline script ─────────
     window._getMobileAvailability = () => {
       const result = [];
       container.querySelectorAll('.mob-slots').forEach(slotsEl => {
@@ -257,13 +257,39 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
-  // ─── Shared time formatting helpers ──────────────────────────────────────
-  function fmt(h, m) {
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const hr = h % 12 === 0 ? 12 : h % 12;
-    return `${hr}:${m.toString().padStart(2,'0')} ${ampm}`;
-  }
-  function fmt2(totalMins) {
-    return fmt(Math.floor(totalMins / 60), totalMins % 60);
-  }
-});
+  // ─── Public init/teardown, so auditionForm.html can swap this UI for
+  // detailed-schedule.js's UI once it knows which mode the resolved production uses ──
+  window.initSimpleAvailability = function () {
+    const wrapper = document.querySelector('.schedule-wrapper');
+    if (wrapper && originalWrapperHtml === null) originalWrapperHtml = wrapper.innerHTML;
+
+    const isMobile = window.innerWidth < 1024;
+    if (isMobile) {
+      window._mobileAvailUI = true;
+      initMobileUI();
+    } else {
+      window._mobileAvailUI = false;
+      initDesktopGrid();
+    }
+  };
+
+  window.teardownSimpleAvailability = function () {
+    const wrapper = document.querySelector('.schedule-wrapper');
+    if (wrapper && originalWrapperHtml !== null) {
+      wrapper.innerHTML = originalWrapperHtml;
+      wrapper.removeAttribute('style');
+    }
+    if (mouseupHandler) {
+      document.removeEventListener('mouseup', mouseupHandler);
+      mouseupHandler = null;
+    }
+    delete window._mobileAvailUI;
+    delete window._getMobileAvailability;
+    delete window._setMobileAvailability;
+    delete window._clearMobileAvailability;
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    window.initSimpleAvailability();
+  });
+})();

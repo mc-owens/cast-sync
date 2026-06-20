@@ -58,12 +58,32 @@
       <div id="header-actions"></div>
     </div>
 
+    <div class="border rounded p-3 mb-4 d-none" id="availability-mode-section" style="max-width:640px;background:#fafafa;">
+      <label class="form-label fw-semibold mb-1" style="font-size:14px;">Availability Collection Type</label>
+      <p class="text-muted mb-2" style="font-size:12px;">
+        Simple Availability Grid just asks auditionees to mark the times they're free.
+        Detailed Weekly Schedule requires them to account for their entire week with
+        categorized blocks (class, work, etc.), so you can see not just when they're
+        free but why they aren't. Existing submissions aren't affected by changing this.
+      </p>
+      <div class="form-check">
+        <input class="form-check-input" type="radio" name="availability-mode" id="availability-mode-grid" value="grid">
+        <label class="form-check-label" for="availability-mode-grid" style="font-size:13px;">Simple Availability Grid</label>
+      </div>
+      <div class="form-check">
+        <input class="form-check-input" type="radio" name="availability-mode" id="availability-mode-detailed" value="detailed">
+        <label class="form-check-label" for="availability-mode-detailed" style="font-size:13px;">Detailed Weekly Schedule</label>
+      </div>
+      <span id="availability-mode-saved" class="text-success d-none" style="font-size:12px;">Saved.</span>
+    </div>
+
     <div class="row g-4">
       <div class="col-lg-7">
 
         <div class="alert alert-secondary py-2 px-3 mb-3" style="font-size:13px;">
-          First name, last name, email, phone number, and the availability grid are always
-          included on the form and can't be removed. Manage every other question below.
+          First name, last name, email, phone number, and an availability section (grid
+          or detailed schedule, per the setting above) are always included on the form
+          and can't be removed. Manage every other question below.
           Drag <span style="color:#888;">⠿</span> to reorder.
         </div>
 
@@ -291,7 +311,7 @@
         ${fieldsHtml}
         <div class="mb-2">
           <label class="form-label" style="font-size:13px;">Availability</label>
-          <div class="preview-availability-box">Weekly availability grid</div>
+          <div class="preview-availability-box">${document.getElementById('availability-mode-detailed')?.checked ? 'Detailed weekly schedule' : 'Weekly availability grid'}</div>
         </div>`;
     }
 
@@ -399,7 +419,37 @@
         `<a href="org-select.html" class="btn btn-sm btn-outline-secondary">← Back</a>`;
     } else {
       document.getElementById('page-subtitle').textContent = 'Customize the questions auditionees answer for this production only.';
+      document.getElementById('availability-mode-section').classList.remove('d-none');
+      loadAvailabilityMode();
     }
+
+    async function loadAvailabilityMode() {
+      try {
+        const res = await fetch('/api/season/availability-mode');
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById(data.availability_mode === 'detailed' ? 'availability-mode-detailed' : 'availability-mode-grid').checked = true;
+        renderPreview();
+      } catch (e) { /* leave unchecked, no big deal */ }
+    }
+
+    document.querySelectorAll('input[name="availability-mode"]').forEach(input => {
+      input.addEventListener('change', async () => {
+        const mode = document.querySelector('input[name="availability-mode"]:checked').value;
+        const savedEl = document.getElementById('availability-mode-saved');
+        try {
+          const res = await fetch('/api/season/availability-mode', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ availability_mode: mode }),
+          });
+          if (!res.ok) { alert('Could not save availability mode.'); return; }
+          savedEl.classList.remove('d-none');
+          setTimeout(() => savedEl.classList.add('d-none'), 2000);
+          renderPreview();
+        } catch (e) { alert('Could not connect to server.'); }
+      });
+    });
   </script>
 
   <script>
