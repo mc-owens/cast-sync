@@ -1916,6 +1916,49 @@ async function notifyChoreographerForPiece(pieceId, subject, html) {
   } catch (err) { console.error('notifyChoreographerForPiece error:', err.message); }
 }
 
+async function getCastEmailsForPiece(pieceId) {
+  const result = await pool.query(
+    `SELECT u.email, dp.secondary_email FROM piece_casts pc
+     JOIN users u ON u.id = pc.user_id
+     LEFT JOIN dancer_profiles dp ON dp.user_id = u.id
+     WHERE pc.piece_id = $1`,
+    [pieceId]
+  );
+  return [...new Set(result.rows.flatMap(r => [r.email, r.secondary_email]).filter(Boolean))];
+}
+
+// Notifies everyone a rehearsal schedule change (cancel/move/add/undo) affects: every
+// cast member of the piece (primary + secondary email), every director/co-director of
+// the production, and the choreographer if one is on file. Mirrors the absence-request
+// notification pattern exactly, just with a different recipient mix (cast instead of
+// the single auditionee who filed the request).
+async function notifyPieceScheduleChange(pieceId, orgId, seasonId, subject, html) {
+  if (!emailEnabled || !pieceId) return;
+  try {
+    const [castEmails, directorEmails] = await Promise.all([
+      getCastEmailsForPiece(pieceId),
+      getDirectorEmails(orgId, seasonId),
+    ]);
+    [...new Set([...castEmails, ...directorEmails])].forEach(to => {
+      resend.emails.send({ from: FROM_EMAIL, to, subject, html }).catch(err => console.error('Schedule change email error:', err.message));
+    });
+    notifyChoreographerForPiece(pieceId, subject, html);
+  } catch (err) { console.error('notifyPieceScheduleChange error:', err.message); }
+}
+
+function formatDateLong(dateStr) {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+function scheduleChangeEmailHTML(orgName, seasonName, pieceName, bodyText) {
+  return `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
+    <h3 style="margin-bottom:4px;">Schedule Update</h3>
+    <p style="color:#555;font-size:13px;margin-top:0;">${orgName}, ${seasonName} &middot; ${pieceName}</p>
+    <p>${bodyText}</p>
+    <p style="color:#aaa;font-size:12px;">This is an automated message from CastSync.</p>
+  </div>`;
+}
+
 // GET /api/my-absence-context: every production the auditionee submitted to, with
 // casting-published status and the pieces they're actually cast in (for the form's
 // piece-or-TBD picker)
@@ -2618,7 +2661,7 @@ app.get('/api/master-blocks/occurrences', requireAuth('master'), async (req, res
 // existing template block. Idempotent (ON CONFLICT...DO UPDATE) since there's no UI for
 // this yet and re-running the same call during testing/iteration should just update, not 409.
 app.post('/api/master-blocks/:id/exceptions', requireAuth('master'), async (req, res) => {
-  const { seasonId, userId } = req.session;
+  const { seasonId, orgId, userId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   const { original_date, type, new_date, new_start_time, new_end_time, note } = req.body;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(original_date || '')) return res.status(400).json({ error: 'original_date must be a YYYY-MM-DD date.' });
@@ -2628,12 +2671,14 @@ app.post('/api/master-blocks/:id/exceptions', requireAuth('master'), async (req,
   }
   try {
     const blockCheck = await pool.query(
-      `SELECT mb.piece_id FROM master_blocks mb JOIN pieces p ON p.id = mb.piece_id
+      `SELECT mb.piece_id, mb.start_time, mb.end_time, p.name AS piece_name, s.name AS season_name, o.name AS org_name
+       FROM master_blocks mb JOIN pieces p ON p.id = mb.piece_id
+       JOIN seasons s ON s.id = p.season_id JOIN orgs o ON o.id = s.org_id
        WHERE mb.id = $1 AND p.season_id = $2`,
       [req.params.id, seasonId]
     );
     if (blockCheck.rows.length === 0) return res.status(404).json({ error: 'Block not found in your active season.' });
-    const pieceId = blockCheck.rows[0].piece_id;
+    const { piece_id: pieceId, piece_name: pieceName, season_name: seasonName, org_name: orgName, start_time: usualStart, end_time: usualEnd } = blockCheck.rows[0];
     const result = await pool.query(
       `INSERT INTO master_block_exceptions (season_id, piece_id, master_block_id, original_date, type, new_date, new_start_time, new_end_time, note, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
@@ -2643,6 +2688,23 @@ app.post('/api/master-blocks/:id/exceptions', requireAuth('master'), async (req,
        RETURNING id`,
       [seasonId, pieceId, req.params.id, original_date, type, new_date || null, new_start_time || null, new_end_time || null, note || null, userId]
     );
+
+    const niceOriginal = formatDateLong(original_date);
+    if (type === 'cancelled') {
+      notifyPieceScheduleChange(pieceId, orgId, seasonId,
+        `Rehearsal Cancelled: ${pieceName} on ${niceOriginal}`,
+        scheduleChangeEmailHTML(orgName, seasonName, pieceName,
+          `<strong>${pieceName}</strong>'s rehearsal on <strong>${niceOriginal}</strong> (${usualStart} &ndash; ${usualEnd}) has been cancelled. This is a one-time change; the regular weekly schedule is not affected.`)
+      );
+    } else {
+      const niceNew = formatDateLong(new_date);
+      notifyPieceScheduleChange(pieceId, orgId, seasonId,
+        `Rehearsal Moved: ${pieceName}`,
+        scheduleChangeEmailHTML(orgName, seasonName, pieceName,
+          `<strong>${pieceName}</strong>'s rehearsal usually on <strong>${niceOriginal}</strong> has been moved to <strong>${niceNew}</strong>, ${new_start_time} &ndash; ${new_end_time}, for this week only. The regular weekly schedule is not affected.`)
+      );
+    }
+
     res.status(201).json({ id: result.rows[0].id });
   } catch (err) {
     console.error(err.message);
@@ -2653,19 +2715,33 @@ app.post('/api/master-blocks/:id/exceptions', requireAuth('master'), async (req,
 // POST /api/pieces/:pieceId/one-time-rehearsals: add a one-time rehearsal with no weekly
 // template tie at all (master_block_id stays NULL).
 app.post('/api/pieces/:pieceId/one-time-rehearsals', requireAuth('master'), async (req, res) => {
-  const { seasonId, userId } = req.session;
+  const { seasonId, orgId, userId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   const { date, start_time, end_time, note } = req.body;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return res.status(400).json({ error: 'date must be a YYYY-MM-DD date.' });
   if (!start_time || !end_time) return res.status(400).json({ error: 'start_time and end_time are required.' });
   try {
-    const pieceCheck = await pool.query('SELECT id FROM pieces WHERE id = $1 AND season_id = $2', [req.params.pieceId, seasonId]);
+    const pieceCheck = await pool.query(
+      `SELECT p.id, p.name AS piece_name, s.name AS season_name, o.name AS org_name
+       FROM pieces p JOIN seasons s ON s.id = p.season_id JOIN orgs o ON o.id = s.org_id
+       WHERE p.id = $1 AND p.season_id = $2`,
+      [req.params.pieceId, seasonId]
+    );
     if (pieceCheck.rows.length === 0) return res.status(404).json({ error: 'Piece not found in your active season.' });
+    const { piece_name: pieceName, season_name: seasonName, org_name: orgName } = pieceCheck.rows[0];
     const result = await pool.query(
       `INSERT INTO master_block_exceptions (season_id, piece_id, master_block_id, original_date, type, new_date, new_start_time, new_end_time, note, created_by)
        VALUES ($1,$2,NULL,$3,'added',$3,$4,$5,$6,$7) RETURNING id`,
       [seasonId, req.params.pieceId, date, start_time, end_time, note || null, userId]
     );
+
+    const niceDate = formatDateLong(date);
+    notifyPieceScheduleChange(req.params.pieceId, orgId, seasonId,
+      `New One-Time Rehearsal: ${pieceName} on ${niceDate}`,
+      scheduleChangeEmailHTML(orgName, seasonName, pieceName,
+        `A one-time rehearsal has been added for <strong>${pieceName}</strong> on <strong>${niceDate}</strong>, ${start_time} &ndash; ${end_time}.${note ? ` Note: ${note}` : ''}`)
+    );
+
     res.status(201).json({ id: result.rows[0].id });
   } catch (err) {
     console.error(err.message);
@@ -2676,14 +2752,42 @@ app.post('/api/pieces/:pieceId/one-time-rehearsals', requireAuth('master'), asyn
 // DELETE /api/master-blocks/exceptions/:exceptionId: remove an exception (a cancelled or
 // moved date reverts to template behavior; a one-time addition is removed outright).
 app.delete('/api/master-blocks/exceptions/:exceptionId', requireAuth('master'), async (req, res) => {
-  const { seasonId } = req.session;
+  const { seasonId, orgId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
-    const result = await pool.query(
-      'DELETE FROM master_block_exceptions WHERE id = $1 AND season_id = $2',
+    // Fetch the exception before deleting it -- the notification content depends on
+    // what kind of change is being undone, and that information disappears once the
+    // row is gone.
+    const excRow = await pool.query(
+      `SELECT mbe.id, mbe.type, mbe.piece_id, mbe.new_start_time, mbe.new_end_time,
+              to_char(mbe.original_date, 'YYYY-MM-DD') AS original_date,
+              to_char(mbe.new_date, 'YYYY-MM-DD') AS new_date,
+              p.name AS piece_name, s.name AS season_name, o.name AS org_name
+       FROM master_block_exceptions mbe
+       JOIN pieces p ON p.id = mbe.piece_id
+       JOIN seasons s ON s.id = mbe.season_id JOIN orgs o ON o.id = s.org_id
+       WHERE mbe.id = $1 AND mbe.season_id = $2`,
       [req.params.exceptionId, seasonId]
     );
-    if (result.rowCount === 0) return res.status(404).json({ error: 'Exception not found in your active season.' });
+    if (excRow.rows.length === 0) return res.status(404).json({ error: 'Exception not found in your active season.' });
+    const exc = excRow.rows[0];
+
+    await pool.query('DELETE FROM master_block_exceptions WHERE id = $1', [req.params.exceptionId]);
+
+    const niceOriginal = formatDateLong(exc.original_date);
+    let subject, bodyHtml;
+    if (exc.type === 'cancelled') {
+      subject = `Rehearsal Restored: ${exc.piece_name} on ${niceOriginal}`;
+      bodyHtml = `Good news: <strong>${exc.piece_name}</strong>'s rehearsal on <strong>${niceOriginal}</strong> is back on as scheduled.`;
+    } else if (exc.type === 'moved') {
+      subject = `Rehearsal Schedule Restored: ${exc.piece_name}`;
+      bodyHtml = `<strong>${exc.piece_name}</strong>'s rehearsal on <strong>${niceOriginal}</strong> is back to its usual time. The move to <strong>${formatDateLong(exc.new_date)}</strong> has been cancelled.`;
+    } else {
+      subject = `One-Time Rehearsal Removed: ${exc.piece_name}`;
+      bodyHtml = `The one-time rehearsal for <strong>${exc.piece_name}</strong> on <strong>${niceOriginal}</strong> has been removed.`;
+    }
+    notifyPieceScheduleChange(exc.piece_id, orgId, seasonId, subject, scheduleChangeEmailHTML(exc.org_name, exc.season_name, exc.piece_name, bodyHtml));
+
     res.json({ message: 'Exception removed.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to remove exception.' });
