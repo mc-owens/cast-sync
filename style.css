@@ -250,6 +250,18 @@ body {
   box-shadow: 0 0 0 2px rgba(220,53,69,0.18);
 }
 
+.master-block.block-cancelled-this-week {
+  opacity: 0.35;
+  background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.08), rgba(0,0,0,0.08) 6px, transparent 6px, transparent 12px);
+}
+
+.one-time-block {
+  cursor: default;
+}
+.one-time-block .delete-btn {
+  cursor: pointer;
+}
+
 .resize-handle {
   position: absolute;
   height: 6px;

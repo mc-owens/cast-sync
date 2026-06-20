@@ -64,6 +64,84 @@
     </div>
   </div>
 
+  <!-- Delete rehearsal block confirmation modal -->
+  <div class="modal fade" id="deleteBlockModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content" style="border:none;border-radius:14px;">
+        <div class="modal-header" style="border-bottom:none;padding-bottom:0;">
+          <h5 class="modal-title" style="font-size:17px;font-weight:700;">Delete This Rehearsal?</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" style="padding-top:6px;">
+          <p id="delete-block-modal-text" class="text-muted mb-3" style="font-size:13.5px;"></p>
+
+          <div class="d-flex flex-column gap-2" id="delete-block-choices">
+            <button type="button" class="btn btn-primary w-100 d-none" id="move-one-date-btn">Move just this date</button>
+            <button type="button" class="btn btn-outline-dark w-100 d-none" id="cancel-one-date-btn">Cancel just this date</button>
+            <button type="button" class="btn btn-outline-danger w-100" id="confirm-delete-block-btn">Delete from every week</button>
+            <button type="button" class="btn w-100" data-bs-dismiss="modal" style="color:var(--muted);">Never mind</button>
+          </div>
+
+          <div class="d-none" id="move-date-form">
+            <label class="form-label" style="font-size:13px;font-weight:600;">New Date</label>
+            <input type="date" class="form-control form-control-sm mb-2" id="move-new-date-input">
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <label class="form-label" style="font-size:13px;font-weight:600;">Start Time</label>
+                <input type="time" class="form-control form-control-sm" id="move-new-start-input">
+              </div>
+              <div class="col-6">
+                <label class="form-label" style="font-size:13px;font-weight:600;">End Time</label>
+                <input type="time" class="form-control form-control-sm" id="move-new-end-input">
+              </div>
+            </div>
+            <div class="d-flex flex-column gap-2">
+              <button type="button" class="btn btn-primary w-100" id="confirm-move-btn">Confirm Move</button>
+              <button type="button" class="btn w-100" id="move-back-btn" style="color:var(--muted);">Back</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add a one-time rehearsal modal -->
+  <div class="modal fade" id="addOneTimeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content" style="border:none;border-radius:14px;">
+        <div class="modal-header" style="border-bottom:none;padding-bottom:0;">
+          <h5 class="modal-title" style="font-size:17px;font-weight:700;">Add a One-Time Rehearsal</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" style="padding-top:6px;">
+          <p class="text-muted mb-3" style="font-size:13.5px;">
+            This adds an extra rehearsal on a specific date without changing the weekly recurring schedule.
+          </p>
+          <label class="form-label" style="font-size:13px;font-weight:600;">Piece</label>
+          <select class="form-select form-select-sm mb-2" id="one-time-piece-select"></select>
+          <label class="form-label" style="font-size:13px;font-weight:600;">Date</label>
+          <input type="date" class="form-control form-control-sm mb-2" id="one-time-date-input">
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label" style="font-size:13px;font-weight:600;">Start Time</label>
+              <input type="time" class="form-control form-control-sm" id="one-time-start-input">
+            </div>
+            <div class="col-6">
+              <label class="form-label" style="font-size:13px;font-weight:600;">End Time</label>
+              <input type="time" class="form-control form-control-sm" id="one-time-end-input">
+            </div>
+          </div>
+          <label class="form-label" style="font-size:13px;font-weight:600;">Note (optional)</label>
+          <input type="text" class="form-control form-control-sm mb-3" id="one-time-note-input" placeholder="e.g. Extra run before tech">
+          <div class="d-flex flex-column gap-2">
+            <button type="button" class="btn btn-primary w-100" id="confirm-add-one-time-btn">Add Rehearsal</button>
+            <button type="button" class="btn w-100" data-bs-dismiss="modal" style="color:var(--muted);">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Piece assignment modal -->
   <div class="modal fade" id="pieceModal" tabindex="-1" aria-labelledby="pieceModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -160,6 +238,21 @@
         <div id="room-conflict-banner" class="alert alert-danger py-2 px-3 mb-2" style="font-size:13px;display:none;">
           <strong>Room conflict:</strong> Some pieces overlap more than your available rooms. Red blocks exceed capacity.
         </div>
+
+        <div id="week-nav-prompt" class="alert alert-light border py-2 px-3 mb-2 d-none no-print" style="font-size:13px;">
+          Add <a href="production-settings.html">production dates</a> to enable week-by-week navigation.
+          <button type="button" class="btn-close float-end" id="week-nav-prompt-dismiss" aria-label="Dismiss" style="font-size:10px;"></button>
+        </div>
+        <div id="week-nav-strip" class="d-none no-print mb-2" style="display:flex;align-items:center;gap:14px;">
+          <button class="btn btn-sm btn-outline-secondary" id="week-prev-btn">&lt; Previous Week</button>
+          <span id="week-label" style="font-size:13px;font-weight:600;"></span>
+          <button class="btn btn-sm btn-outline-secondary" id="week-next-btn">Next Week &gt;</button>
+        </div>
+        <p class="text-muted no-print" style="font-size:12.5px;margin-bottom:4px;">
+          Showing your weekly rehearsal template. Changes here apply every week unless noted otherwise.
+          <button type="button" class="btn btn-link p-0 ms-1" id="add-one-time-btn" style="font-size:12.5px;text-decoration:none;color:var(--gold);font-weight:600;">+ Add a one-time rehearsal</button>
+        </p>
+
         <p class="text-muted" style="font-size:13px;">Drag to create a rehearsal block. Click &times; to delete.</p>
         <div class="schedule-wrapper">
           <div class="day-header-row" id="day-header-row"></div>
@@ -227,6 +320,90 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
+    // Week navigator: purely a navigation/preview affordance over the unchanged weekly
+    // template grid below it. The grid's own block CRUD always edits master_blocks
+    // regardless of which week is shown here -- see the persistent note in the page
+    // itself. Only active once a production has both a start and end date set.
+    function ymd(date) {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+    function dateFromYMD(s) { return new Date(`${s}T00:00:00`); }
+    function mondayOf(date) {
+      const d = new Date(date);
+      const day = d.getDay(); // 0 = Sunday ... 6 = Saturday
+      d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+      return d;
+    }
+    function sundayOf(monday) {
+      const d = new Date(monday);
+      d.setDate(d.getDate() + 6);
+      return d;
+    }
+    function formatWeekLabel(monday, sunday) {
+      const startStr = monday.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+      const endStr = sunday.toLocaleDateString('en-US', monday.getMonth() === sunday.getMonth() ? { day: 'numeric' } : { month: 'long', day: 'numeric' });
+      return `Week of ${startStr} – ${endStr}`;
+    }
+
+    async function initWeekNav() {
+      let dates;
+      try {
+        const res = await fetch('/api/season/production-dates');
+        if (!res.ok) return;
+        dates = await res.json();
+      } catch (e) { return; }
+
+      if (!dates.start_date || !dates.end_date) {
+        document.getElementById('week-nav-prompt').classList.remove('d-none');
+        document.getElementById('week-nav-prompt-dismiss').addEventListener('click', () => {
+          document.getElementById('week-nav-prompt').classList.add('d-none');
+        });
+        return;
+      }
+
+      const rangeStartMonday = mondayOf(dateFromYMD(dates.start_date));
+      const rangeEndMonday   = mondayOf(dateFromYMD(dates.end_date));
+
+      const weekParam = new URLSearchParams(location.search).get('week');
+      let currentMonday = (weekParam && /^\d{4}-\d{2}-\d{2}$/.test(weekParam)) ? mondayOf(dateFromYMD(weekParam)) : mondayOf(new Date());
+      if (ymd(currentMonday) < ymd(rangeStartMonday)) currentMonday = rangeStartMonday;
+      if (ymd(currentMonday) > ymd(rangeEndMonday))   currentMonday = rangeEndMonday;
+
+      const prevBtn = document.getElementById('week-prev-btn');
+      const nextBtn = document.getElementById('week-next-btn');
+
+      function render() {
+        document.getElementById('week-label').textContent = formatWeekLabel(currentMonday, sundayOf(currentMonday));
+        prevBtn.disabled = ymd(currentMonday) <= ymd(rangeStartMonday);
+        nextBtn.disabled = ymd(currentMonday) >= ymd(rangeEndMonday);
+        const url = new URL(location.href);
+        url.searchParams.set('week', ymd(currentMonday));
+        history.replaceState(null, '', url);
+        // Exposed so master-schedule.js can offer "cancel just this date" on delete and
+        // dim blocks that are cancelled for the specific week currently being viewed,
+        // without master-schedule.js needing its own copy of the date-range/clamping logic.
+        window._currentWeekMonday = ymd(currentMonday);
+        window.dispatchEvent(new CustomEvent('weekChanged'));
+      }
+      prevBtn.addEventListener('click', () => {
+        if (prevBtn.disabled) return;
+        currentMonday.setDate(currentMonday.getDate() - 7);
+        if (ymd(currentMonday) < ymd(rangeStartMonday)) currentMonday = rangeStartMonday;
+        render();
+      });
+      nextBtn.addEventListener('click', () => {
+        if (nextBtn.disabled) return;
+        currentMonday.setDate(currentMonday.getDate() + 7);
+        if (ymd(currentMonday) > ymd(rangeEndMonday)) currentMonday = rangeEndMonday;
+        render();
+      });
+
+      document.getElementById('week-nav-strip').classList.remove('d-none');
+      render();
+    }
+  </script>
+
+  <script>
     (async () => {
       try {
         const res  = await fetch('/api/auth/me');
@@ -254,6 +431,8 @@
           window.location.href = 'login.html';
         });
         document.body.style.visibility = 'visible';
+
+        initWeekNav();
 
         // Trial banner
         try {

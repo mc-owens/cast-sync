@@ -102,6 +102,99 @@ function generateJoinCode() {
   return crypto.randomBytes(3).toString('hex').toUpperCase(); // e.g. "A3F9C2"
 }
 
+function timeToMinutes(t) {
+  const [time, ampm] = t.trim().split(' ');
+  const [h, m] = time.split(':').map(Number);
+  let hour = h;
+  if (ampm === 'PM' && hour !== 12) hour += 12;
+  if (ampm === 'AM' && hour === 12) hour = 0;
+  return hour * 60 + m;
+}
+
+// Formats a Date as YYYY-MM-DD using its LOCAL calendar fields, never toISOString()
+// (which reports in UTC and can shift the date near midnight depending on server
+// timezone). Every date constructed/compared in generateOccurrences goes through this
+// pair with dateFromYMD, mirroring the existing `${date}T00:00:00` pattern already used
+// for attendance's day-of-week lookup (see GET /api/season/attendance below).
+function ymd(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+function dateFromYMD(dateStr) {
+  return new Date(`${dateStr}T00:00:00`);
+}
+
+// Generates dated rehearsal occurrences for [startDateStr, endDateStr] (inclusive) by
+// walking the weekly master_blocks template day-by-day and layering master_block_exceptions
+// on top. The template is never modified here; this is a read-only computed view.
+async function generateOccurrences(seasonId, startDateStr, endDateStr) {
+  const blocksResult = await pool.query(
+    `SELECT mb.id AS master_block_id, mb.piece_id, mb.day, mb.start_time, mb.end_time,
+            p.name AS piece_name, p.color AS piece_color
+     FROM master_blocks mb JOIN pieces p ON p.id = mb.piece_id
+     WHERE p.season_id = $1`,
+    [seasonId]
+  );
+  const exceptionsResult = await pool.query(
+    `SELECT mbe.id, mbe.piece_id, mbe.master_block_id, to_char(mbe.original_date,'YYYY-MM-DD') AS original_date,
+            mbe.type, to_char(mbe.new_date,'YYYY-MM-DD') AS new_date, mbe.new_start_time, mbe.new_end_time, mbe.note,
+            p.name AS piece_name, p.color AS piece_color
+     FROM master_block_exceptions mbe JOIN pieces p ON p.id = mbe.piece_id
+     WHERE mbe.season_id = $1`,
+    [seasonId]
+  );
+
+  // Indexed by "<master_block_id>|<original_date>" for O(1) lookup per template candidate.
+  const exceptionByKey = new Map();
+  for (const e of exceptionsResult.rows) {
+    if (e.master_block_id) exceptionByKey.set(`${e.master_block_id}|${e.original_date}`, e);
+  }
+
+  const occurrences = [];
+
+  // Pass 1: walk every calendar day in range, emit each template block's occurrence on
+  // days matching its weekday, unless a cancelled/moved exception overrides that exact
+  // (master_block_id, date) pair. A moved block's NEW slot is not emitted here; it's
+  // surfaced in pass 2 below, which has no coupling to this day-loop. Do not merge the
+  // two passes: a moved block's new_date can fall outside [startDateStr, endDateStr]'s
+  // corresponding original-date walk entirely (e.g. moved from last week into this one).
+  let cursor = dateFromYMD(startDateStr);
+  const end  = dateFromYMD(endDateStr);
+  while (cursor <= end) {
+    const dateStr   = ymd(cursor);
+    const dayOfWeek = cursor.toLocaleDateString('en-US', { weekday: 'long' });
+    for (const block of blocksResult.rows) {
+      if (block.day !== dayOfWeek) continue;
+      const exc = exceptionByKey.get(`${block.master_block_id}|${dateStr}`);
+      if (exc && (exc.type === 'cancelled' || exc.type === 'moved')) continue;
+      occurrences.push({
+        date: dateStr, piece_id: block.piece_id, piece_name: block.piece_name, piece_color: block.piece_color,
+        start_time: block.start_time, end_time: block.end_time,
+        source: 'template', master_block_id: block.master_block_id,
+      });
+    }
+    cursor.setDate(cursor.getDate() + 1); // never millisecond arithmetic -- stays correct across DST transitions
+  }
+
+  // Pass 2: every moved/added exception whose new_date falls in range, regardless of
+  // whether its original_date was in range. A moved block landing on a day where that
+  // same piece also has a separate, untouched template block is correct (two real
+  // rehearsals that day), not a duplicate to dedupe. piece_name/piece_color come from the
+  // exception row's own join to pieces, not blocksResult, since 'added' rows have no
+  // master_block_id to look a template block up by.
+  for (const e of exceptionsResult.rows) {
+    if ((e.type === 'moved' || e.type === 'added') && e.new_date >= startDateStr && e.new_date <= endDateStr) {
+      occurrences.push({
+        date: e.new_date, piece_id: e.piece_id, piece_name: e.piece_name, piece_color: e.piece_color,
+        start_time: e.new_start_time, end_time: e.new_end_time,
+        source: e.type, exception_id: e.id, master_block_id: e.master_block_id, note: e.note,
+      });
+    }
+  }
+
+  occurrences.sort((a, b) => a.date === b.date ? timeToMinutes(a.start_time) - timeToMinutes(b.start_time) : (a.date < b.date ? -1 : 1));
+  return occurrences;
+}
+
 // ── Middleware ────────────────────────────────────────────────────────────────
 
 app.set('trust proxy', 1); // Railway sits behind a proxy — needed for secure cookies
@@ -1345,6 +1438,10 @@ app.patch('/api/orgs/:orgId/seasons/:seasonId', requireAuth('master'), async (re
     );
     if (check.rows.length === 0) return res.status(403).json({ error: 'Only the org owner can rename productions.' });
     await pool.query('UPDATE seasons SET name = $1 WHERE id = $2 AND org_id = $3', [name.trim(), req.params.seasonId, req.params.orgId]);
+    // Every page's header reads the cached req.session.seasonName (via /api/auth/me), so
+    // without this the renaming director would see the old name everywhere until they
+    // log out, even though the DB is already correct.
+    if (req.session.seasonId == req.params.seasonId) req.session.seasonName = name.trim();
     res.json({ message: 'Production renamed.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to rename production.' });
@@ -2415,10 +2512,125 @@ app.delete('/api/master-blocks/all', requireAuth('master'), async (req, res) => 
 
 app.delete('/api/master-blocks/:id', requireAuth('master'), async (req, res) => {
   try {
+    // A block with recorded exceptions (cancelled/moved dates) carries history a director
+    // may not realize they're about to lose; block the delete and name the count rather
+    // than cascading it away silently.
+    const exceptionCheck = await pool.query(
+      'SELECT COUNT(*) FROM master_block_exceptions WHERE master_block_id = $1',
+      [req.params.id]
+    );
+    const exceptionCount = parseInt(exceptionCheck.rows[0].count);
+    if (exceptionCount > 0) {
+      return res.status(409).json({ error: `This rehearsal has ${exceptionCount} recorded schedule change${exceptionCount === 1 ? '' : 's'}. Remove ${exceptionCount === 1 ? 'it' : 'those'} first.` });
+    }
     await pool.query('DELETE FROM master_blocks WHERE id = $1', [req.params.id]);
     res.json({ message: 'Block deleted.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete block.' });
+  }
+});
+
+// GET /api/master-blocks/occurrences?start=YYYY-MM-DD&end=YYYY-MM-DD: dated rehearsal
+// occurrences for a range, generated from the weekly template (master_blocks) with any
+// master_block_exceptions applied on top. The template stays the only thing directors
+// edit; this is a read-only computed view. Works for any range regardless of whether the
+// production's own start_date/end_date are set; the production date range is a frontend
+// navigation constraint, not a backend one.
+app.get('/api/master-blocks/occurrences', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { start, end } = req.query;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start || '') || !/^\d{4}-\d{2}-\d{2}$/.test(end || '')) {
+    return res.status(400).json({ error: 'start and end must be YYYY-MM-DD dates.' });
+  }
+  if (end < start) return res.status(400).json({ error: 'end must not be before start.' });
+  // Sanity guard against a malformed query param requesting an enormous range, not a real
+  // product constraint (generateOccurrences itself has no inherent range limit).
+  if ((new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`)) / 86400000 > 120) {
+    return res.status(400).json({ error: 'Range cannot exceed 120 days.' });
+  }
+  try {
+    const occurrences = await generateOccurrences(seasonId, start, end);
+    res.json(occurrences);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to generate occurrences.' });
+  }
+});
+
+// POST /api/master-blocks/:id/exceptions: cancel or move a single dated occurrence of an
+// existing template block. Idempotent (ON CONFLICT...DO UPDATE) since there's no UI for
+// this yet and re-running the same call during testing/iteration should just update, not 409.
+app.post('/api/master-blocks/:id/exceptions', requireAuth('master'), async (req, res) => {
+  const { seasonId, userId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { original_date, type, new_date, new_start_time, new_end_time, note } = req.body;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(original_date || '')) return res.status(400).json({ error: 'original_date must be a YYYY-MM-DD date.' });
+  if (!['cancelled', 'moved'].includes(type)) return res.status(400).json({ error: "type must be 'cancelled' or 'moved'." });
+  if (type === 'moved' && (!new_date || !new_start_time || !new_end_time)) {
+    return res.status(400).json({ error: "type 'moved' requires new_date, new_start_time, and new_end_time." });
+  }
+  try {
+    const blockCheck = await pool.query(
+      `SELECT mb.piece_id FROM master_blocks mb JOIN pieces p ON p.id = mb.piece_id
+       WHERE mb.id = $1 AND p.season_id = $2`,
+      [req.params.id, seasonId]
+    );
+    if (blockCheck.rows.length === 0) return res.status(404).json({ error: 'Block not found in your active season.' });
+    const pieceId = blockCheck.rows[0].piece_id;
+    const result = await pool.query(
+      `INSERT INTO master_block_exceptions (season_id, piece_id, master_block_id, original_date, type, new_date, new_start_time, new_end_time, note, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (master_block_id, original_date) DO UPDATE SET
+         type = EXCLUDED.type, new_date = EXCLUDED.new_date, new_start_time = EXCLUDED.new_start_time,
+         new_end_time = EXCLUDED.new_end_time, note = EXCLUDED.note, created_by = EXCLUDED.created_by
+       RETURNING id`,
+      [seasonId, pieceId, req.params.id, original_date, type, new_date || null, new_start_time || null, new_end_time || null, note || null, userId]
+    );
+    res.status(201).json({ id: result.rows[0].id });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save schedule exception.' });
+  }
+});
+
+// POST /api/pieces/:pieceId/one-time-rehearsals: add a one-time rehearsal with no weekly
+// template tie at all (master_block_id stays NULL).
+app.post('/api/pieces/:pieceId/one-time-rehearsals', requireAuth('master'), async (req, res) => {
+  const { seasonId, userId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { date, start_time, end_time, note } = req.body;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return res.status(400).json({ error: 'date must be a YYYY-MM-DD date.' });
+  if (!start_time || !end_time) return res.status(400).json({ error: 'start_time and end_time are required.' });
+  try {
+    const pieceCheck = await pool.query('SELECT id FROM pieces WHERE id = $1 AND season_id = $2', [req.params.pieceId, seasonId]);
+    if (pieceCheck.rows.length === 0) return res.status(404).json({ error: 'Piece not found in your active season.' });
+    const result = await pool.query(
+      `INSERT INTO master_block_exceptions (season_id, piece_id, master_block_id, original_date, type, new_date, new_start_time, new_end_time, note, created_by)
+       VALUES ($1,$2,NULL,$3,'added',$3,$4,$5,$6,$7) RETURNING id`,
+      [seasonId, req.params.pieceId, date, start_time, end_time, note || null, userId]
+    );
+    res.status(201).json({ id: result.rows[0].id });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save one-time rehearsal.' });
+  }
+});
+
+// DELETE /api/master-blocks/exceptions/:exceptionId: remove an exception (a cancelled or
+// moved date reverts to template behavior; a one-time addition is removed outright).
+app.delete('/api/master-blocks/exceptions/:exceptionId', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      'DELETE FROM master_block_exceptions WHERE id = $1 AND season_id = $2',
+      [req.params.exceptionId, seasonId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Exception not found in your active season.' });
+    res.json({ message: 'Exception removed.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to remove exception.' });
   }
 });
 
@@ -2573,6 +2785,56 @@ app.patch('/api/season/room-count', requireAuth('master'), async (req, res) => {
     res.json({ room_count: n });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update room count.' });
+  }
+});
+
+// GET /api/season/production-dates: return current production's date-range fields
+app.get('/api/season/production-dates', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      `SELECT to_char(start_date, 'YYYY-MM-DD') AS start_date,
+              to_char(end_date, 'YYYY-MM-DD') AS end_date,
+              to_char(audition_date, 'YYYY-MM-DD') AS audition_date,
+              to_char(performance_date, 'YYYY-MM-DD') AS performance_date
+       FROM seasons WHERE id = $1`,
+      [seasonId]
+    );
+    res.json(result.rows[0] || { start_date: null, end_date: null, audition_date: null, performance_date: null });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch production dates.' });
+  }
+});
+
+// PATCH /api/season/production-dates: director sets/clears any subset of the 4 date fields
+app.patch('/api/season/production-dates', requireAuth('master'), async (req, res) => {
+  const { start_date, end_date, audition_date, performance_date } = req.body;
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+
+  const isValidDate = v => v === null || v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v);
+  for (const [label, v] of Object.entries({ start_date, end_date, audition_date, performance_date })) {
+    if (v !== undefined && !isValidDate(v)) return res.status(400).json({ error: `${label} must be a YYYY-MM-DD date or empty.` });
+  }
+  if (start_date && end_date && end_date < start_date) {
+    return res.status(400).json({ error: 'Production end date cannot be before the start date.' });
+  }
+
+  // Same "only touch fields actually present" convention as PATCH /api/pieces/:id:
+  // omit a key to leave it alone, send '' to clear it.
+  const sets = [];
+  const values = [];
+  for (const [col, v] of Object.entries({ start_date, end_date, audition_date, performance_date })) {
+    if (v !== undefined) { sets.push(`${col} = $${sets.length + 1}`); values.push(v || null); }
+  }
+  if (sets.length === 0) return res.status(400).json({ error: 'No fields to update.' });
+
+  try {
+    await pool.query(`UPDATE seasons SET ${sets.join(', ')} WHERE id = $${values.length + 1}`, [...values, seasonId]);
+    res.json({ message: 'Production dates updated.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update production dates.' });
   }
 });
 
@@ -3767,6 +4029,51 @@ async function runMigrations() {
     `);
     console.log('Migration step 20 (absence_requests table) complete.');
   } catch (err) { console.error('Migration step 20 error:', err.message); }
+
+  // Step 22: production-level date fields. All nullable, all default NULL, so nothing
+  // changes for any existing production until a director sets them in Production Settings.
+  try {
+    await pool.query(`
+      DO $$ BEGIN ALTER TABLE seasons ADD COLUMN start_date DATE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN ALTER TABLE seasons ADD COLUMN end_date DATE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN ALTER TABLE seasons ADD COLUMN audition_date DATE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+      DO $$ BEGIN ALTER TABLE seasons ADD COLUMN performance_date DATE; EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 22 (seasons production dates) complete.');
+  } catch (err) { console.error('Migration step 22 error:', err.message); }
+
+  // Step 23: dated overrides on top of the weekly master_blocks template (cancel a single
+  // occurrence, move it, or add a one-time rehearsal with no template at all). The weekly
+  // template in master_blocks stays the only thing directors edit directly; this table is
+  // a pure overlay read alongside it when generating dated occurrences. No ON DELETE
+  // action on master_block_id: deleting a template block that has recorded exceptions is
+  // blocked by app code (see DELETE /api/master-blocks/:id) instead of silently cascading
+  // history away.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS master_block_exceptions (
+        id              SERIAL PRIMARY KEY,
+        season_id       INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        piece_id        INTEGER NOT NULL REFERENCES pieces(id) ON DELETE CASCADE,
+        master_block_id INTEGER REFERENCES master_blocks(id),
+        original_date   DATE NOT NULL,
+        type            VARCHAR(20) NOT NULL CHECK (type IN ('cancelled','moved','added')),
+        new_date        DATE,
+        new_start_time  VARCHAR(20),
+        new_end_time    VARCHAR(20),
+        note            TEXT,
+        created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE (master_block_id, original_date),
+        CHECK (
+          (type = 'cancelled' AND new_date IS NULL AND new_start_time IS NULL AND new_end_time IS NULL) OR
+          (type = 'moved'     AND master_block_id IS NOT NULL AND new_date IS NOT NULL AND new_start_time IS NOT NULL AND new_end_time IS NOT NULL) OR
+          (type = 'added'     AND master_block_id IS NULL AND new_date IS NOT NULL AND new_start_time IS NOT NULL AND new_end_time IS NOT NULL)
+        )
+      );
+    `);
+    console.log('Migration step 23 (master_block_exceptions table) complete.');
+  } catch (err) { console.error('Migration step 23 error:', err.message); }
 
   console.log('All migrations complete.');
 }

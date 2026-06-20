@@ -23,7 +23,7 @@
       { label: 'Production Notes', href: 'notes.html' },
     ]},
     { section: 'Settings', items: [
-      { label: 'Production Settings', href: null, comingSoon: true },
+      { label: 'Production Settings', href: 'production-settings.html' },
       { label: 'Billing',             href: 'account.html' },
     ]},
   ];

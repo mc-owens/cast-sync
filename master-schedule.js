@@ -416,16 +416,269 @@ document.addEventListener('DOMContentLoaded', async () => {
       <div class="resize-handle resize-top"></div>
       <div class="resize-handle resize-bottom"></div>`;
 
-    block.querySelector('.delete-btn').addEventListener('mousedown', async (e) => {
+    block.querySelector('.delete-btn').addEventListener('mousedown', (e) => {
       e.stopPropagation();   // prevent grid's mousedown from firing drag mode
       e.preventDefault();    // prevent focus shift / text selection
-      await fetch(`/api/master-blocks/${dbId}`, { method: 'DELETE' });
-      block.remove();
-      repositionAllBlocks();
+      openDeleteBlockModal(dbId, DAYS[dayIndex], block);
     });
 
     grid.appendChild(block);
     return block;
+  }
+
+  // ── Delete confirmation (whole recurring block, or just one date) ──────────────
+
+  const DAY_OFFSET = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4, Saturday: 5, Sunday: 6 };
+  function dateForDayInWeek(mondayStr, dayName) {
+    const d = new Date(`${mondayStr}T00:00:00`);
+    d.setDate(d.getDate() + DAY_OFFSET[dayName]);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  let pendingDeleteBlock = null;
+  const deleteModalEl    = document.getElementById('deleteBlockModal');
+  const deleteModalText  = document.getElementById('delete-block-modal-text');
+  const deleteChoicesEl  = document.getElementById('delete-block-choices');
+  const moveOneDateBtn   = document.getElementById('move-one-date-btn');
+  const cancelOneDateBtn = document.getElementById('cancel-one-date-btn');
+  const confirmDeleteBtn = document.getElementById('confirm-delete-block-btn');
+  const moveDateFormEl   = document.getElementById('move-date-form');
+  const moveNewDateInput  = document.getElementById('move-new-date-input');
+  const moveNewStartInput = document.getElementById('move-new-start-input');
+  const moveNewEndInput   = document.getElementById('move-new-end-input');
+  const confirmMoveBtn   = document.getElementById('confirm-move-btn');
+  const moveBackBtn      = document.getElementById('move-back-btn');
+
+  function timeStringTo24Hour(str) {
+    const mins = timeStringToMinutes(str);
+    return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+  }
+
+  // window._currentWeekMonday is set by master.html's week navigator only once a
+  // production has start/end dates configured. Without it there's no specific calendar
+  // date to attach a single-date move/cancellation to, so only the whole-schedule option applies.
+  function openDeleteBlockModal(dbId, dayName, blockEl) {
+    pendingDeleteBlock = { dbId, dayName, blockEl };
+    deleteChoicesEl.classList.remove('d-none');
+    moveDateFormEl.classList.add('d-none');
+    const weekMonday = window._currentWeekMonday;
+    if (weekMonday) {
+      const specificDate = dateForDayInWeek(weekMonday, dayName);
+      const niceDate = new Date(`${specificDate}T00:00:00`).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+      deleteModalText.textContent = `This rehearsal repeats every ${dayName}. Move or cancel just ${niceDate}, or remove it from the schedule entirely?`;
+      moveOneDateBtn.classList.remove('d-none');
+      moveOneDateBtn.dataset.date = specificDate;
+      cancelOneDateBtn.classList.remove('d-none');
+      cancelOneDateBtn.dataset.date = specificDate;
+    } else {
+      deleteModalText.textContent = `This will remove the ${dayName} rehearsal from every week. Add production dates in Settings to change or cancel a single date instead of the whole series.`;
+      moveOneDateBtn.classList.add('d-none');
+      cancelOneDateBtn.classList.add('d-none');
+    }
+    new bootstrap.Modal(deleteModalEl).show();
+  }
+
+  moveOneDateBtn.addEventListener('click', () => {
+    deleteChoicesEl.classList.add('d-none');
+    moveDateFormEl.classList.remove('d-none');
+    // Pre-fill with the rehearsal's usual date/time as a sensible starting point.
+    moveNewDateInput.value  = moveOneDateBtn.dataset.date;
+    moveNewStartInput.value = timeStringTo24Hour(pendingDeleteBlock.blockEl.dataset.startTime);
+    moveNewEndInput.value   = timeStringTo24Hour(pendingDeleteBlock.blockEl.dataset.endTime);
+  });
+
+  moveBackBtn.addEventListener('click', () => {
+    moveDateFormEl.classList.add('d-none');
+    deleteChoicesEl.classList.remove('d-none');
+  });
+
+  confirmMoveBtn.addEventListener('click', async () => {
+    if (!pendingDeleteBlock) return;
+    const { dbId, blockEl } = pendingDeleteBlock;
+    const originalDate = moveOneDateBtn.dataset.date;
+    const newDate = moveNewDateInput.value;
+    if (!newDate || !moveNewStartInput.value || !moveNewEndInput.value) {
+      alert('Please fill in the new date, start time, and end time.');
+      return;
+    }
+    const [newStartH, newStartM] = moveNewStartInput.value.split(':').map(Number);
+    const [newEndH, newEndM]     = moveNewEndInput.value.split(':').map(Number);
+    try {
+      const res = await fetch(`/api/master-blocks/${dbId}/exceptions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          original_date: originalDate, type: 'moved', new_date: newDate,
+          new_start_time: formatTime(newStartH, newStartM), new_end_time: formatTime(newEndH, newEndM),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Could not move this date.');
+      } else {
+        blockEl.classList.add('block-cancelled-this-week'); // the usual slot doesn't happen this week
+        blockEl.title = 'Moved for this week only';
+      }
+    } catch (e) { alert('Could not connect to server.'); }
+    bootstrap.Modal.getInstance(deleteModalEl).hide();
+    pendingDeleteBlock = null;
+  });
+
+  confirmDeleteBtn.addEventListener('click', async () => {
+    if (!pendingDeleteBlock) return;
+    const { dbId, blockEl } = pendingDeleteBlock;
+    try {
+      const res = await fetch(`/api/master-blocks/${dbId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Could not delete this rehearsal.');
+      } else {
+        blockEl.remove();
+        repositionAllBlocks();
+      }
+    } catch (e) { alert('Could not connect to server.'); }
+    bootstrap.Modal.getInstance(deleteModalEl).hide();
+    pendingDeleteBlock = null;
+  });
+
+  cancelOneDateBtn.addEventListener('click', async () => {
+    if (!pendingDeleteBlock) return;
+    const { dbId, blockEl } = pendingDeleteBlock;
+    const date = cancelOneDateBtn.dataset.date;
+    try {
+      const res = await fetch(`/api/master-blocks/${dbId}/exceptions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ original_date: date, type: 'cancelled' }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Could not cancel this date.');
+      } else {
+        blockEl.classList.add('block-cancelled-this-week');
+        blockEl.title = 'Cancelled for this week only';
+      }
+    } catch (e) { alert('Could not connect to server.'); }
+    bootstrap.Modal.getInstance(deleteModalEl).hide();
+    pendingDeleteBlock = null;
+  });
+
+  // ── Add a one-time rehearsal (no weekly template tie at all) ────────────────────
+
+  const addOneTimeBtn        = document.getElementById('add-one-time-btn');
+  const addOneTimeModalEl    = document.getElementById('addOneTimeModal');
+  const oneTimePieceSelect   = document.getElementById('one-time-piece-select');
+  const oneTimeDateInput     = document.getElementById('one-time-date-input');
+  const oneTimeStartInput    = document.getElementById('one-time-start-input');
+  const oneTimeEndInput      = document.getElementById('one-time-end-input');
+  const oneTimeNoteInput     = document.getElementById('one-time-note-input');
+  const confirmAddOneTimeBtn = document.getElementById('confirm-add-one-time-btn');
+
+  addOneTimeBtn.addEventListener('click', () => {
+    if (pieces.length === 0) { alert('Create a piece on the schedule first.'); return; }
+    oneTimePieceSelect.innerHTML = pieces.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    // Default to the week currently being viewed, falling back to today.
+    oneTimeDateInput.value = window._currentWeekMonday || new Date().toISOString().slice(0, 10);
+    oneTimeStartInput.value = '';
+    oneTimeEndInput.value   = '';
+    oneTimeNoteInput.value  = '';
+    new bootstrap.Modal(addOneTimeModalEl).show();
+  });
+
+  confirmAddOneTimeBtn.addEventListener('click', async () => {
+    const pieceId = oneTimePieceSelect.value;
+    const date     = oneTimeDateInput.value;
+    if (!date || !oneTimeStartInput.value || !oneTimeEndInput.value) {
+      alert('Please fill in the date, start time, and end time.');
+      return;
+    }
+    const [startH, startM] = oneTimeStartInput.value.split(':').map(Number);
+    const [endH, endM]      = oneTimeEndInput.value.split(':').map(Number);
+    try {
+      const res = await fetch(`/api/pieces/${pieceId}/one-time-rehearsals`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date, start_time: formatTime(startH, startM), end_time: formatTime(endH, endM),
+          note: oneTimeNoteInput.value.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Could not add this rehearsal.');
+      } else {
+        applyWeekExceptionStyling();
+      }
+    } catch (e) { alert('Could not connect to server.'); }
+    bootstrap.Modal.getInstance(addOneTimeModalEl).hide();
+  });
+
+  // Dims any master block whose USUAL day/time didn't actually happen during the
+  // currently-viewed week (cancelled or moved away) -- otherwise cancelling "just this
+  // date" has no visible effect and looks like it silently failed. Only meaningful once
+  // a week is actually being viewed (production dates configured).
+  async function applyWeekExceptionStyling() {
+    document.querySelectorAll('.master-block').forEach(b => {
+      b.classList.remove('block-cancelled-this-week');
+      if (b.title === 'Cancelled for this week only') b.removeAttribute('title');
+    });
+    document.querySelectorAll('.one-time-block').forEach(b => b.remove());
+    const monday = window._currentWeekMonday;
+    if (!monday) return;
+    const sunday = new Date(`${monday}T00:00:00`);
+    sunday.setDate(sunday.getDate() + 6);
+    const sundayStr = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
+    try {
+      const res = await fetch(`/api/master-blocks/occurrences?start=${monday}&end=${sundayStr}`);
+      if (!res.ok) return;
+      const occurrences = await res.json();
+      const templateBlockIds = new Set(occurrences.filter(o => o.source === 'template').map(o => o.master_block_id));
+      document.querySelectorAll('.master-block').forEach(blockEl => {
+        if (!templateBlockIds.has(parseInt(blockEl.dataset.dbId))) {
+          blockEl.classList.add('block-cancelled-this-week');
+          blockEl.title = 'Cancelled for this week only';
+        }
+      });
+      // Moved/added occurrences have no place in the recurring template at all, so they're
+      // rendered as their own read-only markers (dashed, distinct color) layered on top of
+      // the regular grid rather than going through the lane/conflict system that the
+      // recurring blocks use -- they're one-time, so a rare visual overlap is an acceptable
+      // trade for not entangling this with repositionAllBlocks().
+      occurrences.filter(o => o.source === 'moved' || o.source === 'added').forEach(renderOneTimeBlock);
+    } catch (e) { /* leave styling as-is */ }
+  }
+  window.addEventListener('weekChanged', applyWeekExceptionStyling);
+
+  function renderOneTimeBlock(occ) {
+    const dayName  = new Date(`${occ.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
+    const dayIndex = DAYS.indexOf(dayName);
+    if (dayIndex === -1) return;
+    const topPx = timeStringToTopPx(occ.start_time);
+    const btmPx = timeStringToTopPx(occ.end_time);
+
+    const block = document.createElement('div');
+    block.className = 'block one-time-block';
+    block.style.top      = `${topPx}px`;
+    block.style.height   = `${Math.max(btmPx - topPx, slotHeight)}px`;
+    block.style.left     = `calc(${dayIndex} * 100% / 7)`;
+    block.style.width    = `calc(100% / 7)`;
+    block.style.position = 'absolute';
+    block.style.boxSizing = 'border-box';
+    block.style.zIndex   = '3';
+    const piece = pieces.find(p => p.id === occ.piece_id);
+    if (piece) { block.style.border = `2px dashed ${piece.color}`; block.style.background = hexToRgba(piece.color, 0.3); }
+    const label = occ.source === 'moved' ? 'Moved here' : 'One-time';
+    block.title = `${label}${occ.note ? `: ${occ.note}` : ''}`;
+    block.innerHTML = `
+      <span style="font-size:11px;font-weight:bold;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${piece ? piece.name : 'Rehearsal'} (${label})</span>
+      <span style="font-size:10px;display:block;opacity:0.8;">${occ.start_time} – ${occ.end_time}</span>
+      <button class="delete-btn" title="Remove">&times;</button>`;
+    block.querySelector('.delete-btn').addEventListener('mousedown', async (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      try {
+        const res = await fetch(`/api/master-blocks/exceptions/${occ.exception_id}`, { method: 'DELETE' });
+        if (res.ok) block.remove();
+      } catch (err) { /* leave block as-is on failure */ }
+    });
+    grid.appendChild(block);
   }
 
   async function loadBlocks() {
@@ -736,6 +989,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadRoomCount();
   await new Promise(r => requestAnimationFrame(r));
   await loadBlocks();
+  // master.html's auth-check fetch (which sets window._currentWeekMonday) and this
+  // DOMContentLoaded handler aren't ordered relative to each other, so this call and the
+  // weekChanged listener above both exist -- whichever finishes second is the one that
+  // actually has both the rendered blocks and the active week available together.
+  applyWeekExceptionStyling();
 
   // Toggle other-productions overlay visibility
   document.getElementById('org-blocks-toggle')?.addEventListener('change', function () {
