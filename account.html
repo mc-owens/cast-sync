@@ -96,8 +96,17 @@
         if (!res.ok) { window.location.href = 'login.html'; return; }
         document.getElementById('account-email').textContent = user.email;
         document.getElementById('right-nav').className = 'app-nav-right';
+        const defaultBack = user.mode === 'director' || user.isDirector ? 'org-select.html' : 'auditionForm.html';
+        let backHref = defaultBack;
+        if (document.referrer) {
+          const referrerUrl = new URL(document.referrer);
+          const referrerPage = referrerUrl.pathname.split('/').pop();
+          if (referrerUrl.origin === location.origin && referrerPage && !['account.html', 'login.html', ''].includes(referrerPage)) {
+            backHref = document.referrer;
+          }
+        }
         document.getElementById('right-nav').innerHTML =
-          `<a href="${user.mode === 'director' || user.isDirector ? 'org-select.html' : 'auditionForm.html'}">← Back</a>
+          `<a href="${backHref}">← Back</a>
            <button id="logout-btn">Log Out</button>`;
         document.getElementById('logout-btn').addEventListener('click', async () => {
           await fetch('/api/auth/logout', { method: 'POST' });
