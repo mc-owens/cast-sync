@@ -250,7 +250,9 @@
         </div>
         <p class="text-muted no-print" style="font-size:12.5px;margin-bottom:4px;">
           Showing your weekly rehearsal template. Changes here apply every week unless noted otherwise.
-          <button type="button" class="btn btn-link p-0 ms-1" id="add-one-time-btn" style="font-size:12.5px;text-decoration:none;color:var(--gold);font-weight:600;">+ Add a one-time rehearsal</button>
+          <button type="button" class="btn btn-link p-0 ms-1" id="add-one-time-btn" disabled
+                  title="Set your production start and end dates in Production Settings first"
+                  style="font-size:12.5px;text-decoration:none;color:var(--gold);font-weight:600;">+ Add a one-time rehearsal</button>
         </p>
 
         <p class="text-muted" style="font-size:13px;">Drag to create a rehearsal block. Click &times; to delete.</p>
@@ -399,6 +401,9 @@
       });
 
       document.getElementById('week-nav-strip').classList.remove('d-none');
+      const addOneTimeBtnEl = document.getElementById('add-one-time-btn');
+      addOneTimeBtnEl.disabled = false;
+      addOneTimeBtnEl.removeAttribute('title');
       render();
     }
   </script>

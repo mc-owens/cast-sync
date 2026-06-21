@@ -2671,14 +2671,21 @@ app.post('/api/master-blocks/:id/exceptions', requireAuth('master'), async (req,
   }
   try {
     const blockCheck = await pool.query(
-      `SELECT mb.piece_id, mb.start_time, mb.end_time, p.name AS piece_name, s.name AS season_name, o.name AS org_name
+      `SELECT mb.piece_id, mb.start_time, mb.end_time, p.name AS piece_name, s.name AS season_name, o.name AS org_name, s.start_date, s.end_date
        FROM master_blocks mb JOIN pieces p ON p.id = mb.piece_id
        JOIN seasons s ON s.id = p.season_id JOIN orgs o ON o.id = s.org_id
        WHERE mb.id = $1 AND p.season_id = $2`,
       [req.params.id, seasonId]
     );
     if (blockCheck.rows.length === 0) return res.status(404).json({ error: 'Block not found in your active season.' });
-    const { piece_id: pieceId, piece_name: pieceName, season_name: seasonName, org_name: orgName, start_time: usualStart, end_time: usualEnd } = blockCheck.rows[0];
+    const { piece_id: pieceId, piece_name: pieceName, season_name: seasonName, org_name: orgName, start_time: usualStart, end_time: usualEnd, start_date, end_date } = blockCheck.rows[0];
+    // Same reasoning as one-time rehearsals: a single-date cancel/move only ever becomes
+    // visible again on Master Schedule once a week containing its date is being viewed,
+    // which requires production start/end dates. The UI already hides these options
+    // without dates set; this is the matching server-side guard.
+    if (!start_date || !end_date) {
+      return res.status(400).json({ error: "Set your production's start and end dates in Production Settings before changing a single date." });
+    }
     const result = await pool.query(
       `INSERT INTO master_block_exceptions (season_id, piece_id, master_block_id, original_date, type, new_date, new_start_time, new_end_time, note, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
@@ -2722,13 +2729,20 @@ app.post('/api/pieces/:pieceId/one-time-rehearsals', requireAuth('master'), asyn
   if (!start_time || !end_time) return res.status(400).json({ error: 'start_time and end_time are required.' });
   try {
     const pieceCheck = await pool.query(
-      `SELECT p.id, p.name AS piece_name, s.name AS season_name, o.name AS org_name
+      `SELECT p.id, p.name AS piece_name, s.name AS season_name, o.name AS org_name, s.start_date, s.end_date
        FROM pieces p JOIN seasons s ON s.id = p.season_id JOIN orgs o ON o.id = s.org_id
        WHERE p.id = $1 AND p.season_id = $2`,
       [req.params.pieceId, seasonId]
     );
     if (pieceCheck.rows.length === 0) return res.status(404).json({ error: 'Piece not found in your active season.' });
-    const { piece_name: pieceName, season_name: seasonName, org_name: orgName } = pieceCheck.rows[0];
+    const { piece_name: pieceName, season_name: seasonName, org_name: orgName, start_date, end_date } = pieceCheck.rows[0];
+    // A one-time rehearsal only ever becomes visible again on Master Schedule once a
+    // week containing its date is actually being viewed, which requires the production's
+    // start/end dates to be set -- without them, this would create an exception with no
+    // way to see or manage it afterward.
+    if (!start_date || !end_date) {
+      return res.status(400).json({ error: "Set your production's start and end dates in Production Settings before adding a one-time rehearsal." });
+    }
     const result = await pool.query(
       `INSERT INTO master_block_exceptions (season_id, piece_id, master_block_id, original_date, type, new_date, new_start_time, new_end_time, note, created_by)
        VALUES ($1,$2,NULL,$3,'added',$3,$4,$5,$6,$7) RETURNING id`,
