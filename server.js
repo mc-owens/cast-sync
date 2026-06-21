@@ -600,6 +600,136 @@ app.post('/api/auth/change-password', async (req, res) => {
   }
 });
 
+// GET /api/auth/account-settings: Account page data not carried in the session
+// (display name, Google-link status, a pending email change, notification prefs)
+app.get('/api/auth/account-settings', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
+  try {
+    const result = await pool.query(
+      `SELECT name, google_id IS NOT NULL AS google_linked, pending_email, notification_prefs
+       FROM users WHERE id = $1`,
+      [req.session.userId]
+    );
+    const row = result.rows[0];
+    if (!row) return res.status(404).json({ error: 'Account not found.' });
+    res.json({
+      name: row.name,
+      googleLinked: row.google_linked,
+      pendingEmail: row.pending_email,
+      notificationPrefs: row.notification_prefs || {},
+    });
+  } catch (err) {
+    console.error('Account settings error:', err.message);
+    res.status(500).json({ error: 'Failed to load account settings.' });
+  }
+});
+
+// PATCH /api/auth/name: set or clear the logged-in user's display name
+app.patch('/api/auth/name', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
+  const name = (req.body.name || '').trim();
+  try {
+    await pool.query('UPDATE users SET name = $1 WHERE id = $2', [name || null, req.session.userId]);
+    res.json({ name: name || null });
+  } catch (err) {
+    console.error('Update name error:', err.message);
+    res.status(500).json({ error: 'Failed to update name.' });
+  }
+});
+
+// PATCH /api/auth/notification-prefs: merge a partial set of category toggles into
+// the logged-in user's preferences (missing keys are left as-is; checked at send time
+// by emailAllowed() near getDirectorEmails)
+app.patch('/api/auth/notification-prefs', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
+  const allowedKeys = ['casting_updates', 'absence_requests', 'schedule_changes', 'production_notes'];
+  const updates = {};
+  for (const key of allowedKeys) {
+    if (typeof req.body[key] === 'boolean') updates[key] = req.body[key];
+  }
+  try {
+    const result = await pool.query(
+      'UPDATE users SET notification_prefs = notification_prefs || $1::jsonb WHERE id = $2 RETURNING notification_prefs',
+      [JSON.stringify(updates), req.session.userId]
+    );
+    res.json({ notificationPrefs: result.rows[0]?.notification_prefs || {} });
+  } catch (err) {
+    console.error('Update notification prefs error:', err.message);
+    res.status(500).json({ error: 'Failed to update notification preferences.' });
+  }
+});
+
+// POST /api/auth/change-email: request an email change; the NEW address must confirm
+// it's real and reachable before the change takes effect (mirrors forgot-password's
+// token pattern, but on a dedicated column so it can't collide with signup verification)
+app.post('/api/auth/change-email', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
+  const { password, newEmail } = req.body;
+  if (!password || !newEmail) return res.status(400).json({ error: 'Password and new email are required.' });
+  const normalizedEmail = newEmail.toLowerCase().trim();
+  try {
+    const result = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.session.userId]);
+    const user   = result.rows[0];
+    if (!user || !user.password_hash) return res.status(400).json({ error: 'Cannot change email for this account type.' });
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) return res.status(403).json({ error: 'Incorrect password.' });
+
+    const taken = await pool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [normalizedEmail, req.session.userId]);
+    if (taken.rows.length > 0) return res.status(400).json({ error: 'That email is already in use.' });
+
+    const token = crypto.randomBytes(32).toString('hex');
+    await pool.query(
+      'UPDATE users SET pending_email = $1, email_change_token = $2 WHERE id = $3',
+      [normalizedEmail, token, req.session.userId]
+    );
+
+    if (emailEnabled) {
+      await resend.emails.send({
+        from:    FROM_EMAIL,
+        to:      normalizedEmail,
+        subject: 'Confirm your new CastSync email',
+        html: `
+          <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;">
+            <h2 style="margin-bottom:8px;">Confirm your new email</h2>
+            <p>Click the link below to finish changing your CastSync login email to this address.</p>
+            <p style="margin:24px 0;">
+              <a href="${APP_URL}/confirm-email-change.html?token=${token}"
+                 style="background:#111;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">
+                Confirm Email Change
+              </a>
+            </p>
+            <p style="color:#888;font-size:13px;">If you didn't request this, you can safely ignore this email -- your login email won't change until this link is clicked.</p>
+          </div>`,
+      }).catch(err => console.error('Change-email confirmation send error:', err.message));
+    }
+    res.json({ message: 'Confirmation email sent to your new address.', pendingEmail: normalizedEmail });
+  } catch (err) {
+    console.error('Change email error:', err.message);
+    res.status(500).json({ error: 'Failed to start email change.' });
+  }
+});
+
+// GET /api/auth/confirm-email-change: finalize a pending email change. Does not touch
+// req.session: this link is normally opened from an email client, not necessarily the
+// same browser session that requested the change.
+app.get('/api/auth/confirm-email-change', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ error: 'Token required.' });
+  try {
+    const result = await pool.query(
+      `UPDATE users SET email = pending_email, pending_email = NULL, email_change_token = NULL
+       WHERE email_change_token = $1
+       RETURNING email`,
+      [token]
+    );
+    if (!result.rows.length) return res.status(400).json({ error: 'This confirmation link is invalid or has already been used.' });
+    res.json({ ok: true, email: result.rows[0].email });
+  } catch (err) {
+    console.error('Confirm email change error:', err.message);
+    res.status(500).json({ error: 'Failed to confirm email change.' });
+  }
+});
+
 // POST /api/auth/forgot-password — generate a reset token and email it
 app.post('/api/auth/forgot-password', async (req, res) => {
   const { email } = req.body;
@@ -1638,10 +1768,12 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
     const userResult = await pool.query('SELECT email FROM users WHERE id = $1', [req.session.userId]);
     const userEmail  = userResult.rows[0].email;
 
-    sendConfirmationEmail(userEmail, secondary_email,
-      { first_name, last_name, phone, address, grade, technique_classes, injuries, absences, availability },
-      org.name, season.name, isUpdate
-    );
+    emailAllowed(req.session.userId, 'casting_updates').then(allowed => {
+      if (allowed) sendConfirmationEmail(userEmail, secondary_email,
+        { first_name, last_name, phone, address, grade, technique_classes, injuries, absences, availability },
+        org.name, season.name, isUpdate
+      );
+    });
 
     res.status(isUpdate ? 200 : 201).json({
       message: isUpdate ? 'Submission updated!' : 'Submission received!',
@@ -1754,7 +1886,7 @@ app.post('/api/publish/send', requireAuth('master'), async (req, res) => {
         [seasonId]
       ),
       pool.query(
-        `SELECT DISTINCT u.email, dp.secondary_email
+        `SELECT DISTINCT u.id AS user_id, u.email, dp.secondary_email
          FROM submissions sub JOIN users u ON u.id=sub.user_id
          LEFT JOIN dancer_profiles dp ON dp.user_id = u.id
          WHERE sub.org_id=$1 AND sub.season_id=$2`,
@@ -1765,11 +1897,14 @@ app.post('/api/publish/send', requireAuth('master'), async (req, res) => {
     if (emailRes.rows.length === 0) return res.status(400).json({ error: 'No auditionees to email.' });
 
     const html = buildCastingEmailHTML(orgName, blurb, piecesRes.rows);
-    await Promise.all(emailRes.rows.map(({ email, secondary_email }) =>
-      resend.emails.send({ from: FROM_EMAIL, to: [email, secondary_email].filter(Boolean), subject: `Casting Results — ${orgName}`, html })
-        .catch(err => console.error(`Email to ${email} failed:`, err.message))
-    ));
-    res.json({ message: `Sent to ${emailRes.rows.length} auditionee${emailRes.rows.length === 1 ? '' : 's'}.` });
+    let sentCount = 0;
+    await Promise.all(emailRes.rows.map(async ({ user_id, email, secondary_email }) => {
+      if (!(await emailAllowed(user_id, 'casting_updates'))) return;
+      sentCount++;
+      return resend.emails.send({ from: FROM_EMAIL, to: [email, secondary_email].filter(Boolean), subject: `Casting Results — ${orgName}`, html })
+        .catch(err => console.error(`Email to ${email} failed:`, err.message));
+    }));
+    res.json({ message: `Sent to ${sentCount} auditionee${sentCount === 1 ? '' : 's'}.` });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to send emails.' });
@@ -1898,12 +2033,31 @@ app.get('/api/my-casting', requireAuth('auditionee'), async (req, res) => {
 const ABSENCE_STATUSES = ['pending', 'approved', 'denied'];
 const ABSENCE_STATUS_LABELS = { pending: 'Pending', approved: 'Approved', denied: 'Denied' };
 
+// Returns { email, userId } pairs (not bare emails) so callers can check each
+// recipient's own notification preference before sending -- see emailAllowed below.
 async function getDirectorEmails(orgId, seasonId) {
   const [orgMembers, seasonMembers] = await Promise.all([
-    pool.query(`SELECT DISTINCT u.email FROM org_members om JOIN users u ON u.id = om.user_id WHERE om.org_id = $1`, [orgId]),
-    pool.query(`SELECT DISTINCT u.email FROM season_members sm JOIN users u ON u.id = sm.user_id WHERE sm.season_id = $1`, [seasonId]),
+    pool.query(`SELECT DISTINCT u.id AS user_id, u.email FROM org_members om JOIN users u ON u.id = om.user_id WHERE om.org_id = $1`, [orgId]),
+    pool.query(`SELECT DISTINCT u.id AS user_id, u.email FROM season_members sm JOIN users u ON u.id = sm.user_id WHERE sm.season_id = $1`, [seasonId]),
   ]);
-  return [...new Set([...orgMembers.rows, ...seasonMembers.rows].map(r => r.email))];
+  const seen = new Map();
+  [...orgMembers.rows, ...seasonMembers.rows].forEach(r => seen.set(r.email, { email: r.email, userId: r.user_id }));
+  return [...seen.values()];
+}
+
+// Notification preferences are an opt-out model (missing key = enabled), so every
+// existing user keeps getting every email until they explicitly turn a category off.
+// No userId (e.g. a choreographer, who has no real account) always passes -- there's
+// no preference to check.
+async function emailAllowed(userId, category) {
+  if (!userId) return true;
+  try {
+    const r = await pool.query('SELECT notification_prefs FROM users WHERE id = $1', [userId]);
+    return r.rows[0]?.notification_prefs?.[category] !== false;
+  } catch (err) {
+    console.error('emailAllowed error:', err.message);
+    return true;
+  }
 }
 
 async function notifyChoreographerForPiece(pieceId, subject, html) {
@@ -1916,15 +2070,21 @@ async function notifyChoreographerForPiece(pieceId, subject, html) {
   } catch (err) { console.error('notifyChoreographerForPiece error:', err.message); }
 }
 
+// Returns { email, userId } pairs. Secondary emails share the cast member's own userId
+// and preference -- there's only one person to ask, even though they have two inboxes.
 async function getCastEmailsForPiece(pieceId) {
   const result = await pool.query(
-    `SELECT u.email, dp.secondary_email FROM piece_casts pc
+    `SELECT u.id AS user_id, u.email, dp.secondary_email FROM piece_casts pc
      JOIN users u ON u.id = pc.user_id
      LEFT JOIN dancer_profiles dp ON dp.user_id = u.id
      WHERE pc.piece_id = $1`,
     [pieceId]
   );
-  return [...new Set(result.rows.flatMap(r => [r.email, r.secondary_email]).filter(Boolean))];
+  const seen = new Map();
+  result.rows.forEach(r => {
+    [r.email, r.secondary_email].filter(Boolean).forEach(email => seen.set(email, { email, userId: r.user_id }));
+  });
+  return [...seen.values()];
 }
 
 // Notifies everyone a rehearsal schedule change (cancel/move/add/undo) affects: every
@@ -1935,13 +2095,16 @@ async function getCastEmailsForPiece(pieceId) {
 async function notifyPieceScheduleChange(pieceId, orgId, seasonId, subject, html) {
   if (!emailEnabled || !pieceId) return;
   try {
-    const [castEmails, directorEmails] = await Promise.all([
+    const [castRecipients, directorRecipients] = await Promise.all([
       getCastEmailsForPiece(pieceId),
       getDirectorEmails(orgId, seasonId),
     ]);
-    [...new Set([...castEmails, ...directorEmails])].forEach(to => {
-      resend.emails.send({ from: FROM_EMAIL, to, subject, html }).catch(err => console.error('Schedule change email error:', err.message));
-    });
+    const seen = new Map();
+    [...castRecipients, ...directorRecipients].forEach(r => seen.set(r.email, r));
+    for (const { email, userId } of seen.values()) {
+      if (!(await emailAllowed(userId, 'schedule_changes'))) continue;
+      resend.emails.send({ from: FROM_EMAIL, to: email, subject, html }).catch(err => console.error('Schedule change email error:', err.message));
+    }
     notifyChoreographerForPiece(pieceId, subject, html);
   } catch (err) { console.error('notifyPieceScheduleChange error:', err.message); }
 }
@@ -2050,7 +2213,7 @@ app.post('/api/absence-requests', requireAuth('auditionee'), async (req, res) =>
       ? `<p style="color:#555;font-size:13px;">Documentation: <a href="${docLink}">${docLink}</a></p>`
       : '';
 
-    if (emailEnabled) {
+    if (emailEnabled && await emailAllowed(req.session.userId, 'absence_requests')) {
       const recipients = [dancerEmail, dancerSecondaryEmail].filter(Boolean);
       resend.emails.send({
         from: FROM_EMAIL,
@@ -2066,12 +2229,15 @@ app.post('/api/absence-requests', requireAuth('auditionee'), async (req, res) =>
           <p style="color:#aaa;font-size:12px;">You'll get an email when your director updates the status. This is an automated message.</p>
         </div>`,
       }).catch(err => console.error('Absence confirmation email error:', err.message));
+    }
 
-      getDirectorEmails(org_id, season_id).then(directorEmails => {
-        directorEmails.filter(Boolean).forEach(to => {
+    if (emailEnabled) {
+      getDirectorEmails(org_id, season_id).then(async directorRecipients => {
+        for (const { email, userId } of directorRecipients) {
+          if (!email || !(await emailAllowed(userId, 'absence_requests'))) continue;
           resend.emails.send({
             from: FROM_EMAIL,
-            to,
+            to: email,
             subject: `New Absence Request from ${dancerName} for ${org_name}`,
             html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
               <h3 style="margin-bottom:4px;">New Absence Request</h3>
@@ -2083,7 +2249,7 @@ app.post('/api/absence-requests', requireAuth('auditionee'), async (req, res) =>
               <p style="color:#aaa;font-size:12px;">Review and update its status on the Absence Requests tab.</p>
             </div>`,
           }).catch(err => console.error('Director absence-notify email error:', err.message));
-        });
+        }
       });
 
       if (finalPieceId) {
@@ -2917,7 +3083,7 @@ app.post('/api/billing/portal', requireAuth('master'), async (req, res) => {
     const baseUrl2   = process.env.APP_URL
       ? `https://${process.env.APP_URL.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
       : `${proto2}://${host2}`;
-    const returnUrl  = `${baseUrl2}/account.html`;
+    const returnUrl  = `${baseUrl2}/billing.html`;
     const portalSession = await stripe.billingPortal.sessions.create({
       customer:   customerId,
       return_url: returnUrl,
@@ -3122,6 +3288,55 @@ app.get('/api/season/faculty', requireAuth('master'), async (req, res) => {
   }
 });
 
+// GET /api/season/faculty-directory: structured director/co-director/choreographer
+// roster for the Faculty page (distinct from /api/season/faculty above, which feeds
+// notes.html's flat notify-picker and shouldn't be reshaped out from under it).
+app.get('/api/season/faculty-directory', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const [orgOwner, seasonMembers, choreographerRows] = await Promise.all([
+      pool.query(
+        `SELECT u.email, om.role FROM org_members om JOIN users u ON u.id = om.user_id
+         WHERE om.org_id = $1 AND om.role = 'owner'`,
+        [orgId]
+      ),
+      pool.query(
+        `SELECT u.email, sm.role, sm.can_see_other_blocks FROM season_members sm JOIN users u ON u.id = sm.user_id
+         WHERE sm.season_id = $1`,
+        [seasonId]
+      ),
+      pool.query(
+        `SELECT p.choreographer_email AS email, p.choreographer_name AS name,
+                p.id AS piece_id, p.name AS piece_name,
+                mb.day, mb.start_time, mb.end_time
+         FROM pieces p LEFT JOIN master_blocks mb ON mb.piece_id = p.id
+         WHERE p.season_id = $1 AND p.choreographer_email IS NOT NULL AND p.choreographer_email != ''
+         ORDER BY p.choreographer_email, p.name, mb.day, mb.start_time`,
+        [seasonId]
+      ),
+    ]);
+
+    const directors = [...orgOwner.rows, ...seasonMembers.rows];
+
+    const choreographers = new Map();
+    choreographerRows.rows.forEach(r => {
+      if (!choreographers.has(r.email)) choreographers.set(r.email, { email: r.email, name: r.name, pieces: new Map() });
+      const choreographer = choreographers.get(r.email);
+      if (!choreographer.pieces.has(r.piece_id)) choreographer.pieces.set(r.piece_id, { id: r.piece_id, name: r.piece_name, blocks: [] });
+      if (r.day) choreographer.pieces.get(r.piece_id).blocks.push({ day: r.day, start_time: r.start_time, end_time: r.end_time });
+    });
+
+    res.json({
+      directors,
+      choreographers: [...choreographers.values()].map(c => ({ ...c, pieces: [...c.pieces.values()] })),
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load faculty directory.' });
+  }
+});
+
 // POST /api/season/production-notes
 app.post('/api/season/production-notes', requireAuth('master'), async (req, res) => {
   const { seasonId } = req.session;
@@ -3154,7 +3369,15 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
       );
       const orgName       = orgRow.rows[0]?.org_name || 'CastSync';
       const categoryLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
-      notify_emails.filter(Boolean).forEach(to => {
+      // notify_emails comes from notes.html's faculty picker as bare email strings (not
+      // every recipient necessarily has an account -- a choreographer's email might be
+      // on the list with nothing in `users` to match), so preference-resolution is a
+      // best-effort lookup keyed by email, not a guaranteed userId per recipient.
+      const recipientEmails = notify_emails.filter(Boolean);
+      const userRows = await pool.query('SELECT id, email FROM users WHERE email = ANY($1)', [recipientEmails]);
+      const userIdByEmail = new Map(userRows.rows.map(r => [r.email, r.id]));
+      for (const to of recipientEmails) {
+        if (!(await emailAllowed(userIdByEmail.get(to), 'production_notes'))) continue;
         resend.emails.send({
           from:    FROM_EMAIL,
           to,
@@ -3166,7 +3389,7 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
             <p style="color:#aaa;font-size:12px;">Internal faculty note from CastSync. Not visible to auditionees.</p>
           </div>`,
         }).catch(err => console.error('Production note email error:', err.message));
-      });
+      }
     }
 
     res.status(201).json({ id: noteId });
@@ -3355,7 +3578,7 @@ app.patch('/api/season/absence-requests/:id', requireAuth('master'), async (req,
       : 'TBD / not yet assigned';
     const statusLabel = ABSENCE_STATUS_LABELS[newStatus];
 
-    if (emailEnabled && status !== undefined) {
+    if (emailEnabled && status !== undefined && await emailAllowed(reqRow.user_id, 'absence_requests')) {
       const dancerProfile = await pool.query('SELECT secondary_email FROM dancer_profiles WHERE user_id = $1', [reqRow.user_id]);
       const recipients = [reqRow.email, dancerProfile.rows[0]?.secondary_email].filter(Boolean);
       resend.emails.send({
@@ -4279,6 +4502,34 @@ async function runMigrations() {
     `);
     console.log('Migration step 23 (master_block_exceptions table) complete.');
   } catch (err) { console.error('Migration step 23 error:', err.message); }
+
+  // Step 24: Account page additions -- display name, change-email (pending_email +
+  // its own token, separate from verification_token which is signup-specific), and
+  // notification preferences. All nullable/defaulted, zero behavior change until a
+  // user actually sets one.
+  try {
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN name VARCHAR(255);
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN pending_email VARCHAR(255);
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN email_change_token VARCHAR(100);
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN notification_prefs JSONB NOT NULL DEFAULT '{}'::jsonb;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    console.log('Migration step 24 (users name/pending_email/email_change_token/notification_prefs) complete.');
+  } catch (err) { console.error('Migration step 24 error:', err.message); }
 
   console.log('All migrations complete.');
 }

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Faculty | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="app-shell.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <style>
+    .faculty-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 4px; border-bottom: 1px solid var(--border);
+    }
+    .faculty-row:last-child { border-bottom: none; }
+    .faculty-name-btn {
+      background: none; border: none; padding: 0; cursor: pointer;
+      font-size: 14px; font-weight: 600; color: var(--brand); text-decoration: none;
+    }
+    .faculty-name-btn:hover { text-decoration: underline; }
+    .faculty-role-badge {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      background: var(--surface); border-radius: 4px; padding: 2px 8px;
+    }
+  </style>
+</head>
+<body style="visibility:hidden">
+
+  <div id="app-shell-root"></div>
+  <script src="app-shell.js"></script>
+
+  <div class="app-main">
+
+  <!-- Faculty member modal -->
+  <div class="modal fade" id="facultyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="faculty-modal-name"></h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span style="font-size:13px;" id="faculty-modal-email"></span>
+            <button class="btn btn-link btn-sm p-0" style="font-size:12px;text-decoration:none;" title="Copy email" id="faculty-modal-copy-btn">📋 Copy</button>
+          </div>
+          <div id="faculty-modal-role" class="text-muted mb-3" style="font-size:13px;"></div>
+          <div id="faculty-modal-pieces"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="container-fluid mt-4 px-4" style="max-width: 640px;">
+
+    <div class="mb-3">
+      <h5 class="mb-0 fw-semibold">Faculty</h5>
+      <p class="text-muted mb-0" style="font-size:13px;" id="page-subtitle">Loading…</p>
+    </div>
+
+    <div class="app-card mb-4">
+      <h6 class="label-gold mb-3">Directors</h6>
+      <div id="directors-list"><span class="text-muted" style="font-size:13px;">Loading…</span></div>
+    </div>
+
+    <div class="app-card mb-4">
+      <h6 class="label-gold mb-3">Choreographers</h6>
+      <div id="choreographers-list"><span class="text-muted" style="font-size:13px;">Loading…</span></div>
+      <div id="no-choreographers-msg" class="text-muted d-none" style="font-size:13px;">
+        No choreographers on file yet. Add one from any piece's details on the
+        <a href="casting.html">Cast List</a> page.
+      </div>
+    </div>
+
+  </div>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    (async () => {
+      try {
+        const res  = await fetch('/api/auth/me');
+        const user = await res.json();
+        if (!res.ok || (user.role !== 'master' && user.mode !== 'director')) { window.location.href = 'login.html'; return; }
+        if (!user.orgId) { window.location.href = 'org-select.html'; return; }
+        const nav = document.querySelector('.navbar-nav');
+        nav.insertAdjacentHTML('beforeend',
+          `<li class="nav-item"><span class="nav-link nav-context">${user.orgName} · ${user.seasonName}</span></li>`
+        );
+        document.getElementById('right-nav').innerHTML =
+          window.renderProductionSwitcher(user) +
+          `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+        window.initProductionSwitcher();
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+        document.getElementById('page-subtitle').textContent = `${user.orgName} · ${user.seasonName}`;
+        document.body.style.visibility = 'visible';
+
+        const dirRes = await fetch('/api/season/faculty-directory');
+        if (!dirRes.ok) { document.getElementById('directors-list').textContent = 'Could not load faculty.'; return; }
+        const { directors, choreographers } = await dirRes.json();
+
+        const facultyModalEl = document.getElementById('facultyModal');
+        function openFacultyModal({ title, email, roleLabel, piecesHtml }) {
+          document.getElementById('faculty-modal-name').textContent = title;
+          document.getElementById('faculty-modal-email').textContent = email;
+          document.getElementById('faculty-modal-copy-btn').dataset.copyEmail = email;
+          document.getElementById('faculty-modal-role').textContent = roleLabel || '';
+          document.getElementById('faculty-modal-pieces').innerHTML = piecesHtml || '';
+          new bootstrap.Modal(facultyModalEl).show();
+        }
+
+        const directorsListEl = document.getElementById('directors-list');
+        if (directors.length === 0) {
+          directorsListEl.innerHTML = '<span class="text-muted" style="font-size:13px;">No directors found.</span>';
+        } else {
+          directorsListEl.innerHTML = directors.map((d, i) => {
+            const roleLabel = d.role === 'owner' ? 'Director' : 'Co-Director';
+            return `
+              <div class="faculty-row">
+                <button class="faculty-name-btn open-director" data-index="${i}">${d.email}</button>
+                <span class="faculty-role-badge">${roleLabel}</span>
+              </div>`;
+          }).join('');
+          directorsListEl.querySelectorAll('.open-director').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const d = directors[btn.dataset.index];
+              const roleLabel = d.role === 'owner' ? 'Director' : 'Co-Director';
+              openFacultyModal({ title: d.email, email: d.email, roleLabel });
+            });
+          });
+        }
+
+        const choreographersListEl = document.getElementById('choreographers-list');
+        if (choreographers.length === 0) {
+          choreographersListEl.classList.add('d-none');
+          document.getElementById('no-choreographers-msg').classList.remove('d-none');
+        } else {
+          choreographersListEl.innerHTML = choreographers.map((c, i) => `
+            <div class="faculty-row">
+              <button class="faculty-name-btn open-choreographer" data-index="${i}">${c.name || c.email}</button>
+              <span class="faculty-role-badge">${c.pieces.length} piece${c.pieces.length === 1 ? '' : 's'}</span>
+            </div>`).join('');
+          choreographersListEl.querySelectorAll('.open-choreographer').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const c = choreographers[btn.dataset.index];
+              const piecesHtml = c.pieces.map(p => `
+                <div class="mb-2">
+                  <div style="font-size:13px;font-weight:600;">${p.name}</div>
+                  ${p.blocks.length === 0
+                    ? '<div class="text-muted" style="font-size:12px;">No rehearsal blocks on the schedule yet.</div>'
+                    : p.blocks.map(b => `<div class="text-muted" style="font-size:12px;">${b.day}, ${b.start_time} – ${b.end_time}</div>`).join('')}
+                </div>`).join('');
+              openFacultyModal({ title: c.name || c.email, email: c.email, roleLabel: 'Choreographer', piecesHtml });
+            });
+          });
+        }
+
+        // Copy email to clipboard -- mirrors org-select.html's join-code copy button exactly.
+        document.getElementById('faculty-modal-copy-btn').addEventListener('click', async (e) => {
+          const btn = e.currentTarget;
+          try {
+            await navigator.clipboard.writeText(btn.dataset.copyEmail);
+            const original = btn.textContent;
+            btn.textContent = '✓ Copied';
+            setTimeout(() => { btn.textContent = original; }, 1500);
+          } catch (err) {
+            alert('Could not copy email. Please select and copy it manually.');
+          }
+        });
+      } catch (err) {
+        window.location.href = 'login.html';
+      }
+    })();
+  </script>
+</body>
+</html>

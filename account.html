@@ -6,6 +6,7 @@
   <title>Account Settings | CastSync</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="app-shell.css">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
@@ -13,10 +14,33 @@
 </head>
 <body style="visibility:hidden">
 
-  <nav class="navbar app-nav">
+  <!-- Director shell: app-shell.js renders itself into here immediately on load.
+       Hidden/removed in JS below if the viewer turns out to be an auditionee. -->
+  <div id="app-shell-root"></div>
+  <script src="app-shell.js"></script>
+
+  <!-- Auditionee nav: same tabs as every other auditionee page, mirrored here since
+       account.html is the one page both audiences share. None of the tabs are "active"
+       since Account isn't one of them, matching every other page's own active tab. -->
+  <nav class="navbar navbar-expand-lg app-nav" id="auditionee-navbar" style="display:none;">
     <div class="container-fluid">
       <a class="navbar-brand" href="#"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
-      <div class="ms-auto d-flex align-items-center gap-3" id="right-nav"></div>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item"><a class="nav-link" href="auditionForm.html">Audition Form</a></li>
+          <li class="nav-item"><a class="nav-link" href="my-submissions.html">My Submissions</a></li>
+          <li class="nav-item"><a class="nav-link" href="my-casting.html">Casting</a></li>
+          <li class="nav-item"><a class="nav-link" href="request-absence.html">Request Absence</a></li>
+          <li class="nav-item"><a class="nav-link" href="upgrade.html">Director Access</a></li>
+          <li class="nav-item d-flex align-items-center d-none" id="switch-director-item">
+            <button class="btn btn-outline-secondary btn-sm ms-1" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center gap-3" id="auditionee-right-nav"></div>
+      </div>
     </div>
   </nav>
 
@@ -42,83 +66,224 @@
     </div>
   </div>
 
-  <div class="container mt-5" style="max-width:520px;">
-    <h4 class="mb-1 fw-semibold">Account Settings</h4>
-    <p class="text-muted mb-4" style="font-size:13px;" id="account-email">Loading…</p>
+  <div id="account-shell-wrapper">
+    <div class="container mt-5" style="max-width:520px;">
+      <h4 class="mb-1 fw-semibold">Account Settings</h4>
+      <p class="text-muted mb-4" style="font-size:13px;" id="account-email">Loading…</p>
 
-    <div class="card mb-4">
-      <div class="card-body">
-        <h6 class="fw-semibold mb-1">Change Password</h6>
-        <p class="text-muted mb-3" style="font-size:13px;">Enter your current password, then choose a new one.</p>
-        <div id="pw-error" class="alert alert-danger d-none"></div>
-        <div id="pw-success" class="alert alert-success d-none"></div>
-        <div class="mb-3">
-          <label class="form-label">Current Password</label>
-          <input type="password" id="pw-current" class="form-control" autocomplete="current-password" />
+      <div class="card mb-4">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-3">Profile</h6>
+          <div class="mb-2">
+            <label class="form-label">Display Name</label>
+            <div class="d-flex gap-2">
+              <input type="text" id="name-input" class="form-control" placeholder="Your name" autocomplete="off" />
+              <button class="btn btn-outline-secondary" id="save-name-btn">Save</button>
+            </div>
+            <div id="name-msg" class="mt-1" style="font-size:12px;"></div>
+          </div>
         </div>
-        <div class="mb-3">
-          <label class="form-label">New Password</label>
-          <input type="password" id="pw-new" class="form-control" autocomplete="new-password" />
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Confirm New Password</label>
-          <input type="password" id="pw-confirm" class="form-control" autocomplete="new-password" />
-        </div>
-        <button class="btn btn-dark" id="change-pw-btn">Update Password</button>
       </div>
-    </div>
 
-    <div class="card mb-4 d-none" id="billing-card">
-      <div class="card-body">
-        <h6 class="fw-semibold mb-1">Billing</h6>
-        <p class="text-muted mb-3" style="font-size:13px;">View payment history, download receipts, and manage your payment method.</p>
-        <div id="billing-error" class="alert alert-danger d-none" style="font-size:13px;"></div>
-        <button class="btn btn-dark btn-sm" id="billing-portal-btn">Open Billing Portal →</button>
+      <div class="card mb-4">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-1">Change Password</h6>
+          <p class="text-muted mb-2" style="font-size:12px;">
+            <strong>Sign-in method:</strong> <span id="google-status">Loading…</span>
+          </p>
+          <p class="text-muted mb-2" style="font-size:13px;">Enter your current password, then choose a new one.</p>
+          <p class="text-muted mb-3" style="font-size:12px;">
+            Forgot your current password? Use the <a href="forgot-password.html">password reset link</a> instead, or contact
+            <a href="mailto:support@cast-sync.com">support@cast-sync.com</a> if you're stuck.
+          </p>
+          <div id="pw-error" class="alert alert-danger d-none"></div>
+          <div id="pw-success" class="alert alert-success d-none"></div>
+          <div class="mb-3">
+            <label class="form-label">Current Password</label>
+            <input type="password" id="pw-current" class="form-control" autocomplete="current-password" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">New Password</label>
+            <input type="password" id="pw-new" class="form-control" autocomplete="new-password" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Confirm New Password</label>
+            <input type="password" id="pw-confirm" class="form-control" autocomplete="new-password" />
+          </div>
+          <button class="btn btn-dark" id="change-pw-btn">Update Password</button>
+        </div>
       </div>
-    </div>
 
-    <div class="card border-danger">
-      <div class="card-body">
-        <h6 class="fw-semibold text-danger mb-1">Delete Account</h6>
-        <p class="text-muted mb-3" style="font-size:13px;">Permanently removes your account, profile, and all audition submissions. This cannot be undone.</p>
-        <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal">Delete My Account</button>
+      <div class="card mb-4">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-1">Change Email</h6>
+          <p class="text-muted mb-3" style="font-size:13px;">Your current login email is <strong id="current-email-display"></strong>.</p>
+          <div id="pending-email-banner" class="alert alert-info d-none" style="font-size:13px;"></div>
+          <div id="email-error" class="alert alert-danger d-none"></div>
+          <div id="email-success" class="alert alert-success d-none"></div>
+          <div class="mb-3">
+            <label class="form-label">New Email</label>
+            <input type="email" id="new-email-input" class="form-control" autocomplete="off" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Confirm Password</label>
+            <input type="password" id="email-change-password" class="form-control" autocomplete="current-password" />
+          </div>
+          <button class="btn btn-dark" id="change-email-btn">Send Confirmation Link</button>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-1">Notification Preferences</h6>
+          <p class="text-muted mb-3" style="font-size:13px;">Turn off email categories you don't want. Account security emails (password resets, verification) always send regardless.</p>
+          <div id="notif-toggles"></div>
+          <div id="notif-saved-msg" class="text-success d-none mt-2" style="font-size:12px;">Saved.</div>
+        </div>
+      </div>
+
+      <div class="card border-danger">
+        <div class="card-body">
+          <h6 class="fw-semibold text-danger mb-1">Delete Account</h6>
+          <p class="text-muted mb-3" style="font-size:13px;">Permanently removes your account, profile, and all audition submissions. This cannot be undone.</p>
+          <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteModal">Delete My Account</button>
+        </div>
       </div>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
-    // Auth guard + nav
     (async () => {
       try {
         const res  = await fetch('/api/auth/me');
         const user = await res.json();
         if (!res.ok) { window.location.href = 'login.html'; return; }
         document.getElementById('account-email').textContent = user.email;
-        document.getElementById('right-nav').className = 'app-nav-right';
-        const defaultBack = user.mode === 'director' || user.isDirector ? 'org-select.html' : 'auditionForm.html';
-        let backHref = defaultBack;
-        if (document.referrer) {
-          const referrerUrl = new URL(document.referrer);
-          const referrerPage = referrerUrl.pathname.split('/').pop();
-          if (referrerUrl.origin === location.origin && referrerPage && !['account.html', 'login.html', ''].includes(referrerPage)) {
-            backHref = document.referrer;
+
+        // Same test the rest of the app uses to decide "this session is on the director
+        // side" -- a dual-role user who's switched to auditionee mode sees the auditionee
+        // nav here too, matching how every other auditionee page treats them.
+        const isDirector = user.mode === 'director' || (user.role === 'master' && user.mode !== 'auditionee');
+
+        if (isDirector) {
+          // app-shell.js already rendered the header+sidebar into the page on script load.
+          document.getElementById('auditionee-navbar').remove();
+          const nav = document.querySelector('.navbar-nav');
+          nav.insertAdjacentHTML('beforeend',
+            `<li class="nav-item"><span class="nav-link nav-context">${user.orgName || ''} · ${user.seasonName || ''}</span></li>`
+          );
+          document.getElementById('right-nav').innerHTML =
+            `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+          document.getElementById('account-shell-wrapper').classList.add('app-main');
+        } else {
+          // Auditionee: drop the director shell app-shell.js rendered, show the
+          // auditionee top-nav instead.
+          document.querySelector('.app-shell-header')?.remove();
+          document.querySelector('.app-sidebar')?.remove();
+          document.getElementById('auditionee-navbar').style.display = '';
+          document.getElementById('auditionee-right-nav').innerHTML =
+            `<a href="account.html">Account</a>
+             <button id="logout-btn">Log Out</button>`;
+          if (user.isDirector) {
+            document.getElementById('switch-director-item').classList.remove('d-none');
+            document.getElementById('switch-mode-btn').addEventListener('click', async () => {
+              await fetch('/api/auth/switch-mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'director' }) });
+              window.location.href = 'org-select.html';
+            });
           }
         }
-        document.getElementById('right-nav').innerHTML =
-          `<a href="${backHref}">← Back</a>
-           <button id="logout-btn">Log Out</button>`;
         document.getElementById('logout-btn').addEventListener('click', async () => {
           await fetch('/api/auth/logout', { method: 'POST' });
           window.location.href = 'login.html';
         });
-        // Show billing card for directors/masters only
-        if (user.role === 'master' || user.mode === 'director') {
-          document.getElementById('billing-card').classList.remove('d-none');
+
+        document.getElementById('current-email-display').textContent = user.email;
+
+        const settingsRes = await fetch('/api/auth/account-settings');
+        const settings = settingsRes.ok ? await settingsRes.json() : {};
+
+        document.getElementById('google-status').textContent =
+          settings.googleLinked ? 'Google' : 'Password (not linked to Google)';
+        document.getElementById('name-input').value = settings.name || '';
+
+        if (settings.pendingEmail) {
+          document.getElementById('pending-email-banner').textContent =
+            `Confirmation pending for ${settings.pendingEmail}. Check that inbox for a link, or request a new one below.`;
+          document.getElementById('pending-email-banner').classList.remove('d-none');
         }
+
+        const NOTIF_CATEGORIES = [
+          { key: 'casting_updates',  label: 'Casting & Submissions', desc: 'Submission confirmations and casting results.' },
+          { key: 'absence_requests', label: 'Absence Requests',      desc: "Updates on absence requests -- yours, or ones you need to review." },
+          { key: 'schedule_changes', label: 'Schedule Changes',      desc: "Cancelled, moved, or added rehearsals for pieces you're part of." },
+          { key: 'production_notes', label: 'Production Notes',     desc: "Internal faculty notes you're tagged to receive." },
+        ];
+        const prefs = settings.notificationPrefs || {};
+        document.getElementById('notif-toggles').innerHTML = NOTIF_CATEGORIES.map(c => `
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input notif-toggle" type="checkbox" role="switch" id="notif-${c.key}" data-category="${c.key}" ${prefs[c.key] === false ? '' : 'checked'}>
+            <label class="form-check-label" for="notif-${c.key}" style="font-size:13px;font-weight:600;">${c.label}</label>
+            <div class="text-muted" style="font-size:12px;">${c.desc}</div>
+          </div>`).join('');
+        document.querySelectorAll('.notif-toggle').forEach(toggle => {
+          toggle.addEventListener('change', async () => {
+            const savedEl = document.getElementById('notif-saved-msg');
+            try {
+              await fetch('/api/auth/notification-prefs', {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [toggle.dataset.category]: toggle.checked }),
+              });
+              savedEl.classList.remove('d-none');
+              setTimeout(() => savedEl.classList.add('d-none'), 2000);
+            } catch (e) { alert('Could not save preference. Try again.'); }
+          });
+        });
+
         document.body.style.visibility = 'visible';
       } catch (e) { window.location.href = 'login.html'; }
     })();
+
+    // Save display name
+    document.getElementById('save-name-btn').addEventListener('click', async () => {
+      const name  = document.getElementById('name-input').value.trim();
+      const msgEl = document.getElementById('name-msg');
+      try {
+        const res = await fetch('/api/auth/name', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+        });
+        if (!res.ok) { const data = await res.json(); msgEl.textContent = data.error || 'Could not save name.'; msgEl.className = 'mt-1 text-danger'; msgEl.style.fontSize = '12px'; return; }
+        msgEl.textContent = 'Saved.'; msgEl.className = 'mt-1 text-success'; msgEl.style.fontSize = '12px';
+        setTimeout(() => { msgEl.textContent = ''; }, 2500);
+      } catch (e) {
+        msgEl.textContent = 'Could not connect to server.'; msgEl.className = 'mt-1 text-danger'; msgEl.style.fontSize = '12px';
+      }
+    });
+
+    // Change email
+    document.getElementById('change-email-btn').addEventListener('click', async () => {
+      const newEmail = document.getElementById('new-email-input').value.trim();
+      const password = document.getElementById('email-change-password').value;
+      const errEl     = document.getElementById('email-error');
+      const succEl    = document.getElementById('email-success');
+      errEl.classList.add('d-none');
+      succEl.classList.add('d-none');
+      if (!newEmail || !password) { errEl.textContent = 'New email and password are required.'; errEl.classList.remove('d-none'); return; }
+      try {
+        const res  = await fetch('/api/auth/change-email', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password, newEmail }),
+        });
+        const data = await res.json();
+        if (!res.ok) { errEl.textContent = data.error; errEl.classList.remove('d-none'); return; }
+        succEl.textContent = `Confirmation link sent to ${data.pendingEmail}. Click it to finish the change.`;
+        succEl.classList.remove('d-none');
+        document.getElementById('new-email-input').value = '';
+        document.getElementById('email-change-password').value = '';
+      } catch (e) {
+        errEl.textContent = 'Could not connect to server.'; errEl.classList.remove('d-none');
+      }
+    });
 
     // Change password
     document.getElementById('change-pw-btn').addEventListener('click', async () => {
@@ -143,27 +308,6 @@
       document.getElementById('pw-current').value = '';
       document.getElementById('pw-new').value = '';
       document.getElementById('pw-confirm').value = '';
-    });
-
-    // Billing portal
-    document.getElementById('billing-portal-btn').addEventListener('click', async () => {
-      const btn    = document.getElementById('billing-portal-btn');
-      const errEl  = document.getElementById('billing-error');
-      errEl.classList.add('d-none');
-      btn.disabled    = true;
-      btn.textContent = 'Opening…';
-      try {
-        const res  = await fetch('/api/billing/portal', { method: 'POST' });
-        const data = await res.json();
-        if (!res.ok) { errEl.textContent = data.error; errEl.classList.remove('d-none'); return; }
-        window.location.href = data.url;
-      } catch (e) {
-        errEl.textContent = 'Could not open billing portal. Try again.';
-        errEl.classList.remove('d-none');
-      } finally {
-        btn.disabled    = false;
-        btn.textContent = 'Open Billing Portal →';
-      }
     });
 
     // Delete account

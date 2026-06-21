@@ -272,7 +272,7 @@
   <div class="container-fluid px-4 mt-3 pb-5 d-flex align-items-center gap-3 flex-wrap no-print">
     <div id="update-alert" class="alert alert-success d-none w-100" role="alert">
       Schedule updated! You can now view dancer availability on the
-      <a href="search.html" class="alert-link">Availability</a> tab.
+      <a href="search.html" class="alert-link">Availability Analysis</a> tab.
     </div>
     <button id="update-btn" class="btn btn-success">Update Schedule</button>
     <button class="btn btn-outline-secondary btn-print" onclick="window.print()">Print Schedule</button>
@@ -429,8 +429,9 @@
           `<li class="nav-item"><span class="nav-link nav-context">${user.orgName} · ${user.seasonName}</span></li>`
         );
         document.getElementById('right-nav').innerHTML =
-          `<a href="account.html" class="btn-nav-account">Account</a>
-           <button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+          window.renderProductionSwitcher(user) +
+          `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+        window.initProductionSwitcher();
         document.getElementById('logout-btn').addEventListener('click', async () => {
           await fetch('/api/auth/logout', { method: 'POST' });
           window.location.href = 'login.html';

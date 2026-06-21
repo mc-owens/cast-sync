@@ -48,6 +48,16 @@
 .app-shell-right {
   margin-left: auto;
 }
+/* style.css's ".app-nav-right a, .app-nav-right button { padding: 0; }" (written for
+   the old plain "Account / Log Out" links) reaches into the dropdown menu too, since
+   it's a descendant selector and the dropdown lives inside #right-nav. Override by id
+   so the trigger and every menu item get real padding back. */
+#prod-switcher-btn {
+  padding: 4px 8px !important;
+}
+#prod-switcher-menu .dropdown-item {
+  padding: 6px 16px !important;
+}
 .app-hamburger {
   display: none;
   background: none;
