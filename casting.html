@@ -183,6 +183,7 @@
 
   <script>
     let roomCount      = 1;
+    let namedRooms     = []; // non-empty means this season uses named rooms (set on Master Schedule); the old free-text Room field below is replaced by a read-only summary
     let allPieces      = [];
     let allCasts       = [];
     let draggingCastId = null; // tracked across dragstart/dragover/drop
@@ -204,10 +205,11 @@
 
     async function loadCasting() {
       try {
-        const [piecesRes, castsRes, roomRes] = await Promise.all([
+        const [piecesRes, castsRes, roomRes, namedRoomsRes] = await Promise.all([
           fetch('/api/pieces'),
           fetch('/api/piece-casts'),
           fetch('/api/season/room-count'),
+          fetch('/api/season/rooms'),
         ]);
 
         document.getElementById('loading-msg').style.display = 'none';
@@ -218,6 +220,7 @@
         }
 
         if (roomRes.ok) { const rd = await roomRes.json(); roomCount = rd.room_count || 1; }
+        if (namedRoomsRes.ok) namedRooms = await namedRoomsRes.json();
 
         allPieces = await piecesRes.json();
         allCasts  = await castsRes.json();
@@ -233,6 +236,14 @@
           const pieceCasts   = allCasts.filter(c => c.piece_id === piece.id);
           const members      = pieceCasts.filter(c => c.cast_role === 'member');
           const understudies = pieceCasts.filter(c => c.cast_role === 'understudy');
+          // Once a season has named rooms, the room actually used is decided per
+          // rehearsal block on Master Schedule, not typed freely here -- otherwise this
+          // free-text field could say something that doesn't match (or even exist as)
+          // any of the production's real rooms.
+          const usedRoomNames = [...new Set((piece.blocks || []).map(b => b.room_name).filter(Boolean))];
+          const roomSummary = (piece.blocks || []).length === 0
+            ? 'No rehearsals scheduled yet'
+            : (usedRoomNames.length === 0 ? 'No room assigned yet' : usedRoomNames.join(', '));
 
           const card = document.createElement('div');
           card.className = 'card piece-card';
@@ -268,7 +279,12 @@
                       <input type="email" class="form-control form-control-sm choreo-email" data-piece-id="${piece.id}"
                         value="${piece.choreographer_email || ''}" placeholder="email@example.com" />
                     </div>
-                    ${roomCount >= 2 ? `
+                    ${namedRooms.length > 0 ? `
+                    <div class="col-sm-6">
+                      <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">Rehearsal Room</label>
+                      <div class="form-control form-control-sm bg-light text-muted" style="font-size:12.5px;">${roomSummary}</div>
+                      <div class="text-muted mt-1" style="font-size:11px;">Set per rehearsal on <a href="master.html">Master Schedule</a>.</div>
+                    </div>` : roomCount >= 2 ? `
                     <div class="col-sm-6">
                       <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">Rehearsal Room</label>
                       <input type="text" class="form-control form-control-sm piece-room" data-piece-id="${piece.id}"

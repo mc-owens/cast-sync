@@ -63,16 +63,26 @@
           <label class="form-label" style="font-size:13px;font-weight:600;">Audition Date</label>
           <input type="date" class="form-control form-control-sm" id="audition-date-input">
         </div>
-        <div class="col-sm-6">
-          <label class="form-label" style="font-size:13px;font-weight:600;">Performance Date</label>
-          <input type="date" class="form-control form-control-sm" id="performance-date-input">
-        </div>
       </div>
       <p class="text-muted mt-2 mb-0" style="font-size:12px;">
-        All four dates are optional. Setting a start and end date turns on week-by-week navigation on the
+        All dates are optional. Setting a start and end date turns on week-by-week navigation on the
         <a href="master.html">Master Schedule</a> page.
       </p>
       <span id="dates-saved-msg" class="text-success d-none" style="font-size:12px;">Saved.</span>
+    </div>
+
+    <div class="app-card mb-4">
+      <h6 class="label-gold mb-3">Performance Dates</h6>
+      <p class="text-muted mb-3" style="font-size:12px;">
+        Add one date per show. Each one shows up directly on the
+        <a href="master.html">Master Schedule</a> page when you navigate to that week.
+      </p>
+      <div id="performance-dates-list" class="mb-2"></div>
+      <div class="d-flex gap-2">
+        <input type="date" class="form-control form-control-sm" id="new-performance-date-input" style="max-width:200px;">
+        <button class="btn btn-sm btn-outline-secondary" id="add-performance-date-btn">Add</button>
+      </div>
+      <div id="performance-date-error" class="text-danger mt-1 d-none" style="font-size:12px;"></div>
     </div>
 
   </div>
@@ -124,10 +134,9 @@
           const datesRes = await fetch('/api/season/production-dates');
           if (datesRes.ok) {
             const dates = await datesRes.json();
-            document.getElementById('start-date-input').value       = dates.start_date || '';
-            document.getElementById('end-date-input').value         = dates.end_date || '';
-            document.getElementById('audition-date-input').value    = dates.audition_date || '';
-            document.getElementById('performance-date-input').value = dates.performance_date || '';
+            document.getElementById('start-date-input').value    = dates.start_date || '';
+            document.getElementById('end-date-input').value      = dates.end_date || '';
+            document.getElementById('audition-date-input').value = dates.audition_date || '';
           }
         } catch (e) { /* leave fields blank, no big deal */ }
 
@@ -135,7 +144,6 @@
           'start-date-input': 'start_date',
           'end-date-input': 'end_date',
           'audition-date-input': 'audition_date',
-          'performance-date-input': 'performance_date',
         };
         Object.keys(dateFieldMap).forEach(inputId => {
           document.getElementById(inputId).addEventListener('change', async () => {
@@ -150,6 +158,49 @@
               setTimeout(() => savedEl.classList.add('d-none'), 2000);
             } catch (e) { alert('Could not connect to server.'); }
           });
+        });
+
+        // ── Performance dates (a production can have more than one show night) ──
+
+        async function loadPerformanceDates() {
+          const listEl = document.getElementById('performance-dates-list');
+          try {
+            const r = await fetch('/api/season/performance-dates');
+            const performanceDates = r.ok ? await r.json() : [];
+            listEl.innerHTML = performanceDates.map(d => {
+              const nice = new Date(`${d.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+              return `
+                <div class="d-flex align-items-center justify-content-between mb-1" data-perf-date-row="${d.id}">
+                  <span style="font-size:13px;">${nice}</span>
+                  <button type="button" class="btn-close" style="font-size:9px;" data-delete-perf-date="${d.id}" aria-label="Remove date"></button>
+                </div>`;
+            }).join('') || '<div class="text-muted" style="font-size:12px;">No performance dates yet.</div>';
+
+            listEl.querySelectorAll('[data-delete-perf-date]').forEach(btn => {
+              btn.addEventListener('click', async () => {
+                const res = await fetch(`/api/season/performance-dates/${btn.dataset.deletePerfDate}`, { method: 'DELETE' });
+                if (!res.ok) { const data = await res.json(); alert(data.error || 'Could not remove date.'); return; }
+                loadPerformanceDates();
+              });
+            });
+          } catch (e) { listEl.innerHTML = '<div class="text-danger" style="font-size:12px;">Could not load performance dates.</div>'; }
+        }
+        loadPerformanceDates();
+
+        document.getElementById('add-performance-date-btn').addEventListener('click', async () => {
+          const input = document.getElementById('new-performance-date-input');
+          const errEl = document.getElementById('performance-date-error');
+          errEl.classList.add('d-none');
+          if (!input.value) return;
+          try {
+            const res = await fetch('/api/season/performance-dates', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: input.value }),
+            });
+            const data = await res.json();
+            if (!res.ok) { errEl.textContent = data.error || 'Could not add date.'; errEl.classList.remove('d-none'); return; }
+            input.value = '';
+            loadPerformanceDates();
+          } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.classList.remove('d-none'); }
         });
 
         try {

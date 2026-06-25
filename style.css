@@ -181,6 +181,14 @@ body {
   text-transform: uppercase;
 }
 
+/* A whole-cell accent, not text squeezed into the day name -- robust at any column
+   width, unlike appending an icon to the label itself. box-shadow (not border) so it
+   never changes the cell's box size. The banner above the grid names the specific
+   day(s)/type in full; this is just an at-a-glance cue once you know to look for it. */
+.day-header.has-milestone {
+  box-shadow: inset 0 -3px 0 0 var(--gold);
+}
+
 .schedule-container {
   display: grid;
   grid-template-columns: 72px 1fr;
@@ -217,6 +225,13 @@ body {
 .day-column {
   border-right: 1px solid #f0f0f0;
   position: relative;
+}
+
+/* Full-column wash for a milestone day (audition/performance) -- light enough that
+   rehearsal blocks on top stay perfectly readable, but visible top-to-bottom rather
+   than only as a thin strip under the day name. */
+.day-column.has-milestone {
+  background: rgba(212, 160, 23, 0.09);
 }
 
 .time-slot {
@@ -258,9 +273,15 @@ body {
 .master-block { z-index: 1; }
 .master-block:hover { z-index: 10; }
 
-.master-block.room-conflict {
+.master-block.room-conflict, .placeholder-block.room-conflict {
   border: 2px solid #dc3545 !important;
   box-shadow: 0 0 0 2px rgba(220,53,69,0.18);
+}
+
+/* Room-aware mode only (a season with at least one named room): a block with no
+   room assigned yet, nudging the director to pick one without implying an error. */
+.master-block.room-needs-assignment, .placeholder-block.room-needs-assignment {
+  border: 2px dashed #d4a017 !important;
 }
 
 .master-block.block-cancelled-this-week {

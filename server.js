@@ -178,15 +178,16 @@ function dateFromYMD(dateStr) {
 // on top. The template is never modified here; this is a read-only computed view.
 async function generateOccurrences(seasonId, startDateStr, endDateStr) {
   const blocksResult = await pool.query(
-    `SELECT mb.id AS master_block_id, mb.piece_id, mb.day, mb.start_time, mb.end_time,
+    `SELECT mb.id AS master_block_id, mb.piece_id, mb.day, mb.start_time, mb.end_time, mb.room_id,
             p.name AS piece_name, p.color AS piece_color
      FROM master_blocks mb JOIN pieces p ON p.id = mb.piece_id
      WHERE p.season_id = $1`,
     [seasonId]
   );
+  const blockById = new Map(blocksResult.rows.map(b => [b.master_block_id, b]));
   const exceptionsResult = await pool.query(
     `SELECT mbe.id, mbe.piece_id, mbe.master_block_id, to_char(mbe.original_date,'YYYY-MM-DD') AS original_date,
-            mbe.type, to_char(mbe.new_date,'YYYY-MM-DD') AS new_date, mbe.new_start_time, mbe.new_end_time, mbe.note,
+            mbe.type, to_char(mbe.new_date,'YYYY-MM-DD') AS new_date, mbe.new_start_time, mbe.new_end_time, mbe.note, mbe.room_id,
             p.name AS piece_name, p.color AS piece_color
      FROM master_block_exceptions mbe JOIN pieces p ON p.id = mbe.piece_id
      WHERE mbe.season_id = $1`,
@@ -218,7 +219,7 @@ async function generateOccurrences(seasonId, startDateStr, endDateStr) {
       if (exc && (exc.type === 'cancelled' || exc.type === 'moved')) continue;
       occurrences.push({
         date: dateStr, piece_id: block.piece_id, piece_name: block.piece_name, piece_color: block.piece_color,
-        start_time: block.start_time, end_time: block.end_time,
+        start_time: block.start_time, end_time: block.end_time, room_id: block.room_id,
         source: 'template', master_block_id: block.master_block_id,
       });
     }
@@ -233,9 +234,13 @@ async function generateOccurrences(seasonId, startDateStr, endDateStr) {
   // master_block_id to look a template block up by.
   for (const e of exceptionsResult.rows) {
     if ((e.type === 'moved' || e.type === 'added') && e.new_date >= startDateStr && e.new_date <= endDateStr) {
+      // A moved rehearsal keeps its template's room by default unless the move itself
+      // specified a different one; an added (one-time, no template) rehearsal has only
+      // whatever room it was given directly.
+      const fallbackRoomId = e.type === 'moved' ? blockById.get(e.master_block_id)?.room_id ?? null : null;
       occurrences.push({
         date: e.new_date, piece_id: e.piece_id, piece_name: e.piece_name, piece_color: e.piece_color,
-        start_time: e.new_start_time, end_time: e.new_end_time,
+        start_time: e.new_start_time, end_time: e.new_end_time, room_id: e.room_id ?? fallbackRoomId,
         source: e.type, exception_id: e.id, master_block_id: e.master_block_id, note: e.note,
       });
     }
@@ -2648,10 +2653,11 @@ app.get('/api/pieces', requireAuth('master'), async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT p.id, p.name, p.color, p.choreographer_name, p.choreographer_email, p.room,
-              COALESCE(json_agg(DISTINCT jsonb_build_object('day',mb.day,'start_time',mb.start_time,'end_time',mb.end_time))
+              COALESCE(json_agg(DISTINCT jsonb_build_object('day',mb.day,'start_time',mb.start_time,'end_time',mb.end_time,'room_id',mb.room_id,'room_name',r.name))
                 FILTER (WHERE mb.id IS NOT NULL), '[]') AS blocks
        FROM pieces p
        LEFT JOIN master_blocks mb ON mb.piece_id = p.id
+       LEFT JOIN rooms r ON r.id = mb.room_id
        WHERE p.season_id = $1
        GROUP BY p.id
        ORDER BY p.created_at ASC`,
@@ -2722,7 +2728,7 @@ app.get('/api/master-blocks', requireAuth('master'), async (req, res) => {
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
     const result = await pool.query(
-      `SELECT mb.id, mb.piece_id, mb.day, mb.start_time, mb.end_time
+      `SELECT mb.id, mb.piece_id, mb.day, mb.start_time, mb.end_time, mb.room_id
        FROM master_blocks mb
        JOIN pieces p ON p.id = mb.piece_id
        WHERE p.season_id = $1 ORDER BY mb.created_at ASC`,
@@ -2735,13 +2741,13 @@ app.get('/api/master-blocks', requireAuth('master'), async (req, res) => {
 });
 
 app.post('/api/master-blocks', requireAuth('master'), async (req, res) => {
-  const { piece_id, day, start_time, end_time } = req.body;
+  const { piece_id, day, start_time, end_time, room_id } = req.body;
   if (!piece_id || !day || !start_time || !end_time)
     return res.status(400).json({ error: 'All fields required.' });
   try {
     const result = await pool.query(
-      'INSERT INTO master_blocks (piece_id, day, start_time, end_time) VALUES ($1,$2,$3,$4) RETURNING id',
-      [piece_id, day, start_time, end_time]
+      'INSERT INTO master_blocks (piece_id, day, start_time, end_time, room_id) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+      [piece_id, day, start_time, end_time, room_id || null]
     );
     res.status(201).json({ id: result.rows[0].id });
   } catch (err) {
@@ -2749,10 +2755,21 @@ app.post('/api/master-blocks', requireAuth('master'), async (req, res) => {
   }
 });
 
+// Partial update: omit a field to leave it untouched (same convention as PATCH
+// /api/season/production-dates) -- needed so a room-only edit from the schedule's
+// delete/move menu doesn't null out day/start_time/end_time, and vice versa for the
+// drag-resize flow which never sends room_id.
 app.put('/api/master-blocks/:id', requireAuth('master'), async (req, res) => {
-  const { day, start_time, end_time } = req.body;
+  const { day, start_time, end_time, room_id } = req.body;
+  const sets = [];
+  const values = [];
+  if (day !== undefined)        { sets.push(`day = $${sets.length + 1}`);        values.push(day); }
+  if (start_time !== undefined) { sets.push(`start_time = $${sets.length + 1}`);  values.push(start_time); }
+  if (end_time !== undefined)   { sets.push(`end_time = $${sets.length + 1}`);    values.push(end_time); }
+  if (room_id !== undefined)    { sets.push(`room_id = $${sets.length + 1}`);     values.push(room_id || null); }
+  if (sets.length === 0) return res.status(400).json({ error: 'No fields to update.' });
   try {
-    await pool.query('UPDATE master_blocks SET day=$1, start_time=$2, end_time=$3 WHERE id=$4', [day, start_time, end_time, req.params.id]);
+    await pool.query(`UPDATE master_blocks SET ${sets.join(', ')} WHERE id = $${values.length + 1}`, [...values, req.params.id]);
     res.json({ message: 'Block updated.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update block.' });
@@ -2829,7 +2846,7 @@ app.get('/api/master-blocks/occurrences', requireAuth('master'), async (req, res
 app.post('/api/master-blocks/:id/exceptions', requireAuth('master'), async (req, res) => {
   const { seasonId, orgId, userId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
-  const { original_date, type, new_date, new_start_time, new_end_time, note } = req.body;
+  const { original_date, type, new_date, new_start_time, new_end_time, note, room_id } = req.body;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(original_date || '')) return res.status(400).json({ error: 'original_date must be a YYYY-MM-DD date.' });
   if (!['cancelled', 'moved'].includes(type)) return res.status(400).json({ error: "type must be 'cancelled' or 'moved'." });
   if (type === 'moved' && (!new_date || !new_start_time || !new_end_time)) {
@@ -2853,13 +2870,13 @@ app.post('/api/master-blocks/:id/exceptions', requireAuth('master'), async (req,
       return res.status(400).json({ error: "Set your production's start and end dates in Production Settings before changing a single date." });
     }
     const result = await pool.query(
-      `INSERT INTO master_block_exceptions (season_id, piece_id, master_block_id, original_date, type, new_date, new_start_time, new_end_time, note, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      `INSERT INTO master_block_exceptions (season_id, piece_id, master_block_id, original_date, type, new_date, new_start_time, new_end_time, note, created_by, room_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        ON CONFLICT (master_block_id, original_date) DO UPDATE SET
          type = EXCLUDED.type, new_date = EXCLUDED.new_date, new_start_time = EXCLUDED.new_start_time,
-         new_end_time = EXCLUDED.new_end_time, note = EXCLUDED.note, created_by = EXCLUDED.created_by
+         new_end_time = EXCLUDED.new_end_time, note = EXCLUDED.note, created_by = EXCLUDED.created_by, room_id = EXCLUDED.room_id
        RETURNING id`,
-      [seasonId, pieceId, req.params.id, original_date, type, new_date || null, new_start_time || null, new_end_time || null, note || null, userId]
+      [seasonId, pieceId, req.params.id, original_date, type, new_date || null, new_start_time || null, new_end_time || null, note || null, userId, room_id || null]
     );
 
     const niceOriginal = formatDateLong(original_date);
@@ -2890,7 +2907,7 @@ app.post('/api/master-blocks/:id/exceptions', requireAuth('master'), async (req,
 app.post('/api/pieces/:pieceId/one-time-rehearsals', requireAuth('master'), async (req, res) => {
   const { seasonId, orgId, userId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
-  const { date, start_time, end_time, note } = req.body;
+  const { date, start_time, end_time, note, room_id } = req.body;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return res.status(400).json({ error: 'date must be a YYYY-MM-DD date.' });
   if (!start_time || !end_time) return res.status(400).json({ error: 'start_time and end_time are required.' });
   try {
@@ -2910,9 +2927,9 @@ app.post('/api/pieces/:pieceId/one-time-rehearsals', requireAuth('master'), asyn
       return res.status(400).json({ error: "Set your production's start and end dates in Production Settings before adding a one-time rehearsal." });
     }
     const result = await pool.query(
-      `INSERT INTO master_block_exceptions (season_id, piece_id, master_block_id, original_date, type, new_date, new_start_time, new_end_time, note, created_by)
-       VALUES ($1,$2,NULL,$3,'added',$3,$4,$5,$6,$7) RETURNING id`,
-      [seasonId, req.params.pieceId, date, start_time, end_time, note || null, userId]
+      `INSERT INTO master_block_exceptions (season_id, piece_id, master_block_id, original_date, type, new_date, new_start_time, new_end_time, note, created_by, room_id)
+       VALUES ($1,$2,NULL,$3,'added',$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [seasonId, req.params.pieceId, date, start_time, end_time, note || null, userId, room_id || null]
     );
 
     const niceDate = formatDateLong(date);
@@ -3128,6 +3145,84 @@ app.patch('/api/season/room-count', requireAuth('master'), async (req, res) => {
   }
 });
 
+// ── Named rooms ───────────────────────────────────────────────────────────────
+// Separate from room_count above: a season with zero rooms here keeps the old
+// anonymous lane-count conflict behavior; once a room exists, the UI and conflict
+// detection switch to room-aware mode. See highlightConflicts() in master-schedule.js.
+
+// GET /api/season/rooms: list named rooms for the active season
+app.get('/api/season/rooms', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query('SELECT id, name FROM rooms WHERE season_id = $1 ORDER BY name ASC', [seasonId]);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch rooms.' });
+  }
+});
+
+// POST /api/season/rooms: create a named room
+app.post('/api/season/rooms', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const name = (req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Room name is required.' });
+  try {
+    const result = await pool.query(
+      'INSERT INTO rooms (season_id, name) VALUES ($1, $2) RETURNING id, name',
+      [seasonId, name]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create room.' });
+  }
+});
+
+// PATCH /api/season/rooms/:id: rename a room
+app.patch('/api/season/rooms/:id', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const name = (req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Room name is required.' });
+  try {
+    const result = await pool.query(
+      'UPDATE rooms SET name = $1 WHERE id = $2 AND season_id = $3 RETURNING id, name',
+      [name, req.params.id, seasonId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Room not found in your active season.' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to rename room.' });
+  }
+});
+
+// DELETE /api/season/rooms/:id: blocked if anything still references it, same
+// "don't silently lose history" guard pattern as deleting a master_block with
+// recorded exceptions.
+app.delete('/api/season/rooms/:id', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const roomCheck = await pool.query('SELECT id FROM rooms WHERE id = $1 AND season_id = $2', [req.params.id, seasonId]);
+    if (roomCheck.rows.length === 0) return res.status(404).json({ error: 'Room not found in your active season.' });
+
+    const [blocks, exceptions, placeholders] = await Promise.all([
+      pool.query('SELECT COUNT(*) FROM master_blocks WHERE room_id = $1', [req.params.id]),
+      pool.query('SELECT COUNT(*) FROM master_block_exceptions WHERE room_id = $1', [req.params.id]),
+      pool.query('SELECT COUNT(*) FROM schedule_placeholders WHERE room_id = $1', [req.params.id]),
+    ]);
+    const total = parseInt(blocks.rows[0].count) + parseInt(exceptions.rows[0].count) + parseInt(placeholders.rows[0].count);
+    if (total > 0) {
+      return res.status(409).json({ error: `${total} schedule item${total === 1 ? '' : 's'} still use this room. Reassign or remove ${total === 1 ? 'it' : 'them'} first.` });
+    }
+    await pool.query('DELETE FROM rooms WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Room deleted.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete room.' });
+  }
+});
+
 // GET /api/season/availability-mode: return current production's availability collection mode
 app.get('/api/season/availability-mode', requireAuth('master'), async (req, res) => {
   const { seasonId } = req.session;
@@ -3162,25 +3257,26 @@ app.get('/api/season/production-dates', requireAuth('master'), async (req, res) 
     const result = await pool.query(
       `SELECT to_char(start_date, 'YYYY-MM-DD') AS start_date,
               to_char(end_date, 'YYYY-MM-DD') AS end_date,
-              to_char(audition_date, 'YYYY-MM-DD') AS audition_date,
-              to_char(performance_date, 'YYYY-MM-DD') AS performance_date
+              to_char(audition_date, 'YYYY-MM-DD') AS audition_date
        FROM seasons WHERE id = $1`,
       [seasonId]
     );
-    res.json(result.rows[0] || { start_date: null, end_date: null, audition_date: null, performance_date: null });
+    res.json(result.rows[0] || { start_date: null, end_date: null, audition_date: null });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch production dates.' });
   }
 });
 
-// PATCH /api/season/production-dates: director sets/clears any subset of the 4 date fields
+// PATCH /api/season/production-dates: director sets/clears any subset of start/end/audition
+// date. Performance dates moved to their own endpoints below (GET/POST/DELETE
+// /api/season/performance-dates) since a production can now have more than one.
 app.patch('/api/season/production-dates', requireAuth('master'), async (req, res) => {
-  const { start_date, end_date, audition_date, performance_date } = req.body;
+  const { start_date, end_date, audition_date } = req.body;
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
 
   const isValidDate = v => v === null || v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v);
-  for (const [label, v] of Object.entries({ start_date, end_date, audition_date, performance_date })) {
+  for (const [label, v] of Object.entries({ start_date, end_date, audition_date })) {
     if (v !== undefined && !isValidDate(v)) return res.status(400).json({ error: `${label} must be a YYYY-MM-DD date or empty.` });
   }
   if (start_date && end_date && end_date < start_date) {
@@ -3191,7 +3287,7 @@ app.patch('/api/season/production-dates', requireAuth('master'), async (req, res
   // omit a key to leave it alone, send '' to clear it.
   const sets = [];
   const values = [];
-  for (const [col, v] of Object.entries({ start_date, end_date, audition_date, performance_date })) {
+  for (const [col, v] of Object.entries({ start_date, end_date, audition_date })) {
     if (v !== undefined) { sets.push(`${col} = $${sets.length + 1}`); values.push(v || null); }
   }
   if (sets.length === 0) return res.status(400).json({ error: 'No fields to update.' });
@@ -3201,6 +3297,58 @@ app.patch('/api/season/production-dates', requireAuth('master'), async (req, res
     res.json({ message: 'Production dates updated.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update production dates.' });
+  }
+});
+
+// ── Performance dates (a production can have more than one show night) ────────
+
+// GET /api/season/performance-dates: list performance dates for the active season
+app.get('/api/season/performance-dates', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      `SELECT id, to_char(date, 'YYYY-MM-DD') AS date FROM performance_dates WHERE season_id = $1 ORDER BY date ASC`,
+      [seasonId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch performance dates.' });
+  }
+});
+
+// POST /api/season/performance-dates: add a performance date
+app.post('/api/season/performance-dates', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { date } = req.body;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return res.status(400).json({ error: 'date must be a YYYY-MM-DD date.' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO performance_dates (season_id, date) VALUES ($1, $2)
+       ON CONFLICT (season_id, date) DO NOTHING RETURNING id, to_char(date, 'YYYY-MM-DD') AS date`,
+      [seasonId, date]
+    );
+    if (result.rows.length === 0) return res.status(400).json({ error: 'That date is already on the list.' });
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to add performance date.' });
+  }
+});
+
+// DELETE /api/season/performance-dates/:id
+app.delete('/api/season/performance-dates/:id', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      'DELETE FROM performance_dates WHERE id = $1 AND season_id = $2',
+      [req.params.id, seasonId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Performance date not found in your active season.' });
+    res.json({ message: 'Performance date removed.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to remove performance date.' });
   }
 });
 
@@ -3886,15 +4034,15 @@ app.get('/api/schedule-placeholders', requireAuth('master'), async (req, res) =>
 
 // POST /api/schedule-placeholders — create a placeholder block
 app.post('/api/schedule-placeholders', requireAuth('master'), async (req, res) => {
-  const { label, day, start_time, end_time } = req.body;
+  const { label, day, start_time, end_time, room_id } = req.body;
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   if (!day || !start_time || !end_time) return res.status(400).json({ error: 'day, start_time, and end_time required.' });
   try {
     const result = await pool.query(
-      `INSERT INTO schedule_placeholders (season_id, label, day, start_time, end_time)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [seasonId, label || 'Blocked', day, start_time, end_time]
+      `INSERT INTO schedule_placeholders (season_id, label, day, start_time, end_time, room_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [seasonId, label || 'Blocked', day, start_time, end_time, room_id || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -3905,15 +4053,24 @@ app.post('/api/schedule-placeholders', requireAuth('master'), async (req, res) =
 
 // PUT /api/schedule-placeholders/:id — update a placeholder block
 app.put('/api/schedule-placeholders/:id', requireAuth('master'), async (req, res) => {
-  const { label, day, start_time, end_time } = req.body;
+  // room_id is optional on this route: the drag/resize PUT call only ever sends
+  // label/day/start_time/end_time, so omitting room_id must leave it untouched
+  // rather than wiping out an assigned room on every resize.
+  const { label, day, start_time, end_time, room_id } = req.body;
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
-    const result = await pool.query(
-      `UPDATE schedule_placeholders SET label=$1, day=$2, start_time=$3, end_time=$4
-       WHERE id=$5 AND season_id=$6 RETURNING *`,
-      [label || 'Blocked', day, start_time, end_time, req.params.id, seasonId]
-    );
+    const result = room_id !== undefined
+      ? await pool.query(
+          `UPDATE schedule_placeholders SET label=$1, day=$2, start_time=$3, end_time=$4, room_id=$5
+           WHERE id=$6 AND season_id=$7 RETURNING *`,
+          [label || 'Blocked', day, start_time, end_time, room_id || null, req.params.id, seasonId]
+        )
+      : await pool.query(
+          `UPDATE schedule_placeholders SET label=$1, day=$2, start_time=$3, end_time=$4
+           WHERE id=$5 AND season_id=$6 RETURNING *`,
+          [label || 'Blocked', day, start_time, end_time, req.params.id, seasonId]
+        );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Placeholder not found.' });
     res.json(result.rows[0]);
   } catch (err) {
@@ -4530,6 +4687,69 @@ async function runMigrations() {
     `);
     console.log('Migration step 24 (users name/pending_email/email_change_token/notification_prefs) complete.');
   } catch (err) { console.error('Migration step 24 error:', err.message); }
+
+  // Step 25: named rooms. A season with zero rows here keeps today's anonymous
+  // lane-count conflict behavior untouched (see highlightConflicts in
+  // master-schedule.js) -- the room-aware system only switches on once a director
+  // adds their first named room. room_id columns are nullable on every table that
+  // schedules something into a physical space, so existing rows are simply
+  // "unassigned" rather than broken.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS rooms (
+        id         SERIAL PRIMARY KEY,
+        season_id  INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        name       VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE master_blocks ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE master_block_exceptions ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    await pool.query(`
+      DO $$ BEGIN
+        ALTER TABLE schedule_placeholders ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL;
+      EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+    `);
+    // Preserve any labeling effort already typed into the old pieces.room free-text
+    // field by turning each distinct value into a real named room, one per season.
+    await pool.query(`
+      INSERT INTO rooms (season_id, name)
+      SELECT DISTINCT season_id, room FROM pieces
+      WHERE room IS NOT NULL AND room != ''
+      AND NOT EXISTS (SELECT 1 FROM rooms r WHERE r.season_id = pieces.season_id AND r.name = pieces.room);
+    `);
+    console.log('Migration step 25 (rooms table + room_id columns + pieces.room backfill) complete.');
+  } catch (err) { console.error('Migration step 25 error:', err.message); }
+
+  // Step 26: multiple performance dates per production. seasons.performance_date
+  // (singular) is left in place but no longer read or written -- any existing value
+  // is copied into the new table once, idempotently (the unique constraint makes the
+  // backfill safe to run on every boot).
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS performance_dates (
+        id         SERIAL PRIMARY KEY,
+        season_id  INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        date       DATE NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE (season_id, date)
+      );
+    `);
+    await pool.query(`
+      INSERT INTO performance_dates (season_id, date)
+      SELECT id, performance_date FROM seasons WHERE performance_date IS NOT NULL
+      ON CONFLICT (season_id, date) DO NOTHING;
+    `);
+    console.log('Migration step 26 (performance_dates table + backfill) complete.');
+  } catch (err) { console.error('Migration step 26 error:', err.message); }
 
   console.log('All migrations complete.');
 }

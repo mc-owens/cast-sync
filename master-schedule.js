@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── State ─────────────────────────────────────────────────────────────────────
   let pieces        = [];
   let roomCount     = 1;
+  let rooms         = []; // named rooms for this season; [] means anonymous-count mode still applies
   let pendingBlock  = null;
   let isSelecting   = false;
   let startSlot     = 0;
@@ -125,6 +126,92 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) { console.error('loadRoomCount error:', e); }
   }
 
+  // ── Named rooms ───────────────────────────────────────────────────────────────
+  // A season with zero named rooms keeps the plain anonymous-count UI/behavior
+  // above untouched. The moment one exists, the sidebar switches to this list
+  // editor and conflict detection switches to per-room double-booking (see
+  // highlightConflicts). This is a data-driven switch, not a setting.
+
+  function updateRoomModeUI() {
+    const hasRooms = rooms.length > 0;
+    document.getElementById('room-count-section').style.display = hasRooms ? 'none' : '';
+    document.getElementById('named-rooms-section').style.display = hasRooms ? '' : 'none';
+    const bannerText = document.getElementById('room-conflict-banner-text');
+    if (bannerText) {
+      bannerText.textContent = hasRooms
+        ? 'Two rehearsals are booked in the same room at an overlapping time.'
+        : 'Some pieces overlap more than your available rooms. Red blocks exceed capacity.';
+    }
+  }
+
+  async function loadRooms() {
+    try {
+      const res = await fetch('/api/season/rooms');
+      if (res.ok) rooms = await res.json();
+    } catch (e) { console.error('loadRooms error:', e); }
+    renderRoomsList();
+    updateRoomModeUI();
+  }
+
+  function renderRoomsList() {
+    document.getElementById('rooms-list').innerHTML = rooms.map(r => `
+      <div class="d-flex align-items-center justify-content-between mb-1" data-room-row="${r.id}">
+        <span style="font-size:12.5px;">${r.name}</span>
+        <button type="button" class="btn-close" style="font-size:9px;" data-delete-room="${r.id}" aria-label="Delete room"></button>
+      </div>`).join('') || '<div class="text-muted" style="font-size:12px;">No rooms yet.</div>';
+
+    document.querySelectorAll('[data-delete-room]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.deleteRoom;
+        try {
+          const res = await fetch(`/api/season/rooms/${id}`, { method: 'DELETE' });
+          if (!res.ok) { const data = await res.json(); alert(data.error || 'Could not delete room.'); return; }
+          rooms = rooms.filter(r => String(r.id) !== id);
+          renderRoomsList();
+          updateRoomModeUI();
+          repositionAllBlocks();
+        } catch (e) { alert('Could not connect to server.'); }
+      });
+    });
+  }
+
+  // Every <select> that offers a room choice (block-creation modal, move/add-one-time
+  // modals) is built from this same list, so they always stay in sync with each other.
+  function roomSelectOptionsHTML(selectedId) {
+    const noneSelected = selectedId == null || selectedId === '' ? 'selected' : '';
+    const opts = [`<option value="" ${noneSelected}>No room assigned</option>`];
+    rooms.forEach(r => {
+      const sel = String(r.id) === String(selectedId) ? 'selected' : '';
+      opts.push(`<option value="${r.id}" ${sel}>${r.name}</option>`);
+    });
+    return opts.join('');
+  }
+
+  document.getElementById('setup-named-rooms-btn').addEventListener('click', () => {
+    document.getElementById('room-count-section').style.display = 'none';
+    document.getElementById('named-rooms-section').style.display = '';
+    document.getElementById('new-room-name-input').focus();
+  });
+
+  document.getElementById('add-room-btn').addEventListener('click', async () => {
+    const input  = document.getElementById('new-room-name-input');
+    const errEl  = document.getElementById('room-add-error');
+    const name   = input.value.trim();
+    errEl.classList.add('d-none');
+    if (!name) return;
+    try {
+      const res = await fetch('/api/season/rooms', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) { errEl.textContent = data.error || 'Could not add room.'; errEl.classList.remove('d-none'); return; }
+      rooms.push(data);
+      input.value = '';
+      renderRoomsList();
+      updateRoomModeUI();
+    } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.classList.remove('d-none'); }
+  });
+
   // Assign overlapping blocks to side-by-side lanes, flag overflow as conflicts.
   // Uses pixel positioning so values stay exact at whatever width the grid happens to be.
   // For print: the legend uses visibility:hidden (not display:none) so the grid keeps
@@ -191,14 +278,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     highlightConflicts();
   }
 
+  // Two modes, switched purely on whether the season has any named room (see
+  // updateRoomModeUI): with none, the original anonymous lane-count check (more
+  // overlapping things than the room count allows); with rooms, a real per-room
+  // double-booking check that doesn't care how many lanes things were rendered into.
   function highlightConflicts() {
     let hasConflict = false;
-    document.querySelectorAll('.master-block').forEach(b => {
-      const laneIdx = parseInt(b.dataset.laneIdx ?? 0);
-      const isConflict = laneIdx >= roomCount;
-      b.classList.toggle('room-conflict', isConflict);
-      if (isConflict) hasConflict = true;
-    });
+
+    if (rooms.length === 0) {
+      document.querySelectorAll('.master-block').forEach(b => {
+        const laneIdx = parseInt(b.dataset.laneIdx ?? 0);
+        const isConflict = laneIdx >= roomCount;
+        b.classList.toggle('room-conflict', isConflict);
+        b.classList.remove('room-needs-assignment');
+        if (isConflict) hasConflict = true;
+      });
+    } else {
+      const allBlocks = Array.from(document.querySelectorAll('.master-block, .placeholder-block')).map(el => ({
+        el,
+        day:      el.dataset.day,
+        startMin: timeStringToMinutes(el.dataset.startTime),
+        endMin:   timeStringToMinutes(el.dataset.endTime),
+        roomId:   el.dataset.roomId || '',
+      }));
+      allBlocks.forEach(b => {
+        b.el.classList.remove('room-conflict', 'room-needs-assignment');
+        if (!b.roomId) { b.el.classList.add('room-needs-assignment'); return; }
+        const conflict = allBlocks.some(o => o !== b && o.day === b.day && o.roomId === b.roomId &&
+          o.startMin < b.endMin && o.endMin > b.startMin);
+        if (conflict) { b.el.classList.add('room-conflict'); hasConflict = true; }
+      });
+    }
+
     const banner = document.getElementById('room-conflict-banner');
     if (banner) banner.style.display = hasConflict ? 'block' : 'none';
   }
@@ -348,7 +459,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     grid.appendChild(el);
   }
 
-  function renderPlaceholder(dbId, label, topPx, heightPx, dayIndex, startTimeStr, endTimeStr) {
+  function renderPlaceholder(dbId, label, topPx, heightPx, dayIndex, startTimeStr, endTimeStr, roomId) {
     const startSlotI = Math.round(topPx / slotHeight);
     const endSlotI   = startSlotI + Math.round(heightPx / slotHeight);
     const block = document.createElement('div');
@@ -358,6 +469,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     block.dataset.label     = label;
     block.dataset.startTime = startTimeStr || slotToTimeString(startSlotI);
     block.dataset.endTime   = endTimeStr   || slotToTimeString(endSlotI);
+    block.dataset.roomId    = roomId || '';
     block.style.top         = `${topPx}px`;
     block.style.height      = `${Math.max(heightPx, slotHeight)}px`;
     block.style.left        = `calc(${dayIndex} * 100% / 7)`;
@@ -387,7 +499,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // startTimeStr / endTimeStr are optional — if omitted, computed from pixels
-  function renderBlock(dbId, piece, topPx, heightPx, dayIndex, startTimeStr, endTimeStr) {
+  function renderBlock(dbId, piece, topPx, heightPx, dayIndex, startTimeStr, endTimeStr, roomId) {
     const startSlotI = Math.round(topPx / slotHeight);
     const endSlotI   = startSlotI + Math.round(heightPx / slotHeight);
     const displayStart = startTimeStr || slotToTimeString(startSlotI);
@@ -400,6 +512,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     block.dataset.day          = DAYS[dayIndex];
     block.dataset.startTime    = displayStart;
     block.dataset.endTime      = displayEnd;
+    block.dataset.roomId       = roomId || '';
     block.style.top            = `${topPx}px`;
     block.style.height         = `${Math.max(heightPx, slotHeight)}px`;
     block.style.left           = `calc(${dayIndex} * 100% / 7)`;
@@ -461,6 +574,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     pendingDeleteBlock = { dbId, dayName, blockEl };
     deleteChoicesEl.classList.remove('d-none');
     moveDateFormEl.classList.add('d-none');
+    document.getElementById('room-only-edit-form').classList.add('d-none');
+    // Editing the template's room isn't tied to a specific calendar date the way
+    // move/cancel are, so it's available whenever the season has named rooms at all,
+    // independent of whether production dates are set.
+    document.getElementById('change-room-btn').classList.toggle('d-none', rooms.length === 0);
     const weekMonday = window._currentWeekMonday;
     if (weekMonday) {
       const specificDate = dateForDayInWeek(weekMonday, dayName);
@@ -481,15 +599,51 @@ document.addEventListener('DOMContentLoaded', async () => {
   moveOneDateBtn.addEventListener('click', () => {
     deleteChoicesEl.classList.add('d-none');
     moveDateFormEl.classList.remove('d-none');
-    // Pre-fill with the rehearsal's usual date/time as a sensible starting point.
+    // Pre-fill with the rehearsal's usual date/time/room as a sensible starting point.
     moveNewDateInput.value  = moveOneDateBtn.dataset.date;
     moveNewStartInput.value = timeStringTo24Hour(pendingDeleteBlock.blockEl.dataset.startTime);
     moveNewEndInput.value   = timeStringTo24Hour(pendingDeleteBlock.blockEl.dataset.endTime);
+    document.getElementById('move-room-section').style.display = rooms.length > 0 ? 'block' : 'none';
+    document.getElementById('move-room-select').innerHTML = roomSelectOptionsHTML(pendingDeleteBlock.blockEl.dataset.roomId);
   });
 
   moveBackBtn.addEventListener('click', () => {
     moveDateFormEl.classList.add('d-none');
     deleteChoicesEl.classList.remove('d-none');
+  });
+
+  // Change room: edits the recurring template's room directly (PUT, not an exception)
+  // -- this changes the room every week, not just for the date currently being viewed.
+  document.getElementById('change-room-btn').addEventListener('click', () => {
+    deleteChoicesEl.classList.add('d-none');
+    document.getElementById('room-only-edit-form').classList.remove('d-none');
+    document.getElementById('room-only-select').innerHTML = roomSelectOptionsHTML(pendingDeleteBlock.blockEl.dataset.roomId);
+  });
+
+  document.getElementById('room-only-back-btn').addEventListener('click', () => {
+    document.getElementById('room-only-edit-form').classList.add('d-none');
+    deleteChoicesEl.classList.remove('d-none');
+  });
+
+  document.getElementById('confirm-room-only-btn').addEventListener('click', async () => {
+    if (!pendingDeleteBlock) return;
+    const { dbId, blockEl } = pendingDeleteBlock;
+    const roomId = document.getElementById('room-only-select').value || null;
+    try {
+      const res = await fetch(`/api/master-blocks/${dbId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_id: roomId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Could not update the room.');
+      } else {
+        blockEl.dataset.roomId = roomId || '';
+        repositionAllBlocks();
+      }
+    } catch (e) { alert('Could not connect to server.'); }
+    bootstrap.Modal.getInstance(deleteModalEl).hide();
+    pendingDeleteBlock = null;
   });
 
   confirmMoveBtn.addEventListener('click', async () => {
@@ -509,6 +663,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         body: JSON.stringify({
           original_date: originalDate, type: 'moved', new_date: newDate,
           new_start_time: formatTime(newStartH, newStartM), new_end_time: formatTime(newEndH, newEndM),
+          room_id: document.getElementById('move-room-select').value || null,
         }),
       });
       if (!res.ok) {
@@ -580,6 +735,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     oneTimeStartInput.value = '';
     oneTimeEndInput.value   = '';
     oneTimeNoteInput.value  = '';
+    document.getElementById('one-time-room-section').style.display = rooms.length > 0 ? 'block' : 'none';
+    document.getElementById('one-time-room-select').innerHTML = roomSelectOptionsHTML(null);
     new bootstrap.Modal(addOneTimeModalEl).show();
   });
 
@@ -598,6 +755,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         body: JSON.stringify({
           date, start_time: formatTime(startH, startM), end_time: formatTime(endH, endM),
           note: oneTimeNoteInput.value.trim() || undefined,
+          room_id: document.getElementById('one-time-room-select').value || null,
         }),
       });
       if (!res.ok) {
@@ -645,6 +803,78 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch (e) { /* leave styling as-is */ }
   }
   window.addEventListener('weekChanged', applyWeekExceptionStyling);
+
+  // Returns the 0-6 (Monday-Sunday) index of targetDateStr within the week starting at
+  // mondayStr, or -1 if it falls outside that week. Both dates are constructed via the
+  // same local-midnight pattern used throughout this file, so subtracting them gives an
+  // exact day count safe across DST transitions when rounded.
+  function dayIndexInWeek(mondayStr, targetDateStr) {
+    const monday = new Date(`${mondayStr}T00:00:00`);
+    const target = new Date(`${targetDateStr}T00:00:00`);
+    const diffDays = Math.round((target - monday) / 86400000);
+    return (diffDays >= 0 && diffDays <= 6) ? diffDays : -1;
+  }
+
+  // Surfaces the audition date and any performance date(s) -- production-wide
+  // milestones set on Production Settings -- whenever the currently-viewed week
+  // contains one. Originally tried squeezing an icon onto the day-header text itself;
+  // that broke down with several milestone days in one week and at narrower window
+  // widths (the appended text has nowhere clipped to go, so it can overflow sideways
+  // into the next cell, or off the grid entirely for the last day). A named banner
+  // can't have that problem since it isn't confined to one narrow column; the
+  // per-cell highlight is now just a whole-cell accent (CSS box-shadow, not text).
+  async function applyMilestoneDateMarkers() {
+    document.querySelectorAll('.day-header.has-milestone').forEach(el => {
+      el.classList.remove('has-milestone');
+      el.removeAttribute('title');
+    });
+    document.querySelectorAll('.day-column.has-milestone').forEach(el => el.classList.remove('has-milestone'));
+    const banner = document.getElementById('milestone-banner');
+    banner.classList.add('d-none');
+    const monday = window._currentWeekMonday;
+    if (!monday) return;
+    try {
+      const [datesRes, perfRes] = await Promise.all([
+        fetch('/api/season/production-dates'),
+        fetch('/api/season/performance-dates'),
+      ]);
+      const dates = datesRes.ok ? await datesRes.json() : {};
+      const perfDates = perfRes.ok ? await perfRes.json() : [];
+      const milestones = [];
+      if (dates.audition_date) milestones.push({ date: dates.audition_date, type: 'Audition' });
+      perfDates.forEach(p => milestones.push({ date: p.date, type: 'Performance' }));
+
+      const inWeek = milestones
+        .map(m => ({ ...m, idx: dayIndexInWeek(monday, m.date) }))
+        .filter(m => m.idx !== -1);
+      if (inWeek.length === 0) return;
+
+      inWeek.forEach(m => {
+        const headerCell = headerRow.children[m.idx + 1]; // +1 skips the time-gutter spacer
+        const columnCell = grid.children[m.idx]; // grid has no leading spacer, unlike headerRow
+        const niceDate = new Date(`${m.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        if (headerCell) {
+          headerCell.classList.add('has-milestone');
+          headerCell.title = headerCell.title ? `${headerCell.title}; ${m.type}: ${niceDate}` : `${m.type}: ${niceDate}`;
+        }
+        if (columnCell) columnCell.classList.add('has-milestone');
+      });
+
+      // Group by type so "Friday, Saturday, and Sunday" reads as one line per type
+      // instead of three separate near-identical sentences.
+      const byType = new Map();
+      inWeek.forEach(m => {
+        const dayName = new Date(`${m.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
+        if (!byType.has(m.type)) byType.set(m.type, []);
+        byType.get(m.type).push(dayName);
+      });
+      const icon = { Audition: '🎟', Performance: '🎭' };
+      const lines = [...byType.entries()].map(([type, days]) => `${icon[type] || ''} ${type}${days.length > 1 ? 's' : ''} this week: ${days.join(', ')}`);
+      banner.innerHTML = lines.join('<br>');
+      banner.classList.remove('d-none');
+    } catch (e) { /* leave header/banner as-is */ }
+  }
+  window.addEventListener('weekChanged', applyMilestoneDateMarkers);
 
   function renderOneTimeBlock(occ) {
     const dayName  = new Date(`${occ.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
@@ -695,7 +925,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const topPx    = timeStringToTopPx(b.start_time);
           const btmPx    = timeStringToTopPx(b.end_time);
           const dayIndex = DAYS.indexOf(b.day);
-          renderBlock(b.id, piece, topPx, btmPx - topPx, dayIndex, b.start_time, b.end_time);
+          renderBlock(b.id, piece, topPx, btmPx - topPx, dayIndex, b.start_time, b.end_time, b.room_id);
         });
       }
       if (placeholdersRes.ok) {
@@ -704,7 +934,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const topPx    = timeStringToTopPx(ph.start_time);
           const btmPx    = timeStringToTopPx(ph.end_time);
           const dayIndex = DAYS.indexOf(ph.day);
-          renderPlaceholder(ph.id, ph.label, topPx, btmPx - topPx, dayIndex, ph.start_time, ph.end_time);
+          renderPlaceholder(ph.id, ph.label, topPx, btmPx - topPx, dayIndex, ph.start_time, ph.end_time, ph.room_id);
         });
       }
     } catch (e) { console.error('loadBlocks error:', e); }
@@ -847,6 +1077,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('placeholder-label-input').value = '';
       document.getElementById('radio-new-piece').checked      = true;
       showModalSection('new');
+      document.getElementById('block-room-section').style.display = rooms.length > 0 ? 'block' : 'none';
+      document.getElementById('block-room-select').innerHTML = roomSelectOptionsHTML(null);
       new bootstrap.Modal(document.getElementById('pieceModal'), { backdrop: 'static' }).show();
       return;
     }
@@ -917,19 +1149,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     const startTime = slotToTimeString(startI);
     const endTime   = slotToTimeString(endI);
 
+    const roomId = document.getElementById('block-room-select').value || null;
+
     if (isPlaceholder) {
       const label = document.getElementById('placeholder-label-input').value.trim() || 'Blocked';
       try {
         const res = await fetch('/api/schedule-placeholders', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ label, day: DAYS[dayIndex], start_time: startTime, end_time: endTime }),
+          body:    JSON.stringify({ label, day: DAYS[dayIndex], start_time: startTime, end_time: endTime, room_id: roomId }),
         });
         if (!res.ok) { alert('Could not save placeholder.'); return; }
         const saved = await res.json();
         pendingBlock.remove();
         pendingBlock = null;
-        renderPlaceholder(saved.id, saved.label, topPx, heightPx, dayIndex, startTime, endTime);
+        renderPlaceholder(saved.id, saved.label, topPx, heightPx, dayIndex, startTime, endTime, saved.room_id);
         repositionAllBlocks();
       } catch (err) { console.error(err); return; }
       bootstrap.Modal.getInstance(document.getElementById('pieceModal')).hide();
@@ -962,13 +1196,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetch('/api/master-blocks', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ piece_id: piece.id, day: DAYS[dayIndex], start_time: startTime, end_time: endTime }),
+        body:    JSON.stringify({ piece_id: piece.id, day: DAYS[dayIndex], start_time: startTime, end_time: endTime, room_id: roomId }),
       });
       if (!res.ok) { alert('Could not save block.'); return; }
       const saved = await res.json();
       pendingBlock.remove();
       pendingBlock = null;
-      renderBlock(saved.id, piece, topPx, heightPx, dayIndex, startTime, endTime);
+      renderBlock(saved.id, piece, topPx, heightPx, dayIndex, startTime, endTime, roomId);
       repositionAllBlocks();
     } catch (err) { console.error(err); return; }
 
@@ -987,6 +1221,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await loadPieces();
   await loadRoomCount();
+  await loadRooms();
   await new Promise(r => requestAnimationFrame(r));
   await loadBlocks();
   // master.html's auth-check fetch (which sets window._currentWeekMonday) and this
@@ -994,6 +1229,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // weekChanged listener above both exist -- whichever finishes second is the one that
   // actually has both the rendered blocks and the active week available together.
   applyWeekExceptionStyling();
+  applyMilestoneDateMarkers();
 
   // Toggle other-productions overlay visibility
   document.getElementById('org-blocks-toggle')?.addEventListener('change', function () {

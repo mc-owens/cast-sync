@@ -76,10 +76,20 @@
           <p id="delete-block-modal-text" class="text-muted mb-3" style="font-size:13.5px;"></p>
 
           <div class="d-flex flex-column gap-2" id="delete-block-choices">
+            <button type="button" class="btn btn-outline-dark w-100 d-none" id="change-room-btn">Change room</button>
             <button type="button" class="btn btn-primary w-100 d-none" id="move-one-date-btn">Move just this date</button>
             <button type="button" class="btn btn-outline-dark w-100 d-none" id="cancel-one-date-btn">Cancel just this date</button>
             <button type="button" class="btn btn-outline-danger w-100" id="confirm-delete-block-btn">Delete from every week</button>
             <button type="button" class="btn w-100" data-bs-dismiss="modal" style="color:var(--muted);">Never mind</button>
+          </div>
+
+          <div class="d-none" id="room-only-edit-form">
+            <label class="form-label" style="font-size:13px;font-weight:600;">Room</label>
+            <select class="form-select form-select-sm mb-3" id="room-only-select"></select>
+            <div class="d-flex flex-column gap-2">
+              <button type="button" class="btn btn-primary w-100" id="confirm-room-only-btn">Save Room</button>
+              <button type="button" class="btn w-100" id="room-only-back-btn" style="color:var(--muted);">Back</button>
+            </div>
           </div>
 
           <div class="d-none" id="move-date-form">
@@ -94,6 +104,10 @@
                 <label class="form-label" style="font-size:13px;font-weight:600;">End Time</label>
                 <input type="time" class="form-control form-control-sm" id="move-new-end-input">
               </div>
+            </div>
+            <div class="mb-3" id="move-room-section" style="display:none;">
+              <label class="form-label" style="font-size:13px;font-weight:600;">Room</label>
+              <select class="form-select form-select-sm" id="move-room-select"></select>
             </div>
             <div class="d-flex flex-column gap-2">
               <button type="button" class="btn btn-primary w-100" id="confirm-move-btn">Confirm Move</button>
@@ -130,6 +144,10 @@
               <label class="form-label" style="font-size:13px;font-weight:600;">End Time</label>
               <input type="time" class="form-control form-control-sm" id="one-time-end-input">
             </div>
+          </div>
+          <div class="mb-2" id="one-time-room-section" style="display:none;">
+            <label class="form-label" style="font-size:13px;font-weight:600;">Room</label>
+            <select class="form-select form-select-sm" id="one-time-room-select"></select>
           </div>
           <label class="form-label" style="font-size:13px;font-weight:600;">Note (optional)</label>
           <input type="text" class="form-control form-control-sm mb-3" id="one-time-note-input" placeholder="e.g. Extra run before tech">
@@ -184,6 +202,11 @@
             <input type="text" class="form-control" id="placeholder-label-input" placeholder="e.g. Technique class, Studio B closed">
           </div>
 
+          <div id="block-room-section" class="mt-3" style="display:none;">
+            <label for="block-room-select" class="form-label">Room</label>
+            <select class="form-select" id="block-room-select"></select>
+          </div>
+
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" id="piece-cancel-btn">Cancel</button>
@@ -221,7 +244,12 @@
           </div>
         </div>
         <hr style="margin:12px 0;">
-        <div>
+
+        <!-- Shown until a season has any named room -- behaves exactly as it always
+             has (anonymous capacity count). The moment a named room exists, this is
+             replaced by #named-rooms-section below; it's a data-driven switch, not a
+             setting, so nothing changes for a production that never opts in. -->
+        <div id="room-count-section">
           <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px;">Rehearsal Rooms</label>
           <div class="d-flex align-items-center gap-2">
             <input type="number" id="room-count-input" min="1" max="20" value="1"
@@ -229,6 +257,18 @@
             <span style="font-size:12px;color:#888;">room(s)</span>
           </div>
           <div style="font-size:11px;color:#aaa;margin-top:4px;">Blocks exceeding this will be flagged red.</div>
+          <button type="button" class="btn btn-link btn-sm p-0 mt-1" id="setup-named-rooms-btn" style="font-size:11px;">+ Set up named rooms</button>
+        </div>
+
+        <div id="named-rooms-section" style="display:none;">
+          <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px;">Rehearsal Rooms</label>
+          <div id="rooms-list" style="margin-bottom:6px;"></div>
+          <div class="d-flex gap-2">
+            <input type="text" id="new-room-name-input" placeholder="e.g. Studio A" class="form-control form-control-sm" style="font-size:12px;">
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="add-room-btn">Add</button>
+          </div>
+          <div id="room-add-error" class="text-danger mt-1 d-none" style="font-size:11px;"></div>
+          <div style="font-size:11px;color:#aaa;margin-top:4px;">Assign a room to each rehearsal below; the same room double-booked at an overlapping time will be flagged red.</div>
         </div>
       </div>
 
@@ -236,7 +276,7 @@
       <div style="flex:1;min-width:0;">
         <h5 class="mb-2 no-print">Master Schedule</h5>
         <div id="room-conflict-banner" class="alert alert-danger py-2 px-3 mb-2" style="font-size:13px;display:none;">
-          <strong>Room conflict:</strong> Some pieces overlap more than your available rooms. Red blocks exceed capacity.
+          <strong>Room conflict:</strong> <span id="room-conflict-banner-text">Some pieces overlap more than your available rooms. Red blocks exceed capacity.</span>
         </div>
 
         <div id="week-nav-prompt" class="alert alert-light border py-2 px-3 mb-2 d-none no-print" style="font-size:13px;">
@@ -248,6 +288,10 @@
           <span id="week-label" style="font-size:13px;font-weight:600;"></span>
           <button class="btn btn-sm btn-outline-secondary" id="week-next-btn">Next Week &gt;</button>
         </div>
+        <!-- Explicit, named callout instead of relying on a marker squeezed into a narrow
+             day column -- that approach broke down with several milestone days in one
+             week and at narrower window widths. -->
+        <div id="milestone-banner" class="alert alert-warning py-2 px-3 mb-2 d-none no-print" style="font-size:13px;"></div>
         <p class="text-muted no-print" style="font-size:12.5px;margin-bottom:4px;">
           Showing your weekly rehearsal template. Changes here apply every week unless noted otherwise.
           <button type="button" class="btn btn-link p-0 ms-1" id="add-one-time-btn" disabled
