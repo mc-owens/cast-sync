@@ -50,6 +50,15 @@
         <div id="prod-name-msg" class="mt-1" style="font-size:12px;"></div>
       </div>
 
+      <div class="mb-4">
+        <label class="form-label" style="font-size:13px;font-weight:600;">Join Code</label>
+        <div class="d-flex align-items-center gap-2">
+          <span id="join-code-display" style="font-size:15px;font-weight:700;letter-spacing:1px;">Loading…</span>
+          <button type="button" class="btn btn-link btn-sm p-0" style="font-size:12px;text-decoration:none;" title="Copy join code" id="copy-join-code-btn">📋 Copy</button>
+        </div>
+        <div style="font-size:11px;color:#aaa;margin-top:4px;">Share this with auditionees so they can submit to this production.</div>
+      </div>
+
       <div class="row g-3">
         <div class="col-sm-6">
           <label class="form-label" style="font-size:13px;font-weight:600;">Production Start Date</label>
@@ -112,6 +121,28 @@
         document.getElementById('page-subtitle').textContent = `${user.orgName} · ${user.seasonName}`;
         document.getElementById('prod-name-input').value = user.seasonName || '';
         document.body.style.visibility = 'visible';
+
+        try {
+          const joinCodeRes = await fetch('/api/season/join-code');
+          const joinCodeData = joinCodeRes.ok ? await joinCodeRes.json() : {};
+          document.getElementById('join-code-display').textContent = joinCodeData.join_code || 'Not available';
+          document.getElementById('copy-join-code-btn').dataset.copyCode = joinCodeData.join_code || '';
+        } catch (e) {
+          document.getElementById('join-code-display').textContent = 'Not available';
+        }
+        // Mirrors org-select.html's join-code copy button exactly.
+        document.getElementById('copy-join-code-btn').addEventListener('click', async (e) => {
+          const btn = e.currentTarget;
+          if (!btn.dataset.copyCode) return;
+          try {
+            await navigator.clipboard.writeText(btn.dataset.copyCode);
+            const original = btn.textContent;
+            btn.textContent = '✓ Copied';
+            setTimeout(() => { btn.textContent = original; }, 1500);
+          } catch (err) {
+            alert('Could not copy code. Please select and copy it manually.');
+          }
+        });
 
         document.getElementById('prod-name-save-btn').addEventListener('click', async () => {
           const name = document.getElementById('prod-name-input').value.trim();

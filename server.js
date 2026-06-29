@@ -3129,6 +3129,20 @@ app.get('/api/season/room-count', requireAuth('master'), async (req, res) => {
   }
 });
 
+// GET /api/season/join-code: the active production's join code, for display/copy on
+// Production Settings (not carried in the session like orgName/seasonName -- this is a
+// rarely-needed lookup, not worth touching every place the session gets built).
+app.get('/api/season/join-code', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query('SELECT join_code FROM seasons WHERE id = $1', [seasonId]);
+    res.json({ join_code: result.rows[0]?.join_code || null });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch join code.' });
+  }
+});
+
 // PATCH /api/season/room-count — update current season's room count
 app.patch('/api/season/room-count', requireAuth('master'), async (req, res) => {
   const { room_count } = req.body;
