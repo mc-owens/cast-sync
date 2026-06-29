@@ -241,19 +241,15 @@
           document.body.style.visibility = 'visible';
 
           // ── Dynamic (director-customized) fields ───────────────────────────
+          // Default/fallback only -- a production's own form_schema can carry its own
+          // options for the grade builtin (e.g. a director using "Cohort" terminology
+          // with different level names), read directly off field.options wherever the
+          // grade field is rendered/prefilled below. This is the global default for any
+          // production that hasn't customized it.
           const GRADE_OPTIONS = ['Freshman Major','Freshman Minor','Sophomore Major','Sophomore Minor',
                                   'Junior Major','Junior Minor','Senior Major','Senior Minor','Other'];
-          const GRADE_MAP = {
-            'Freshman Major':'flexRadioDefault1','Freshman Minor':'flexRadioDefault2',
-            'Sophomore Major':'flexRadioDefault3','Sophomore Minor':'flexRadioDefault4',
-            'Junior Major':'flexRadioDefault5','Junior Minor':'flexRadioDefault6',
-            'Senior Major':'flexRadioDefault7','Senior Minor':'flexRadioDefault8',
-            'Other':'flexRadioDefault9',
-            // backward compat for old data
-            'Freshman':'flexRadioDefault1','Sophomore':'flexRadioDefault3',
-            'Junior':'flexRadioDefault5','Senior':'flexRadioDefault7',
-          };
           let cachedProfile = null;
+          let currentGradeOptions = GRADE_OPTIONS; // set from the schema once it loads, see renderDynamicFields
 
           function escapeHtml(s) {
             return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -275,13 +271,14 @@
               </div></div>`;
             }
             if (field.builtin === 'grade') {
+              currentGradeOptions = (field.options && field.options.length) ? field.options : GRADE_OPTIONS;
               return `<div class="mb-3">
                 <label class="form-label">${escapeHtml(field.label || 'Grade')}</label>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;max-width:400px;">
-                  ${GRADE_OPTIONS.map((opt, idx) => `
-                  <div class="form-check"${idx === GRADE_OPTIONS.length - 1 ? ' style="grid-column:1/-1;"' : ''}>
+                  ${currentGradeOptions.map((opt, idx) => `
+                  <div class="form-check"${idx === currentGradeOptions.length - 1 ? ' style="grid-column:1/-1;"' : ''}>
                     <input class="form-check-input" type="radio" name="flexRadioDefault" id="flexRadioDefault${idx + 1}" ${req} />
-                    <label class="form-check-label" for="flexRadioDefault${idx + 1}">${opt}</label>
+                    <label class="form-check-label" for="flexRadioDefault${idx + 1}">${escapeHtml(opt)}</label>
                   </div>`).join('')}
                 </div>
               </div>`;
@@ -343,8 +340,8 @@
             const techEl = document.getElementById('techniqueclasses');
             if (techEl && p.technique_classes) techEl.value = p.technique_classes;
             if (p.grade) {
-              const radioId = GRADE_MAP[p.grade];
-              const radioEl = radioId && document.getElementById(radioId);
+              const idx = currentGradeOptions.indexOf(p.grade);
+              const radioEl = idx !== -1 && document.getElementById(`flexRadioDefault${idx + 1}`);
               if (radioEl) radioEl.checked = true;
             }
           }
@@ -584,8 +581,8 @@
             const absencesEl = document.getElementById('absences');
             if (absencesEl && d.absences) absencesEl.value = d.absences;
             if (d.grade) {
-              const radioId = GRADE_MAP[d.grade];
-              const radioEl = radioId && document.getElementById(radioId);
+              const idx = currentGradeOptions.indexOf(d.grade);
+              const radioEl = idx !== -1 && document.getElementById(`flexRadioDefault${idx + 1}`);
               if (radioEl) radioEl.checked = true;
             }
             restoreCustomResponses(d.custom_responses);

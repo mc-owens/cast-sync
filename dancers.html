@@ -49,7 +49,7 @@
                 <tr><th>Secondary Email</th><td id="detail-secondary-email"></td></tr>
                 <tr><th>Phone</th><td id="detail-phone"></td></tr>
                 <tr><th>Address</th><td id="detail-address"></td></tr>
-                <tr><th>Grade</th><td id="detail-grade"></td></tr>
+                <tr><th id="detail-grade-label">Grade</th><td id="detail-grade"></td></tr>
                 <tr><th>Technique Classes</th><td id="detail-technique" style="white-space:pre-wrap;"></td></tr>
                 <tr><th>Recent Injuries</th><td id="detail-injuries" style="white-space:pre-wrap;"></td></tr>
                 <tr><th>Known Absences</th><td id="detail-absences" style="white-space:pre-wrap;"></td></tr>
@@ -151,7 +151,7 @@
         <select id="sort-by" class="form-select form-select-sm" style="width:auto;">
           <option value="name">Name (A–Z)</option>
           <option value="audition_num">Audition #</option>
-          <option value="grade">Grade</option>
+          <option value="grade" id="sort-grade-option">Grade</option>
           <option value="pieces">Pieces cast (most)</option>
           <option value="date">Submission date</option>
         </select>
@@ -172,7 +172,7 @@
           <th>#</th>
           <th>Name</th>
           <th>Email</th>
-          <th>Grade</th>
+          <th id="table-grade-th">Grade</th>
           <th>Cast (production)</th>
           <th>Cast (org-wide)</th>
           <th>Submitted</th>
@@ -367,8 +367,32 @@
       }
     }
 
-    const GRADE_ORDER = { Senior: 0, Junior: 1, Sophomore: 2, Freshman: 3 };
+    // Default/fallback only -- a production can relabel this field and supply its own
+    // options (e.g. "Cohort" with "First Year" instead of "Freshman"), read from its
+    // form_schema by loadGradeFieldConfig() below. This is just what shows for any
+    // production that hasn't customized it.
+    const GRADE_OPTIONS_DEFAULT = ['Freshman Major','Freshman Minor','Sophomore Major','Sophomore Minor',
+                                    'Junior Major','Junior Minor','Senior Major','Senior Minor','Other'];
+    let currentGradeLabel   = 'Grade';
+    let currentGradeOptions = GRADE_OPTIONS_DEFAULT;
     let allDancers = [];
+
+    async function loadGradeFieldConfig() {
+      try {
+        const res = await fetch('/api/season/form-schema');
+        if (res.ok) {
+          const data = await res.json();
+          const gradeField = (data.form_schema || []).find(f => f.builtin === 'grade');
+          if (gradeField) {
+            currentGradeLabel   = gradeField.label || 'Grade';
+            currentGradeOptions = (gradeField.options && gradeField.options.length) ? gradeField.options : GRADE_OPTIONS_DEFAULT;
+          }
+        }
+      } catch (e) { /* keep defaults */ }
+      document.getElementById('detail-grade-label').textContent = currentGradeLabel;
+      document.getElementById('sort-grade-option').textContent  = currentGradeLabel;
+      document.getElementById('table-grade-th').textContent     = currentGradeLabel;
+    }
 
     function formatDate(isoStr) {
       return new Date(isoStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -392,7 +416,10 @@
           const an = n => parseInt(n?.audition_number) || Infinity;
           return an(a) - an(b);
         }
-        if (sortBy === 'grade')  return (GRADE_ORDER[a.grade] ?? 99) - (GRADE_ORDER[b.grade] ?? 99);
+        if (sortBy === 'grade') {
+          const rank = g => { const i = currentGradeOptions.indexOf(g); return i === -1 ? 99 : i; };
+          return rank(a.grade) - rank(b.grade);
+        }
         if (sortBy === 'pieces') return (b.piece_count || 0) - (a.piece_count || 0);
         if (sortBy === 'date')   return new Date(b.created_at) - new Date(a.created_at);
         return 0;
@@ -432,6 +459,7 @@
 
     async function loadDancers() {
       try {
+        await loadGradeFieldConfig();
         const res     = await fetch('/api/dancers');
         allDancers    = await res.json();
 
@@ -498,7 +526,7 @@
         if (!dancers.length) { alert('No auditionees to export.'); return; }
 
         const headers = ['Audition #', 'First Name', 'Last Name', 'Email', 'Phone', 'Address',
-                         'Grade', 'Technique Classes', 'Injuries', 'Absences', 'Submitted'];
+                         currentGradeLabel, 'Technique Classes', 'Injuries', 'Absences', 'Submitted'];
         const rows = dancers.map(d => [
           d.audition_number ?? '',
           d.first_name,

@@ -260,9 +260,10 @@
           <input type="email" class="form-control form-control-sm" disabled></div>`;
       }
       if (f.builtin === 'grade') {
+        const opts = (f.options && f.options.length) ? f.options : GRADE_OPTIONS;
         return `<div class="mb-3"><label class="form-label" style="font-size:13px;">${escapeHtml(f.label || 'Grade')}</label>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;">
-            ${GRADE_OPTIONS.map(opt => `<div class="form-check"><input class="form-check-input" type="radio" disabled><label class="form-check-label" style="font-size:12px;">${opt}</label></div>`).join('')}
+            ${opts.map(opt => `<div class="form-check"><input class="form-check-input" type="radio" disabled><label class="form-check-label" style="font-size:12px;">${escapeHtml(opt)}</label></div>`).join('')}
           </div></div>`;
       }
       const textareaLabels = { technique_classes: 'Current Technique Classes', injuries: 'Recent Injuries', absences: 'Known Absences' };
@@ -366,6 +367,11 @@
       if (Number.isNaN(i)) return;
       if (e.target.classList.contains('field-label')) fields[i].label = e.target.value;
       else if (e.target.classList.contains('field-options')) fields[i].options = e.target.value.split('\n').map(s => s.trim()).filter(Boolean);
+      else return;
+      // Refresh the read-only preview pane only, not the editable list itself (render()
+      // rebuilds that list's innerHTML, which would drop focus/cursor position out from
+      // under whichever field the director is still typing in).
+      renderPreview();
     });
 
     document.getElementById('fields-list').addEventListener('change', (e) => {
