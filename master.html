@@ -407,21 +407,14 @@
         return;
       }
 
-      const rangeStartMonday = mondayOf(dateFromYMD(dates.start_date));
-      const rangeEndMonday   = mondayOf(dateFromYMD(dates.end_date));
-
       const weekParam = new URLSearchParams(location.search).get('week');
       let currentMonday = (weekParam && /^\d{4}-\d{2}-\d{2}$/.test(weekParam)) ? mondayOf(dateFromYMD(weekParam)) : mondayOf(new Date());
-      if (ymd(currentMonday) < ymd(rangeStartMonday)) currentMonday = rangeStartMonday;
-      if (ymd(currentMonday) > ymd(rangeEndMonday))   currentMonday = rangeEndMonday;
 
       const prevBtn = document.getElementById('week-prev-btn');
       const nextBtn = document.getElementById('week-next-btn');
 
       function render() {
         document.getElementById('week-label').textContent = formatWeekLabel(currentMonday, sundayOf(currentMonday));
-        prevBtn.disabled = ymd(currentMonday) <= ymd(rangeStartMonday);
-        nextBtn.disabled = ymd(currentMonday) >= ymd(rangeEndMonday);
         const url = new URL(location.href);
         url.searchParams.set('week', ymd(currentMonday));
         history.replaceState(null, '', url);
@@ -432,15 +425,11 @@
         window.dispatchEvent(new CustomEvent('weekChanged'));
       }
       prevBtn.addEventListener('click', () => {
-        if (prevBtn.disabled) return;
         currentMonday.setDate(currentMonday.getDate() - 7);
-        if (ymd(currentMonday) < ymd(rangeStartMonday)) currentMonday = rangeStartMonday;
         render();
       });
       nextBtn.addEventListener('click', () => {
-        if (nextBtn.disabled) return;
         currentMonday.setDate(currentMonday.getDate() + 7);
-        if (ymd(currentMonday) > ymd(rangeEndMonday)) currentMonday = rangeEndMonday;
         render();
       });
 
