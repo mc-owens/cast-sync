@@ -3,58 +3,65 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Rehearsals | CastSync</title>
+  <title>My Schedule | CastSync</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <style>
-    .prod-section + .prod-section { margin-top: 36px; }
-    .prod-name {
-      font-size: 13px; font-weight: 700; color: #888;
-      text-transform: uppercase; letter-spacing: .6px;
-      margin-bottom: 10px;
+    /* ── Next Rehearsal card ─────────────────────────────────── */
+    .next-card {
+      background: #111; color: #fff;
+      border-radius: 10px; padding: 20px 22px; margin-bottom: 28px;
     }
+    .next-card-eyebrow {
+      font-size: 11px; font-weight: 700; letter-spacing: .8px;
+      text-transform: uppercase; color: #555; margin-bottom: 10px;
+    }
+    .next-card-date { font-size: 20px; font-weight: 700; line-height: 1.2; }
+    .next-card-time { font-size: 14px; color: #aaa; font-weight: 500; margin-top: 3px; }
+    .next-card-sep { border: none; border-top: 1px solid #222; margin: 14px 0; }
+    .next-card-row { display: flex; align-items: flex-start; gap: 10px; }
+    .next-card-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+    .next-card-piece { font-size: 14px; font-weight: 600; color: #eee; }
+    .next-card-sub { font-size: 12px; color: #555; margin-top: 2px; line-height: 1.5; }
 
-    .week-block { margin-bottom: 4px; }
-    .week-toggle {
-      display: flex; align-items: center; width: 100%; text-align: left;
-      background: #f8f9fa; border: 1px solid #e8e8e8; border-radius: 6px;
-      padding: 9px 14px; cursor: pointer; user-select: none;
-      transition: background .15s; font-size: 13px; font-weight: 600; color: #333;
-      outline: none;
-    }
-    .week-toggle:hover { background: #f0f0f0; }
-    .week-toggle.open { border-radius: 6px 6px 0 0; border-bottom-color: transparent; }
-    .week-chevron { font-size: 10px; color: #aaa; margin-left: auto; padding-left: 8px; transition: transform .2s; }
-    .week-toggle.open .week-chevron { transform: rotate(180deg); }
-    .week-count { font-size: 12px; color: #999; font-weight: 400; margin-left: 10px; }
+    .no-next-msg { font-size: 14px; color: #999; margin-bottom: 28px; }
 
-    .this-week-chip {
-      font-size: 10px; font-weight: 700;
-      background: #333; color: #fff;
-      padding: 2px 8px; border-radius: 10px; margin-left: 8px;
+    /* ── Conflict banner ─────────────────────────────────────── */
+    .conflict-banner {
+      background: #fef2f2; border: 1px solid #fecaca;
+      border-radius: 8px; padding: 14px 16px; margin-bottom: 24px;
     }
+    .conflict-title { font-size: 13px; font-weight: 700; color: #dc2626; margin-bottom: 6px; }
+    .conflict-item { font-size: 13px; color: #991b1b; line-height: 1.5; margin-bottom: 2px; }
 
-    .week-body {
-      border: 1px solid #e8e8e8; border-top: none;
-      border-radius: 0 0 6px 6px;
+    /* ── Week headings ───────────────────────────────────────── */
+    .week-heading {
+      display: flex; align-items: baseline; gap: 10px;
+      font-size: 15px; font-weight: 700; color: #111;
+      margin: 32px 0 12px;
     }
-    .week-empty { font-size: 13px; color: #bbb; font-style: italic; padding: 10px 14px; }
+    .week-heading:first-child { margin-top: 0; }
+    .week-heading-range { font-size: 13px; font-weight: 400; color: #bbb; }
 
-    .rday-label {
-      font-size: 11px; font-weight: 700; color: #888;
-      text-transform: uppercase; letter-spacing: .5px;
-      padding: 10px 14px 4px;
+    /* ── Rehearsal card ──────────────────────────────────────── */
+    .r-card {
+      display: flex; border: 1px solid #e8e8e8; border-radius: 8px;
+      overflow: hidden; margin-bottom: 8px; background: #fff;
     }
-    .r-row {
-      display: flex; align-items: flex-start; gap: 10px;
-      padding: 8px 14px; border-bottom: 1px solid #f3f3f3;
+    .r-card.has-conflict { border-color: #fca5a5; background: #fff8f8; }
+    .r-bar { width: 4px; flex-shrink: 0; }
+    .r-body { padding: 12px 14px; flex: 1; min-width: 0; }
+    .r-prod {
+      font-size: 10px; font-weight: 700; color: #bbb;
+      text-transform: uppercase; letter-spacing: .6px; margin-bottom: 2px;
     }
-    .r-row:last-child { border-bottom: none; }
-    .r-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
-    .r-piece { font-size: 14px; font-weight: 600; }
-    .r-time { font-size: 13px; color: #555; }
-    .r-meta { font-size: 12px; color: #999; margin-top: 1px; }
-    .r-note { font-size: 12px; color: #b45309; margin-top: 2px; }
+    .r-piece { font-size: 15px; font-weight: 700; color: #111; margin-bottom: 4px; }
+    .r-time { font-size: 13px; font-weight: 600; color: #333; }
+    .r-room { font-size: 13px; color: #999; margin-top: 3px; }
+    .r-note { font-size: 12px; color: #b45309; margin-top: 4px; font-style: italic; }
+    .r-conflict { font-size: 12px; color: #dc2626; font-weight: 600; margin-top: 6px; }
+
+    .week-empty { font-size: 13px; color: #ccc; font-style: italic; padding: 2px 0 12px; }
   </style>
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -74,7 +81,7 @@
           <li class="nav-item"><a class="nav-link" href="auditionForm.html">Audition Form</a></li>
           <li class="nav-item"><a class="nav-link" href="my-submissions.html">My Submissions</a></li>
           <li class="nav-item"><a class="nav-link" href="my-casting.html">Casting</a></li>
-          <li class="nav-item" id="my-schedule-nav-item"><a class="nav-link active" href="my-schedule.html">My Rehearsals</a></li>
+          <li class="nav-item" id="my-schedule-nav-item"><a class="nav-link active" href="my-schedule.html">My Schedule</a></li>
           <li class="nav-item"><a class="nav-link" href="request-absence.html">Request Absence</a></li>
           <li class="nav-item"><a class="nav-link" href="upgrade.html">Director Access</a></li>
           <li class="nav-item d-flex align-items-center d-none" id="switch-director-item">
@@ -86,165 +93,98 @@
     </div>
   </nav>
 
-  <div class="container mt-4" style="max-width:680px;">
-    <h5 class="mb-4 fw-semibold">My Rehearsals</h5>
-    <div id="schedule-loading" class="text-muted" style="font-size:14px;">Loading your rehearsal schedule...</div>
+  <div class="container mt-4" style="max-width:620px;">
+    <h5 class="mb-4 fw-semibold">My Schedule</h5>
+    <div id="schedule-loading" class="text-muted" style="font-size:14px;">Loading your schedule...</div>
     <div id="schedule-content" class="d-none">
-      <div id="productions-container"></div>
+      <div id="next-section"></div>
+      <div id="conflict-section"></div>
+      <div id="weeks-section"></div>
     </div>
-    <div id="schedule-unavailable" class="d-none text-muted" style="font-size:14px;margin-top:40px;text-align:center;">
-      <p>My Rehearsals is not yet enabled for your production.</p>
+    <div id="schedule-unavailable" class="d-none text-muted" style="font-size:14px;margin-top:48px;text-align:center;">
+      <p>My Schedule is not yet enabled for your production.</p>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
-
   <script>
     function escapeHtml(s) {
       return String(s == null ? '' : s)
         .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const DAYS_FULL   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
     function parseDate(iso) {
       const [y, m, d] = iso.split('-').map(Number);
       return new Date(y, m - 1, d);
     }
-
     function toIso(d) {
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     }
-
-    function addDays(d, n) {
-      const r = new Date(d);
-      r.setDate(r.getDate() + n);
-      return r;
-    }
-
+    function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
     function weekMonday(date) {
       const day = date.getDay();
       return addDays(date, day === 0 ? -6 : 1 - day);
     }
-
-    // returns "Sept 9–15" or "Sept 30 – Oct 6"
-    function fmtWeek(wStart, wEnd) {
+    function fmtWeekRange(wStart, wEnd) {
       const sm = MONTHS[wStart.getMonth()], sd = wStart.getDate();
       const em = MONTHS[wEnd.getMonth()],   ed = wEnd.getDate();
-      if (sm === em) return `${sm} ${sd}–${ed}`;
-      return `${sm} ${sd} – ${em} ${ed}`;
+      return sm === em ? `${sm} ${sd}–${ed}` : `${sm} ${sd} – ${em} ${ed}`;
+    }
+    function fmtFullDate(iso) {
+      const d = parseDate(iso);
+      return `${DAYS_FULL[d.getDay()]}, ${MONTHS_FULL[d.getMonth()]} ${d.getDate()}`;
+    }
+    function parseMinutes(t) {
+      if (!t) return null;
+      const m = String(t).trim().match(/^(\d+):(\d{2})\s*(AM|PM)$/i);
+      if (!m) return null;
+      let h = parseInt(m[1], 10);
+      const min = parseInt(m[2], 10);
+      if (m[3].toUpperCase() === 'PM' && h !== 12) h += 12;
+      if (m[3].toUpperCase() === 'AM' && h === 12) h = 0;
+      return h * 60 + min;
+    }
+    function timesOverlap(s1, e1, s2, e2) {
+      const a = parseMinutes(s1), b = parseMinutes(e1);
+      const c = parseMinutes(s2), d = parseMinutes(e2);
+      if (a === null || b === null || c === null || d === null) return false;
+      return a < d && c < b;
     }
 
-    function renderProduction(prod, prodIndex) {
-      const container = document.createElement('div');
-      container.className = 'prod-section';
+    function renderCard(r, isConflict, conflictNote) {
+      const color = r.piece.color || '#ccc';
+      const room  = [r.room_name, r.piece.choreographer_name].filter(Boolean).join(' · ');
+      return `
+        <div class="r-card${isConflict ? ' has-conflict' : ''}">
+          <div class="r-bar" style="background:${escapeHtml(color)};"></div>
+          <div class="r-body">
+            <div class="r-prod">${escapeHtml(r.production_name)}</div>
+            <div class="r-piece">${escapeHtml(r.piece.name || 'Rehearsal')}</div>
+            <div class="r-time">${escapeHtml(r.start_time)} &ndash; ${escapeHtml(r.end_time)}</div>
+            ${room  ? `<div class="r-room">${escapeHtml(room)}</div>` : ''}
+            ${r.note ? `<div class="r-note">${escapeHtml(r.note)}</div>` : ''}
+            ${isConflict ? `<div class="r-conflict">&#9888; ${escapeHtml(conflictNote || 'Scheduling conflict')}</div>` : ''}
+          </div>
+        </div>`;
+    }
 
-      if (!prod.start_date || !prod.end_date) {
-        container.innerHTML = `
-          <div class="prod-name">${escapeHtml(prod.season_name)}</div>
-          <p class="text-muted" style="font-size:14px;">No rehearsal schedule has been set up for this production yet.</p>`;
-        return container;
+    function renderWeekBlock(label, isThisWeek, weekRehearsals, conflictIndices, conflictNotes) {
+      const heading = isThisWeek
+        ? `<div class="week-heading">This Week <span class="week-heading-range">${label}</span></div>`
+        : `<div class="week-heading"><span class="week-heading-range">${label}</span></div>`;
+
+      if (weekRehearsals.length === 0) {
+        return heading + `<p class="week-empty">No rehearsals scheduled for you this week.</p>`;
       }
 
-      // Index rehearsals by date
-      const byDate = {};
-      for (const r of prod.rehearsals) {
-        if (!byDate[r.date]) byDate[r.date] = [];
-        byDate[r.date].push(r);
-      }
-
-      // Build week list: Monday-based, covering start_date through end_date
-      const start   = parseDate(prod.start_date);
-      const end     = parseDate(prod.end_date);
-      const today   = new Date(); today.setHours(0,0,0,0);
-      const weeks   = [];
-      let   wStart  = weekMonday(start);
-      while (wStart <= end) {
-        const wEnd = addDays(wStart, 6);
-        weeks.push({ start: new Date(wStart), end: wEnd });
-        wStart = addDays(wStart, 7);
-      }
-
-      let html = `<div class="prod-name">${escapeHtml(prod.season_name)}</div>`;
-
-      weeks.forEach((week, wi) => {
-        const wId         = `wk-${prodIndex}-${wi}`;
-        const isPast      = week.end < today;
-        const isThisWeek  = week.start <= today && today <= week.end;
-
-        // Collect days in this week that have rehearsals
-        const days = [];
-        let d = new Date(week.start);
-        while (d <= week.end) {
-          const iso = toIso(d);
-          if (byDate[iso]) days.push({ date: new Date(d), rehearsals: byDate[iso] });
-          d = addDays(d, 1);
-        }
-
-        const hasRehearsals = days.length > 0;
-        const totalCount    = days.reduce((s, day) => s + day.rehearsals.length, 0);
-        const isOpen        = isThisWeek || (hasRehearsals && !isPast);
-
-        const chipHtml   = isThisWeek ? `<span class="this-week-chip">This week</span>` : '';
-        const countHtml  = hasRehearsals
-          ? `<span class="week-count">${totalCount} rehearsal${totalCount !== 1 ? 's' : ''}</span>`
-          : '';
-
-        let bodyHtml = '';
-        if (!hasRehearsals) {
-          bodyHtml = `<div class="week-empty">No rehearsals scheduled for you this week.</div>`;
-        } else {
-          bodyHtml = days.map(({ date, rehearsals }) => {
-            const dayHeader = `<div class="rday-label">${DAYS[date.getDay()]}, ${MONTHS[date.getMonth()]} ${date.getDate()}</div>`;
-            const rows = rehearsals.map(r => {
-              const piece = prod.pieces[r.piece_id] || {};
-              const color = piece.color || '#ccc';
-              const meta  = [r.room_name, piece.choreographer_name].filter(Boolean).join(' · ');
-              return `
-                <div class="r-row">
-                  <div class="r-dot" style="background:${escapeHtml(color)};"></div>
-                  <div>
-                    <div class="r-piece">${escapeHtml(piece.name || 'Rehearsal')}</div>
-                    <div class="r-time">${escapeHtml(r.start_time)} &ndash; ${escapeHtml(r.end_time)}</div>
-                    ${meta  ? `<div class="r-meta">${escapeHtml(meta)}</div>` : ''}
-                    ${r.note ? `<div class="r-note">${escapeHtml(r.note)}</div>` : ''}
-                  </div>
-                </div>`;
-            }).join('');
-            return dayHeader + rows;
-          }).join('');
-        }
-
-        html += `
-          <div class="week-block">
-            <button class="week-toggle${isOpen ? ' open' : ''}" type="button"
-                    data-target="${wId}" aria-expanded="${isOpen}">
-              <span>${fmtWeek(week.start, week.end)}</span>
-              ${chipHtml}
-              ${countHtml}
-              <span class="week-chevron">&#9660;</span>
-            </button>
-            <div class="week-body${isOpen ? '' : ' d-none'}" id="${wId}">
-              ${bodyHtml}
-            </div>
-          </div>`;
-      });
-
-      container.innerHTML = html;
-
-      // Wire up toggle buttons for this production
-      container.querySelectorAll('.week-toggle').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const body = document.getElementById(btn.dataset.target);
-          const opening = btn.getAttribute('aria-expanded') !== 'true';
-          btn.setAttribute('aria-expanded', opening);
-          btn.classList.toggle('open', opening);
-          body.classList.toggle('d-none', !opening);
-        });
-      });
-
-      return container;
+      const cards = weekRehearsals.map(({ r, idx }) =>
+        renderCard(r, conflictIndices.has(idx), conflictNotes.get(idx))
+      ).join('');
+      return heading + cards;
     }
 
     (async () => {
@@ -275,7 +215,6 @@
 
         const schedRes = await fetch('/api/my-schedule');
         const data     = await schedRes.json();
-
         document.getElementById('schedule-loading').style.display = 'none';
 
         if (!schedRes.ok || !data.available) {
@@ -283,13 +222,134 @@
           return;
         }
 
-        const scheduleContent = document.getElementById('schedule-content');
-        scheduleContent.classList.remove('d-none');
-        const container = document.getElementById('productions-container');
-
-        (data.productions || []).forEach((prod, i) => {
-          container.appendChild(renderProduction(prod, i));
+        // ── Flatten all rehearsals across productions ──────────────────────
+        const flat = [];
+        for (const prod of (data.productions || [])) {
+          for (const r of prod.rehearsals) {
+            flat.push({
+              ...r,
+              production_name: prod.season_name,
+              piece: prod.pieces[r.piece_id] || {},
+            });
+          }
+        }
+        flat.sort((a, b) => {
+          if (a.date !== b.date) return a.date.localeCompare(b.date);
+          const ta = parseMinutes(a.start_time) ?? 0;
+          const tb = parseMinutes(b.start_time) ?? 0;
+          return ta - tb;
         });
+
+        // ── Conflict detection ─────────────────────────────────────────────
+        const conflictIndices = new Set();
+        const conflictNotes   = new Map();
+        const conflictBannerItems = [];
+
+        const byDate = {};
+        flat.forEach((r, i) => {
+          if (!byDate[r.date]) byDate[r.date] = [];
+          byDate[r.date].push({ r, i });
+        });
+        for (const items of Object.values(byDate)) {
+          for (let x = 0; x < items.length; x++) {
+            for (let y = x + 1; y < items.length; y++) {
+              const { r: a, i: ai } = items[x];
+              const { r: b, i: bi } = items[y];
+              if (!timesOverlap(a.start_time, a.end_time, b.start_time, b.end_time)) continue;
+              conflictIndices.add(ai);
+              conflictIndices.add(bi);
+              const aName = `${a.piece.name || 'Rehearsal'} (${a.production_name})`;
+              const bName = `${b.piece.name || 'Rehearsal'} (${b.production_name})`;
+              if (!conflictNotes.has(ai)) conflictNotes.set(ai, `Overlaps with ${bName}`);
+              if (!conflictNotes.has(bi)) conflictNotes.set(bi, `Overlaps with ${aName}`);
+              conflictBannerItems.push(
+                `${aName} overlaps with ${bName} on ${fmtFullDate(a.date)}`
+              );
+            }
+          }
+        }
+
+        // ── Date ranges ────────────────────────────────────────────────────
+        const today      = new Date(); today.setHours(0,0,0,0);
+        const todayIso   = toIso(today);
+        const thisMonday = weekMonday(today);
+        const thisSunday = addDays(thisMonday, 6);
+        const nextMonday = addDays(thisMonday, 7);
+
+        // Max end_date across all productions (for bounding Upcoming Weeks)
+        let maxEndDate = new Date(today);
+        for (const prod of (data.productions || [])) {
+          if (prod.end_date) {
+            const d = parseDate(prod.end_date);
+            if (d > maxEndDate) maxEndDate = d;
+          }
+        }
+
+        // ── Next Rehearsal card ────────────────────────────────────────────
+        const nextEl = document.getElementById('next-section');
+        const upcoming = flat.filter(r => r.date >= todayIso);
+        if (upcoming.length === 0) {
+          nextEl.innerHTML = `<p class="no-next-msg">No upcoming rehearsals scheduled.</p>`;
+        } else {
+          const nr     = upcoming[0];
+          const color  = nr.piece.color || '#ccc';
+          const sub    = [nr.production_name, nr.room_name, nr.piece.choreographer_name].filter(Boolean).join(' · ');
+          nextEl.innerHTML = `
+            <div class="next-card">
+              <div class="next-card-eyebrow">Next Rehearsal</div>
+              <div class="next-card-date">${escapeHtml(fmtFullDate(nr.date))}</div>
+              <div class="next-card-time">${escapeHtml(nr.start_time)} &ndash; ${escapeHtml(nr.end_time)}</div>
+              <hr class="next-card-sep">
+              <div class="next-card-row">
+                <div class="next-card-dot" style="background:${escapeHtml(color)};"></div>
+                <div>
+                  <div class="next-card-piece">${escapeHtml(nr.piece.name || 'Rehearsal')}</div>
+                  ${sub ? `<div class="next-card-sub">${escapeHtml(sub)}</div>` : ''}
+                </div>
+              </div>
+            </div>`;
+        }
+
+        // ── Conflict banner ────────────────────────────────────────────────
+        if (conflictBannerItems.length > 0) {
+          document.getElementById('conflict-section').innerHTML = `
+            <div class="conflict-banner">
+              <div class="conflict-title">&#9888; Scheduling Conflict${conflictBannerItems.length > 1 ? 's' : ''} Detected</div>
+              ${conflictBannerItems.map(c => `<div class="conflict-item">${escapeHtml(c)}</div>`).join('')}
+            </div>`;
+        }
+
+        // ── Week sections ──────────────────────────────────────────────────
+        const weeksEl = document.getElementById('weeks-section');
+        let weeksHtml = '';
+
+        // This Week
+        const thisWeekItems = flat
+          .map((r, i) => ({ r, i }))
+          .filter(({ r }) => r.date >= toIso(thisMonday) && r.date <= toIso(thisSunday));
+        weeksHtml += renderWeekBlock(
+          fmtWeekRange(thisMonday, thisSunday),
+          true, thisWeekItems, conflictIndices, conflictNotes
+        );
+
+        // Upcoming weeks (next Monday onwards through max end_date)
+        if (nextMonday <= maxEndDate) {
+          let wStart = new Date(nextMonday);
+          while (wStart <= maxEndDate) {
+            const wEnd   = addDays(wStart, 6);
+            const wLabel = fmtWeekRange(wStart, wEnd);
+            const wIsoStart = toIso(wStart);
+            const wIsoEnd   = toIso(wEnd);
+            const wItems = flat
+              .map((r, i) => ({ r, i }))
+              .filter(({ r }) => r.date >= wIsoStart && r.date <= wIsoEnd);
+            weeksHtml += renderWeekBlock(wLabel, false, wItems, conflictIndices, conflictNotes);
+            wStart = addDays(wStart, 7);
+          }
+        }
+
+        weeksEl.innerHTML = weeksHtml;
+        document.getElementById('schedule-content').classList.remove('d-none');
 
       } catch (err) {
         window.location.href = 'login.html';
