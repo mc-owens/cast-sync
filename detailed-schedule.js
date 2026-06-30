@@ -97,7 +97,7 @@
     wrapper.innerHTML = `
       <div id="detailed-toolbar" style="padding:10px 12px;border-bottom:1px solid var(--border);background:#fafafa;">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;" id="detailed-category-buttons"></div>
-        <input type="text" id="detailed-label-input" class="form-control form-control-sm d-inline-block" style="max-width:260px;" placeholder="Optional label (e.g. AP Bio, Babysitting)">
+        <input type="text" id="detailed-label-input" class="form-control form-control-sm d-inline-block" style="max-width:260px;" placeholder="Optional label (e.g. after-school activity)">
         <span id="detailed-coverage-status" style="margin-left:10px;font-size:12px;color:#888;"></span>
         <span id="detailed-hover-time" style="margin-left:10px;font-size:12px;color:#555;font-weight:600;"></span>
       </div>
@@ -124,6 +124,13 @@
           b.style.background = active ? c.color : '#fff';
           b.style.color = active ? '#fff' : c.color;
         });
+        const labelInp = document.getElementById('detailed-label-input');
+        if (cat.id === 'available') {
+          labelInp.placeholder = 'Optional label (e.g. after-school activity)';
+          labelInp.classList.remove('is-invalid');
+        } else {
+          labelInp.placeholder = 'Label required (e.g. AP Bio, Babysitting)';
+        }
       });
       catButtonsEl.appendChild(btn);
     });
@@ -194,8 +201,16 @@
     function paintSlot(slotEl) {
       const day = slotEl.parentElement.dataset.day;
       const idx = parseInt(slotEl.dataset.slotIndex);
+      const labelInp = document.getElementById('detailed-label-input');
+      const labelVal = labelInp.value.trim();
+      if (selectedCategory !== 'available' && !labelVal) {
+        labelInp.classList.add('is-invalid');
+        labelInp.focus();
+        setTimeout(() => labelInp.classList.remove('is-invalid'), 2000);
+        return;
+      }
       dayStates[day][idx] = selectedCategory;
-      dayLabels[day][idx] = document.getElementById('detailed-label-input').value.trim() || null;
+      dayLabels[day][idx] = labelVal || null;
       recolorSlot(day, idx);
       renderDayOverlays(day);
       updateCoverageStatus();
@@ -293,8 +308,15 @@
       labelInput.type = 'text';
       labelInput.className = 'form-control form-control-sm detailed-label-input';
       labelInput.style.cssText = 'width:auto;min-width:130px;font-size:13px;';
-      labelInput.placeholder = 'Label (optional)';
       labelInput.value = label || '';
+
+      function syncLabelRequired() {
+        const needsLabel = catSel.value !== 'available';
+        labelInput.placeholder = needsLabel ? 'Label required' : 'Label (optional)';
+        labelInput.required = needsLabel;
+      }
+      catSel.addEventListener('change', syncLabelRequired);
+      syncLabelRequired();
 
       const del = document.createElement('button');
       del.type = 'button';
@@ -467,6 +489,15 @@
   // Used by app.js before submitting: null if valid, an error string naming the day
   // and problem if not. Mirrors server.js's validateDetailedAvailability exactly.
   window._getDetailedAvailabilityError = function () {
-    return validateCoverage(window._getDetailedAvailability());
+    const availability = window._getDetailedAvailability();
+    const coverageError = validateCoverage(availability);
+    if (coverageError) return coverageError;
+    for (const block of availability) {
+      if (block.category !== 'available' && !block.label) {
+        const catName = CATEGORY_BY_ID[block.category]?.label || block.category;
+        return `${block.day}: a label is required for "${catName}" blocks.`;
+      }
+    }
+    return null;
   };
 })();
