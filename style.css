@@ -285,23 +285,7 @@ body {
 }
 
 .master-block.block-cancelled-this-week {
-  opacity: 0.2;
-  background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 6px, transparent 6px, transparent 12px);
-  pointer-events: none;
-}
-.master-block.block-cancelled-this-week::after {
-  content: 'Cancelled';
-  position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  color: rgba(0,0,0,0.6);
-  text-transform: uppercase;
-  pointer-events: none;
+  display: none;
 }
 
 .one-time-block {
