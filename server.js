@@ -1629,8 +1629,11 @@ app.patch('/api/orgs/:orgId/seasons/:seasonId/my-schedule-enabled', requireAuth(
   if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean.' });
   try {
     const check = await pool.query(
-      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
-      [orgId, req.session.userId]
+      `SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM season_members WHERE season_id = $3 AND user_id = $2
+       LIMIT 1`,
+      [orgId, req.session.userId, seasonId]
     );
     if (check.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
     await pool.query(
@@ -2039,40 +2042,46 @@ app.get('/api/my-casting', requireAuth('auditionee'), async (req, res) => {
 
 // GET /api/my-schedule/status: lightweight check so every auditionee page can decide
 // whether to show the "My Rehearsals" nav link without fetching the full schedule.
-// Returns { available: bool } -- true only when BOTH my_schedule_enabled AND
-// casting_published are true for the auditionee's current org/season.
+// Returns { available: bool } -- true only when the user has a submission for at least
+// one season where BOTH my_schedule_enabled AND casting_published are true. Session
+// orgId/seasonId is NOT required; auditionees never have those values in their session.
 app.get('/api/my-schedule/status', requireAuth('auditionee'), async (req, res) => {
-  const { orgId, seasonId } = req.session;
-  if (!orgId || !seasonId) return res.json({ available: false });
   try {
     const result = await pool.query(
-      'SELECT my_schedule_enabled, casting_published FROM seasons WHERE id = $1 AND org_id = $2',
-      [seasonId, orgId]
+      `SELECT 1 FROM submissions sub
+       JOIN seasons s ON s.id = sub.season_id
+       WHERE sub.user_id = $1
+         AND s.my_schedule_enabled = TRUE
+         AND s.casting_published = TRUE
+       LIMIT 1`,
+      [req.session.userId]
     );
-    const row = result.rows[0];
-    res.json({ available: !!(row?.my_schedule_enabled && row?.casting_published) });
+    res.json({ available: result.rows.length > 0 });
   } catch (err) {
     res.json({ available: false });
   }
 });
 
 // GET /api/my-schedule: the full dated rehearsal list for this auditionee, scoped to
-// pieces they are cast in for their current org/season. Reuses generateOccurrences()
-// (the same function the Master Schedule page uses) and filters the result -- no
-// separate scheduling system.
+// pieces they are cast in. Derives the season from the user's submissions -- no session
+// orgId/seasonId required. If the user is in multiple qualifying productions, the most
+// recently created season is used.
 app.get('/api/my-schedule', requireAuth('auditionee'), async (req, res) => {
-  const { orgId, seasonId, userId } = req.session;
-  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  const userId = req.session.userId;
   try {
     const seasonRes = await pool.query(
-      `SELECT name, casting_published, my_schedule_enabled,
-              to_char(start_date,'YYYY-MM-DD') AS start_date,
-              to_char(end_date,'YYYY-MM-DD') AS end_date
-       FROM seasons WHERE id = $1 AND org_id = $2`,
-      [seasonId, orgId]
+      `SELECT s.id AS season_id, s.name, s.casting_published, s.my_schedule_enabled,
+              to_char(s.start_date,'YYYY-MM-DD') AS start_date,
+              to_char(s.end_date,'YYYY-MM-DD') AS end_date
+       FROM submissions sub
+       JOIN seasons s ON s.id = sub.season_id
+       WHERE sub.user_id = $1
+       ORDER BY s.id DESC
+       LIMIT 1`,
+      [userId]
     );
     const season = seasonRes.rows[0];
-    if (!season) return res.status(404).json({ error: 'Season not found.' });
+    if (!season) return res.json({ available: false });
 
     if (!season.my_schedule_enabled || !season.casting_published) {
       return res.json({ available: false });
@@ -2087,7 +2096,7 @@ app.get('/api/my-schedule', requireAuth('auditionee'), async (req, res) => {
       `SELECT pc.piece_id FROM piece_casts pc
        JOIN pieces p ON p.id = pc.piece_id
        WHERE pc.user_id = $1 AND p.season_id = $2`,
-      [userId, seasonId]
+      [userId, season.season_id]
     );
     const myPieceIds = new Set(castRes.rows.map(r => r.piece_id));
 
@@ -2095,7 +2104,7 @@ app.get('/api/my-schedule', requireAuth('auditionee'), async (req, res) => {
       return res.json({ available: true, season_name: season.name, rehearsals: [], pieces: {} });
     }
 
-    const all = await generateOccurrences(seasonId, season.start_date, season.end_date);
+    const all = await generateOccurrences(season.season_id, season.start_date, season.end_date);
     const mine = all.filter(o => myPieceIds.has(o.piece_id));
 
     // Fetch metadata for just the pieces this auditionee is in -- one query, not per-row.
@@ -2106,7 +2115,7 @@ app.get('/api/my-schedule', requireAuth('auditionee'), async (req, res) => {
       ),
       pool.query(
         `SELECT id, name FROM rooms WHERE season_id = $1`,
-        [seasonId]
+        [season.season_id]
       ),
     ]);
     const pieceMap = Object.fromEntries(piecesRes.rows.map(p => [p.id, p]));
@@ -2496,8 +2505,11 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/seed-mock', requireAuth('master'), 
   const { orgId, seasonId } = req.params;
   try {
     const memberCheck = await pool.query(
-      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
-      [orgId, req.session.userId]
+      `SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM season_members WHERE season_id = $3 AND user_id = $2
+       LIMIT 1`,
+      [orgId, req.session.userId, seasonId]
     );
     if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
 
@@ -2577,8 +2589,11 @@ app.delete('/api/orgs/:orgId/seasons/:seasonId/mock-auditionees', requireAuth('m
   const { orgId, seasonId } = req.params;
   try {
     const memberCheck = await pool.query(
-      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
-      [orgId, req.session.userId]
+      `SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2
+       UNION ALL
+       SELECT 1 FROM season_members WHERE season_id = $3 AND user_id = $2
+       LIMIT 1`,
+      [orgId, req.session.userId, seasonId]
     );
     if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
 
