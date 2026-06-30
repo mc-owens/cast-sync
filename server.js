@@ -386,12 +386,33 @@ app.get('/auth/google', passport.authenticate('google', { scope: ['email', 'prof
 
 app.get('/auth/google/callback',
   passport.authenticate('google', { failureRedirect: '/login.html?error=google' }),
-  (req, res) => {
-    req.session.userId = req.user.id;
-    req.session.role   = req.user.role;
-    req.session.email  = req.user.email;
-    if (req.user.role === 'master') res.redirect('/org-select.html');
-    else                            res.redirect('/auditionForm.html');
+  async (req, res) => {
+    try {
+      const result = await pool.query(
+        'SELECT id, email, role, is_director, is_staff FROM users WHERE id = $1',
+        [req.user.id]
+      );
+      const user = result.rows[0];
+      req.session.userId     = user.id;
+      req.session.role       = user.role;
+      req.session.email      = user.email;
+      req.session.isDirector = user.is_director || user.role === 'master';
+      req.session.isStaff    = user.is_staff || user.role === 'staff';
+      req.session.mode       = (user.role === 'master' || user.is_director) ? 'director'
+                              : (user.role === 'staff'  || user.is_staff)   ? 'staff'
+                              : 'auditionee';
+    } catch (e) {
+      console.error('Google callback session error:', e.message);
+      req.session.userId     = req.user.id;
+      req.session.role       = req.user.role;
+      req.session.email      = req.user.email;
+      req.session.isDirector = req.user.role === 'master';
+      req.session.isStaff    = req.user.role === 'staff';
+      req.session.mode       = req.user.role === 'master' ? 'director' : req.user.role === 'staff' ? 'staff' : 'auditionee';
+    }
+    if (req.session.mode === 'director') res.redirect('/org-select.html');
+    else if (req.session.mode === 'staff') res.redirect('/staff-pieces.html');
+    else res.redirect('/auditionForm.html');
   }
 );
 
