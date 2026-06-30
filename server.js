@@ -119,8 +119,19 @@ function timeToMinutes(t) {
 // default) never sets category at all. A block with no category always counts as
 // available, so every existing submission keeps working with zero migration and no
 // reader needs to know which mode produced the data, only whether each block is tagged.
-const AVAILABILITY_CATEGORIES = ['academic_class', 'dance_class', 'work', 'available', 'other'];
-const CATEGORY_LABELS = { academic_class: 'Academic Class', dance_class: 'Dance Class', work: 'Work', available: 'Available To Rehearse', other: 'Other' };
+// Permanent category ids that are always valid regardless of per-production customization.
+// 'available' and 'already_cast' are the two that never require a label on the client;
+// the server doesn't enforce label content, only that the category id is recognized.
+const PERMANENT_CATEGORY_IDS = ['available', 'already_cast', 'other'];
+const AVAILABILITY_CATEGORIES = ['academic_class', 'dance_class', 'work', 'available', 'already_cast', 'other'];
+const CATEGORY_LABELS = { academic_class: 'Academic Class', dance_class: 'Dance Class', work: 'Work', available: 'Available To Rehearse', already_cast: 'Already Cast', other: 'Other' };
+
+// Default customizable categories stored when a production hasn't set any overrides.
+const DEFAULT_DETAILED_CATEGORIES = [
+  { id: 'academic_class', label: 'Academic Class', color: '#3498db' },
+  { id: 'dance_class',    label: 'Dance Class',    color: '#9b59b6' },
+  { id: 'work',           label: 'Work',           color: '#e67e22' },
+];
 
 function isAvailableBlock(block) {
   return !block.category || block.category === 'available';
@@ -141,11 +152,12 @@ function minutesToTimeString(mins) {
 // overlaps, every block tagged with a real category. Returns an error string naming
 // the day and problem, or null if valid. Client-side painting can't produce an invalid
 // state, but this never trusts the client.
-function validateDetailedAvailability(availability) {
+function validateDetailedAvailability(availability, customCategoryIds = []) {
+  const validIds = new Set([...PERMANENT_CATEGORY_IDS, ...customCategoryIds]);
   for (const day of AVAILABILITY_DAYS) {
     const intervals = [];
     for (const b of availability.filter(b => b.day === day)) {
-      if (!AVAILABILITY_CATEGORIES.includes(b.category)) return `${day}: every block needs a valid category.`;
+      if (!validIds.has(b.category)) return `${day}: every block needs a valid category.`;
       const start = timeToMinutes(b.startTime), end = timeToMinutes(b.endTime);
       if (!(end > start)) return `${day}: a block's end time must be after its start time.`;
       intervals.push({ start, end });
@@ -977,7 +989,8 @@ app.get('/api/orgs/preview', async (req, res) => {
   try {
     // Look up by season join code (production code)
     const result = await pool.query(
-      `SELECT o.name AS org_name, s.name AS season_name, s.form_schema, s.availability_mode
+      `SELECT o.name AS org_name, s.name AS season_name, s.form_schema, s.availability_mode,
+              s.detailed_categories, s.detailed_instructions
        FROM seasons s JOIN orgs o ON o.id = s.org_id
        WHERE UPPER(s.join_code) = UPPER($1) LIMIT 1`,
       [join_code.trim()]
@@ -989,6 +1002,8 @@ app.get('/api/orgs/preview', async (req, res) => {
       season_name: result.rows[0].season_name,
       form_schema: result.rows[0].form_schema || [],
       availability_mode: result.rows[0].availability_mode || 'grid',
+      detailed_categories: result.rows[0].detailed_categories || null,
+      detailed_instructions: result.rows[0].detailed_instructions || null,
     });
   } catch (err) {
     res.json({ found: false });
@@ -1786,7 +1801,9 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
     const season = { id: seasonLookup.rows[0].season_id, name: seasonLookup.rows[0].season_name };
 
     if (seasonLookup.rows[0].availability_mode === 'detailed') {
-      const validationError = validateDetailedAvailability(availability || []);
+      const catRow = await pool.query('SELECT detailed_categories FROM seasons WHERE id = $1', [seasonLookup.rows[0].season_id]);
+      const customCats = (catRow.rows[0]?.detailed_categories || DEFAULT_DETAILED_CATEGORIES).map(c => c.id);
+      const validationError = validateDetailedAvailability(availability || [], customCats);
       if (validationError) return res.status(400).json({ error: validationError });
     }
 
@@ -3825,10 +3842,43 @@ app.get('/api/season/availability-mode', requireAuth('master'), async (req, res)
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
-    const result = await pool.query('SELECT availability_mode FROM seasons WHERE id = $1', [seasonId]);
-    res.json({ availability_mode: result.rows[0]?.availability_mode || 'grid' });
+    const result = await pool.query(
+      'SELECT availability_mode, detailed_categories, detailed_instructions FROM seasons WHERE id = $1',
+      [seasonId]
+    );
+    res.json({
+      availability_mode:      result.rows[0]?.availability_mode || 'grid',
+      detailed_categories:    result.rows[0]?.detailed_categories || null,
+      detailed_instructions:  result.rows[0]?.detailed_instructions || null,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch availability mode.' });
+  }
+});
+
+// PATCH /api/season/detailed-settings: director saves custom categories and/or instruction text
+app.patch('/api/season/detailed-settings', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { detailed_categories, detailed_instructions } = req.body;
+  if (detailed_categories !== undefined) {
+    if (!Array.isArray(detailed_categories)) return res.status(400).json({ error: 'detailed_categories must be an array.' });
+    for (const c of detailed_categories) {
+      if (!c.id || !c.label || !c.color) return res.status(400).json({ error: 'Each category needs id, label, and color.' });
+      if (PERMANENT_CATEGORY_IDS.includes(c.id)) return res.status(400).json({ error: `"${c.id}" is a permanent category and cannot be customized.` });
+    }
+  }
+  try {
+    const sets = [], vals = [];
+    if (detailed_categories !== undefined) { sets.push(`detailed_categories = $${vals.length + 1}`); vals.push(JSON.stringify(detailed_categories)); }
+    if (detailed_instructions !== undefined) { sets.push(`detailed_instructions = $${vals.length + 1}`); vals.push(detailed_instructions || null); }
+    if (sets.length === 0) return res.status(400).json({ error: 'Nothing to update.' });
+    vals.push(seasonId);
+    await pool.query(`UPDATE seasons SET ${sets.join(', ')} WHERE id = $${vals.length}`, vals);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save detailed settings.' });
   }
 });
 
@@ -5380,6 +5430,15 @@ async function runMigrations() {
     `);
     console.log('Migration step 28 (piece_staff table + users.is_staff) complete.');
   } catch (err) { console.error('Migration step 28 error:', err.message); }
+
+  // Step 29: Detailed schedule customization -- per-production category list and instruction text
+  try {
+    await pool.query(`
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS detailed_categories JSONB;
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS detailed_instructions TEXT;
+    `);
+    console.log('Migration step 29 (detailed_categories + detailed_instructions) complete.');
+  } catch (err) { console.error('Migration step 29 error:', err.message); }
 
   console.log('All migrations complete.');
 }

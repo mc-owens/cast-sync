@@ -77,6 +77,41 @@
       <span id="availability-mode-saved" class="text-success d-none" style="font-size:12px;">Saved.</span>
     </div>
 
+    <!-- Detailed schedule customization -- shown only when detailed mode is selected -->
+    <div class="border rounded p-3 mb-4 d-none" id="detailed-settings-section" style="max-width:640px;background:#fafafa;">
+      <label class="form-label fw-semibold mb-1" style="font-size:14px;">Detailed Schedule Settings</label>
+
+      <div class="mb-3">
+        <label class="form-label mb-1" style="font-size:13px;font-weight:600;">Instructions for auditionees <span class="text-muted fw-normal">(optional)</span></label>
+        <textarea id="detailed-instructions-input" class="form-control form-control-sm" rows="3"
+          placeholder="E.g. All time slots must be filled in. Dance courses are any class with a DANC course code."></textarea>
+        <div class="form-text">This message appears above the category buttons on the auditionee's form.</div>
+      </div>
+
+      <div class="mb-2">
+        <label class="form-label mb-1" style="font-size:13px;font-weight:600;">Category buttons</label>
+        <div class="form-text mb-2">Auditionees use these buttons to label blocks on their weekly schedule. Add, rename, or remove the customizable ones. The three permanent buttons at the bottom cannot be changed.</div>
+        <div id="detailed-categories-list" class="mb-2"></div>
+        <button type="button" id="add-category-btn" class="btn btn-sm btn-outline-secondary">+ Add category</button>
+      </div>
+
+      <div class="mb-2 mt-3">
+        <div class="form-text fw-semibold mb-1" style="color:#555;">Always included (not customizable):</div>
+        <div class="d-flex flex-wrap gap-2">
+          <span class="badge rounded-pill" style="background:#2ecc71;color:#fff;font-size:12px;padding:5px 12px;">Available To Rehearse</span>
+          <span class="badge rounded-pill" style="background:#e74c3c;color:#fff;font-size:12px;padding:5px 12px;">Already Cast</span>
+          <span class="badge rounded-pill" style="background:#95a5a6;color:#fff;font-size:12px;padding:5px 12px;">Other</span>
+        </div>
+        <div class="form-text mt-1">"Available To Rehearse" is the only button that does not require a label. All others do.</div>
+      </div>
+
+      <div class="mt-3">
+        <button type="button" id="save-detailed-settings-btn" class="btn btn-sm btn-dark">Save</button>
+        <span id="detailed-settings-saved" class="text-success ms-2 d-none" style="font-size:12px;">Saved.</span>
+        <span id="detailed-settings-error" class="text-danger ms-2 d-none" style="font-size:12px;"></span>
+      </div>
+    </div>
+
     <div class="row g-4">
       <div class="col-lg-7">
 
@@ -429,12 +464,46 @@
       loadAvailabilityMode();
     }
 
+    const COLOR_PALETTE = ['#3498db','#9b59b6','#e67e22','#1abc9c','#f39c12','#e91e63','#2980b9','#16a085'];
+    const PERMANENT_IDS = new Set(['available','already_cast','other']);
+
+    let detailedCategories = [
+      { id: 'academic_class', label: 'Academic Class', color: '#3498db' },
+      { id: 'dance_class',    label: 'Dance Class',    color: '#9b59b6' },
+      { id: 'work',           label: 'Work',           color: '#e67e22' },
+    ];
+
+    function renderCategoryList() {
+      const list = document.getElementById('detailed-categories-list');
+      if (!list) return;
+      list.innerHTML = '';
+      detailedCategories.forEach((cat, idx) => {
+        const row = document.createElement('div');
+        row.className = 'd-flex align-items-center gap-2 mb-2';
+        row.innerHTML = `
+          <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:${cat.color};flex-shrink:0;"></span>
+          <input type="text" class="form-control form-control-sm cat-label-input" value="${cat.label.replace(/"/g,'&quot;')}" style="max-width:240px;" data-idx="${idx}">
+          <button type="button" class="btn btn-sm btn-outline-danger remove-cat-btn" data-idx="${idx}" style="padding:2px 8px;font-size:12px;">Remove</button>
+        `;
+        list.appendChild(row);
+      });
+    }
+
+    function syncDetailedSettingsVisibility() {
+      const isDetailed = document.getElementById('availability-mode-detailed')?.checked;
+      document.getElementById('detailed-settings-section')?.classList.toggle('d-none', !isDetailed);
+    }
+
     async function loadAvailabilityMode() {
       try {
         const res = await fetch('/api/season/availability-mode');
         if (!res.ok) return;
         const data = await res.json();
         document.getElementById(data.availability_mode === 'detailed' ? 'availability-mode-detailed' : 'availability-mode-grid').checked = true;
+        if (data.detailed_categories) detailedCategories = data.detailed_categories;
+        if (data.detailed_instructions) document.getElementById('detailed-instructions-input').value = data.detailed_instructions;
+        renderCategoryList();
+        syncDetailedSettingsVisibility();
         renderPreview();
       } catch (e) { /* leave unchecked, no big deal */ }
     }
@@ -452,9 +521,58 @@
           if (!res.ok) { alert('Could not save availability mode.'); return; }
           savedEl.classList.remove('d-none');
           setTimeout(() => savedEl.classList.add('d-none'), 2000);
+          syncDetailedSettingsVisibility();
           renderPreview();
         } catch (e) { alert('Could not connect to server.'); }
       });
+    });
+
+    document.getElementById('detailed-categories-list')?.addEventListener('input', e => {
+      if (e.target.classList.contains('cat-label-input')) {
+        const idx = parseInt(e.target.dataset.idx);
+        detailedCategories[idx].label = e.target.value;
+      }
+    });
+
+    document.getElementById('detailed-categories-list')?.addEventListener('click', e => {
+      const btn = e.target.closest('.remove-cat-btn');
+      if (!btn) return;
+      const idx = parseInt(btn.dataset.idx);
+      detailedCategories.splice(idx, 1);
+      renderCategoryList();
+    });
+
+    document.getElementById('add-category-btn')?.addEventListener('click', () => {
+      const usedColors = new Set(detailedCategories.map(c => c.color));
+      const color = COLOR_PALETTE.find(c => !usedColors.has(c)) || COLOR_PALETTE[detailedCategories.length % COLOR_PALETTE.length];
+      detailedCategories.push({ id: `custom_${Date.now().toString(36)}`, label: '', color });
+      renderCategoryList();
+      const inputs = document.querySelectorAll('.cat-label-input');
+      inputs[inputs.length - 1]?.focus();
+    });
+
+    document.getElementById('save-detailed-settings-btn')?.addEventListener('click', async () => {
+      const savedEl = document.getElementById('detailed-settings-saved');
+      const errEl   = document.getElementById('detailed-settings-error');
+      savedEl.classList.add('d-none');
+      errEl.classList.add('d-none');
+
+      for (const cat of detailedCategories) {
+        if (!cat.label.trim()) { errEl.textContent = 'Every category needs a name.'; errEl.classList.remove('d-none'); return; }
+        if (PERMANENT_IDS.has(cat.id)) { errEl.textContent = `"${cat.label}" uses a reserved id.`; errEl.classList.remove('d-none'); return; }
+      }
+
+      const instructions = document.getElementById('detailed-instructions-input')?.value.trim() || null;
+      try {
+        const res = await fetch('/api/season/detailed-settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ detailed_categories: detailedCategories, detailed_instructions: instructions }),
+        });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); errEl.textContent = d.error || 'Could not save.'; errEl.classList.remove('d-none'); return; }
+        savedEl.classList.remove('d-none');
+        setTimeout(() => savedEl.classList.add('d-none'), 2000);
+      } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.classList.remove('d-none'); }
     });
   </script>
 

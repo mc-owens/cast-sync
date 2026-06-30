@@ -425,11 +425,11 @@
           // different mode than what's already showing, and swap back if cleared.
           let currentAvailabilityUI = 'grid';
           window._activeAvailabilityMode = 'grid';
-          function setAvailabilityUI(mode) {
+          function setAvailabilityUI(mode, detailedConfig) {
             if (mode === currentAvailabilityUI) return;
             if (currentAvailabilityUI === 'grid') window.teardownSimpleAvailability();
             else window.teardownDetailedAvailability();
-            if (mode === 'detailed') window.initDetailedAvailability();
+            if (mode === 'detailed') window.initDetailedAvailability(detailedConfig || null);
             else window.initSimpleAvailability();
             currentAvailabilityUI = mode;
             window._activeAvailabilityMode = mode;
@@ -457,7 +457,10 @@
                   previewEl.innerHTML =
                     `<span style="color:#198754;">&#10003; Joining: <strong>${data.org_name}</strong>, ${data.season_name}</span>`;
                   renderDynamicFields(data.form_schema || []);
-                  setAvailabilityUI(data.availability_mode === 'detailed' ? 'detailed' : 'grid');
+                  setAvailabilityUI(
+                    data.availability_mode === 'detailed' ? 'detailed' : 'grid',
+                    { categories: data.detailed_categories || null, instructions: data.detailed_instructions || null }
+                  );
                 } else {
                   previewEl.style.display = 'block';
                   previewEl.innerHTML =

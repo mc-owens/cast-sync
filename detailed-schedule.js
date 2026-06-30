@@ -10,18 +10,22 @@
   const SLOT_HEIGHT = 12.5;
   const TOTAL_SLOTS = ((END_HOUR - START_HOUR) * 60) / INCREMENT; // 60, 8:00 AM through 11:00 PM
 
-  // Fixed ids, matching server.js's AVAILABILITY_CATEGORIES exactly. These are what
-  // gets stored, never the display label. If a future single-day mobile paint grid
-  // gets built, it only needs to read/write this same array shape; nothing else changes.
-  const CATEGORIES = [
-    { id: 'academic_class', label: 'Academic Class',         color: '#3498db' },
-    { id: 'dance_class',    label: 'Dance Class',             color: '#9b59b6' },
-    { id: 'work',           label: 'Work',                    color: '#e67e22' },
-    { id: 'available',      label: 'Available To Rehearse',   color: '#2ecc71' },
-    { id: 'other',          label: 'Other',                   color: '#95a5a6' },
+  // Permanent categories always present regardless of director customization.
+  // 'available' is the only one exempt from the label requirement.
+  const PERMANENT_CATEGORIES = [
+    { id: 'available',     label: 'Available To Rehearse', color: '#2ecc71' },
+    { id: 'already_cast',  label: 'Already Cast',          color: '#e74c3c' },
+    { id: 'other',         label: 'Other',                 color: '#95a5a6' },
   ];
-  const CATEGORY_BY_ID = {};
-  CATEGORIES.forEach(c => { CATEGORY_BY_ID[c.id] = c; });
+  const DEFAULT_CUSTOM_CATEGORIES = [
+    { id: 'academic_class', label: 'Academic Class', color: '#3498db' },
+    { id: 'dance_class',    label: 'Dance Class',    color: '#9b59b6' },
+    { id: 'work',           label: 'Work',           color: '#e67e22' },
+  ];
+
+  // Built at init time from config; custom categories first, then permanent ones.
+  let CATEGORIES = [];
+  let CATEGORY_BY_ID = {};
 
   let originalWrapperHtml = null;
   let dayStates = null; // { Monday: Array(64) of category-id-or-null, ... }, the source of truth
@@ -87,15 +91,20 @@
   }
 
   // ─── Desktop paint grid ───────────────────────────────────────────────────
-  function initDesktopGrid() {
+  function initDesktopGrid(instructions) {
     const wrapper = document.querySelector('.schedule-wrapper');
     if (!wrapper) return;
     dayStates = freshSlotMap(null);
     dayLabels = freshSlotMap(null);
     selectedCategory = null;
 
+    const instrHtml = instructions
+      ? `<div style="font-size:12px;color:#555;margin-bottom:8px;padding:8px 10px;background:#f0f4ff;border-radius:6px;border:1px solid #d0d8f0;">${instructions.replace(/\n/g, '<br>')}</div>`
+      : '';
+
     wrapper.innerHTML = `
       <div id="detailed-toolbar" style="padding:10px 12px;border-bottom:1px solid var(--border);background:#fafafa;">
+        ${instrHtml}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;" id="detailed-category-buttons"></div>
         <input type="text" id="detailed-label-input" class="form-control form-control-sm d-inline-block" style="max-width:260px;" placeholder="Optional label (e.g. after-school activity)">
         <span id="detailed-coverage-status" style="margin-left:10px;font-size:12px;color:#888;"></span>
@@ -255,7 +264,7 @@
   }
 
   // ─── Mobile extended dropdown UI ─────────────────────────────────────────
-  function initMobileUI() {
+  function initMobileUI(instructions) {
     const wrapper = document.querySelector('.schedule-wrapper');
     if (!wrapper) return;
     window._detailedMobileUI = true;
@@ -342,6 +351,13 @@
 
     const container = document.createElement('div');
     container.id = 'detailed-mobile-availability';
+
+    if (instructions) {
+      const instrEl = document.createElement('div');
+      instrEl.style.cssText = 'font-size:12px;color:#555;margin-bottom:12px;padding:8px 10px;background:#f0f4ff;border-radius:6px;border:1px solid #d0d8f0;white-space:pre-wrap;';
+      instrEl.textContent = instructions;
+      container.appendChild(instrEl);
+    }
 
     DAYS.forEach(day => {
       const row = document.createElement('div');
@@ -447,15 +463,25 @@
   }
 
   // ─── Public init/teardown ────────────────────────────────────────────────
-  window.initDetailedAvailability = function () {
+  // config = { categories: [{id,label,color},...] | null, instructions: string | null }
+  // categories = the customizable ones only; permanent ones (available, already_cast, other)
+  // are always appended automatically.
+  window.initDetailedAvailability = function (config) {
+    const customCats = (config && config.categories) ? config.categories : DEFAULT_CUSTOM_CATEGORIES;
+    const instructions = (config && config.instructions) ? config.instructions : null;
+
+    CATEGORIES = [...customCats, ...PERMANENT_CATEGORIES];
+    CATEGORY_BY_ID = {};
+    CATEGORIES.forEach(c => { CATEGORY_BY_ID[c.id] = c; });
+
     const wrapper = document.querySelector('.schedule-wrapper');
     if (wrapper && originalWrapperHtml === null) originalWrapperHtml = wrapper.innerHTML;
 
     if (window.innerWidth < 1024) {
-      initMobileUI();
+      initMobileUI(instructions);
     } else {
       window._detailedMobileUI = false;
-      initDesktopGrid();
+      initDesktopGrid(instructions);
     }
   };
 
@@ -494,7 +520,7 @@
     if (coverageError) return coverageError;
     for (const block of availability) {
       if (block.category !== 'available' && !block.label) {
-        const catName = CATEGORY_BY_ID[block.category]?.label || block.category;
+        const catName = (CATEGORY_BY_ID[block.category] || {}).label || block.category;
         return `${block.day}: a label is required for "${catName}" blocks.`;
       }
     }
