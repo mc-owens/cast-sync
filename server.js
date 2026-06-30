@@ -25,6 +25,7 @@ const { Resend }     = require('resend');
 const crypto         = require('crypto');
 const Stripe         = require('stripe');
 const rateLimit      = require('express-rate-limit');
+const fs             = require('fs');
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? Stripe(process.env.STRIPE_SECRET_KEY)
@@ -334,8 +335,41 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   ));
 }
 
+// ── Asset cache-busting ───────────────────────────────────────────────────────
+// RAILWAY_GIT_COMMIT_SHA is injected automatically on every Railway deploy, so
+// the version changes with each push and users always get fresh JS/CSS files.
+// Locally, falls back to the current git short hash, then a startup timestamp.
+const ASSET_VERSION = (() => {
+  if (process.env.RAILWAY_GIT_COMMIT_SHA) return process.env.RAILWAY_GIT_COMMIT_SHA.slice(0, 8);
+  try {
+    return require('child_process')
+      .execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString().trim();
+  } catch (e) {}
+  return Date.now().toString(36);
+})();
+console.log(`[startup] Asset version: ${ASSET_VERSION}`);
+
+const _htmlCache = new Map();
+function serveVersionedHtml(req, res, next) {
+  if (!req.path.endsWith('.html')) return next();
+  const filePath = path.join(__dirname, req.path);
+  if (_htmlCache.has(filePath)) return res.type('html').send(_htmlCache.get(filePath));
+  fs.readFile(filePath, 'utf8', (err, content) => {
+    if (err) return next();
+    // Append ?v=HASH to local .js and .css references only (skip CDN URLs and already-versioned files)
+    const versioned = content.replace(
+      /(src|href)="([^"?]+\.(js|css))"/g,
+      (match, attr, file) => file.startsWith('http') ? match : `${attr}="${file}?v=${ASSET_VERSION}"`
+    );
+    _htmlCache.set(filePath, versioned);
+    res.type('html').send(versioned);
+  });
+}
+
 app.use(passport.initialize());
 app.use(passport.session());
+app.use(serveVersionedHtml);
 app.use(express.static(path.join(__dirname)));
 app.get('/', (req, res) => res.redirect('/login.html'));
 
