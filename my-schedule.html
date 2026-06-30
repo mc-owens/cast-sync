@@ -7,39 +7,54 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <style>
-    .rehearsal-date-header {
-      font-weight: 700;
-      font-size: 14px;
-      color: #333;
-      margin: 24px 0 8px;
-      padding-bottom: 6px;
-      border-bottom: 1px solid #e8e8e8;
+    .prod-section + .prod-section { margin-top: 36px; }
+    .prod-name {
+      font-size: 13px; font-weight: 700; color: #888;
+      text-transform: uppercase; letter-spacing: .6px;
+      margin-bottom: 10px;
     }
-    .rehearsal-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 10px 0;
-      border-bottom: 1px solid #f0f0f0;
+
+    .week-block { margin-bottom: 4px; }
+    .week-toggle {
+      display: flex; align-items: center; width: 100%; text-align: left;
+      background: #f8f9fa; border: 1px solid #e8e8e8; border-radius: 6px;
+      padding: 9px 14px; cursor: pointer; user-select: none;
+      transition: background .15s; font-size: 13px; font-weight: 600; color: #333;
+      outline: none;
     }
-    .rehearsal-row:last-child { border-bottom: none; }
-    .piece-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      margin-top: 5px;
+    .week-toggle:hover { background: #f0f0f0; }
+    .week-toggle.open { border-radius: 6px 6px 0 0; border-bottom-color: transparent; }
+    .week-chevron { font-size: 10px; color: #aaa; margin-left: auto; padding-left: 8px; transition: transform .2s; }
+    .week-toggle.open .week-chevron { transform: rotate(180deg); }
+    .week-count { font-size: 12px; color: #999; font-weight: 400; margin-left: 10px; }
+
+    .this-week-chip {
+      font-size: 10px; font-weight: 700;
+      background: #333; color: #fff;
+      padding: 2px 8px; border-radius: 10px; margin-left: 8px;
     }
-    .rehearsal-time {
-      font-size: 13px;
-      color: #555;
-      white-space: nowrap;
-      min-width: 130px;
+
+    .week-body {
+      border: 1px solid #e8e8e8; border-top: none;
+      border-radius: 0 0 6px 6px;
     }
-    .rehearsal-details { font-size: 14px; flex: 1; }
-    .rehearsal-piece { font-weight: 600; }
-    .rehearsal-meta { font-size: 12px; color: #888; margin-top: 2px; }
-    .rehearsal-note { font-size: 12px; color: #b45309; margin-top: 3px; }
+    .week-empty { font-size: 13px; color: #bbb; font-style: italic; padding: 10px 14px; }
+
+    .rday-label {
+      font-size: 11px; font-weight: 700; color: #888;
+      text-transform: uppercase; letter-spacing: .5px;
+      padding: 10px 14px 4px;
+    }
+    .r-row {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 14px; border-bottom: 1px solid #f3f3f3;
+    }
+    .r-row:last-child { border-bottom: none; }
+    .r-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+    .r-piece { font-size: 14px; font-weight: 600; }
+    .r-time { font-size: 13px; color: #555; }
+    .r-meta { font-size: 12px; color: #999; margin-top: 1px; }
+    .r-note { font-size: 12px; color: #b45309; margin-top: 2px; }
   </style>
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -72,20 +87,166 @@
   </nav>
 
   <div class="container mt-4" style="max-width:680px;">
+    <h5 class="mb-4 fw-semibold">My Rehearsals</h5>
     <div id="schedule-loading" class="text-muted" style="font-size:14px;">Loading your rehearsal schedule...</div>
     <div id="schedule-content" class="d-none">
-      <h5 id="schedule-title" class="mb-0"></h5>
-      <p class="text-muted mb-0" style="font-size:13px;" id="schedule-subtitle"></p>
-      <div id="rehearsal-list" class="mt-2"></div>
+      <div id="productions-container"></div>
     </div>
     <div id="schedule-unavailable" class="d-none text-muted" style="font-size:14px;margin-top:40px;text-align:center;">
-      <p>My Rehearsals is not enabled for this production yet.</p>
+      <p>My Rehearsals is not yet enabled for your production.</p>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="app-shell.js"></script>
+
   <script>
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+    function parseDate(iso) {
+      const [y, m, d] = iso.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+
+    function toIso(d) {
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    function addDays(d, n) {
+      const r = new Date(d);
+      r.setDate(r.getDate() + n);
+      return r;
+    }
+
+    function weekMonday(date) {
+      const day = date.getDay();
+      return addDays(date, day === 0 ? -6 : 1 - day);
+    }
+
+    // returns "Sept 9–15" or "Sept 30 – Oct 6"
+    function fmtWeek(wStart, wEnd) {
+      const sm = MONTHS[wStart.getMonth()], sd = wStart.getDate();
+      const em = MONTHS[wEnd.getMonth()],   ed = wEnd.getDate();
+      if (sm === em) return `${sm} ${sd}–${ed}`;
+      return `${sm} ${sd} – ${em} ${ed}`;
+    }
+
+    function renderProduction(prod, prodIndex) {
+      const container = document.createElement('div');
+      container.className = 'prod-section';
+
+      if (!prod.start_date || !prod.end_date) {
+        container.innerHTML = `
+          <div class="prod-name">${escapeHtml(prod.season_name)}</div>
+          <p class="text-muted" style="font-size:14px;">No rehearsal schedule has been set up for this production yet.</p>`;
+        return container;
+      }
+
+      // Index rehearsals by date
+      const byDate = {};
+      for (const r of prod.rehearsals) {
+        if (!byDate[r.date]) byDate[r.date] = [];
+        byDate[r.date].push(r);
+      }
+
+      // Build week list: Monday-based, covering start_date through end_date
+      const start   = parseDate(prod.start_date);
+      const end     = parseDate(prod.end_date);
+      const today   = new Date(); today.setHours(0,0,0,0);
+      const weeks   = [];
+      let   wStart  = weekMonday(start);
+      while (wStart <= end) {
+        const wEnd = addDays(wStart, 6);
+        weeks.push({ start: new Date(wStart), end: wEnd });
+        wStart = addDays(wStart, 7);
+      }
+
+      let html = `<div class="prod-name">${escapeHtml(prod.season_name)}</div>`;
+
+      weeks.forEach((week, wi) => {
+        const wId         = `wk-${prodIndex}-${wi}`;
+        const isPast      = week.end < today;
+        const isThisWeek  = week.start <= today && today <= week.end;
+
+        // Collect days in this week that have rehearsals
+        const days = [];
+        let d = new Date(week.start);
+        while (d <= week.end) {
+          const iso = toIso(d);
+          if (byDate[iso]) days.push({ date: new Date(d), rehearsals: byDate[iso] });
+          d = addDays(d, 1);
+        }
+
+        const hasRehearsals = days.length > 0;
+        const totalCount    = days.reduce((s, day) => s + day.rehearsals.length, 0);
+        const isOpen        = isThisWeek || (hasRehearsals && !isPast);
+
+        const chipHtml   = isThisWeek ? `<span class="this-week-chip">This week</span>` : '';
+        const countHtml  = hasRehearsals
+          ? `<span class="week-count">${totalCount} rehearsal${totalCount !== 1 ? 's' : ''}</span>`
+          : '';
+
+        let bodyHtml = '';
+        if (!hasRehearsals) {
+          bodyHtml = `<div class="week-empty">No rehearsals scheduled for you this week.</div>`;
+        } else {
+          bodyHtml = days.map(({ date, rehearsals }) => {
+            const dayHeader = `<div class="rday-label">${DAYS[date.getDay()]}, ${MONTHS[date.getMonth()]} ${date.getDate()}</div>`;
+            const rows = rehearsals.map(r => {
+              const piece = prod.pieces[r.piece_id] || {};
+              const color = piece.color || '#ccc';
+              const meta  = [r.room_name, piece.choreographer_name].filter(Boolean).join(' · ');
+              return `
+                <div class="r-row">
+                  <div class="r-dot" style="background:${escapeHtml(color)};"></div>
+                  <div>
+                    <div class="r-piece">${escapeHtml(piece.name || 'Rehearsal')}</div>
+                    <div class="r-time">${escapeHtml(r.start_time)} &ndash; ${escapeHtml(r.end_time)}</div>
+                    ${meta  ? `<div class="r-meta">${escapeHtml(meta)}</div>` : ''}
+                    ${r.note ? `<div class="r-note">${escapeHtml(r.note)}</div>` : ''}
+                  </div>
+                </div>`;
+            }).join('');
+            return dayHeader + rows;
+          }).join('');
+        }
+
+        html += `
+          <div class="week-block">
+            <button class="week-toggle${isOpen ? ' open' : ''}" type="button"
+                    data-target="${wId}" aria-expanded="${isOpen}">
+              <span>${fmtWeek(week.start, week.end)}</span>
+              ${chipHtml}
+              ${countHtml}
+              <span class="week-chevron">&#9660;</span>
+            </button>
+            <div class="week-body${isOpen ? '' : ' d-none'}" id="${wId}">
+              ${bodyHtml}
+            </div>
+          </div>`;
+      });
+
+      container.innerHTML = html;
+
+      // Wire up toggle buttons for this production
+      container.querySelectorAll('.week-toggle').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const body = document.getElementById(btn.dataset.target);
+          const opening = btn.getAttribute('aria-expanded') !== 'true';
+          btn.setAttribute('aria-expanded', opening);
+          btn.classList.toggle('open', opening);
+          body.classList.toggle('d-none', !opening);
+        });
+      });
+
+      return container;
+    }
+
     (async () => {
       try {
         const res  = await fetch('/api/auth/me');
@@ -122,54 +283,14 @@
           return;
         }
 
-        document.getElementById('schedule-content').classList.remove('d-none');
-        document.getElementById('schedule-title').textContent = 'My Rehearsals';
-        document.getElementById('schedule-subtitle').textContent = data.season_name || '';
+        const scheduleContent = document.getElementById('schedule-content');
+        scheduleContent.classList.remove('d-none');
+        const container = document.getElementById('productions-container');
 
-        const list = document.getElementById('rehearsal-list');
+        (data.productions || []).forEach((prod, i) => {
+          container.appendChild(renderProduction(prod, i));
+        });
 
-        if (!data.rehearsals || data.rehearsals.length === 0) {
-          list.innerHTML = '<p class="text-muted mt-3" style="font-size:14px;">No rehearsals scheduled yet. Check back once your director sets up the rehearsal schedule.</p>';
-          return;
-        }
-
-        // Group by date
-        const byDate = new Map();
-        for (const r of data.rehearsals) {
-          if (!byDate.has(r.date)) byDate.set(r.date, []);
-          byDate.get(r.date).push(r);
-        }
-
-        const pieces = data.pieces || {};
-
-        for (const [date, rehearsals] of byDate) {
-          const niceDateStr = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {
-            weekday: 'long', month: 'long', day: 'numeric',
-          });
-
-          const dateHeader = document.createElement('div');
-          dateHeader.className = 'rehearsal-date-header';
-          dateHeader.textContent = niceDateStr;
-          list.appendChild(dateHeader);
-
-          for (const r of rehearsals) {
-            const piece   = pieces[r.piece_id] || {};
-            const color   = piece.color || '#ccc';
-            const meta    = [r.room_name, piece.choreographer_name].filter(Boolean).join(' · ');
-
-            const row = document.createElement('div');
-            row.className = 'rehearsal-row';
-            row.innerHTML = `
-              <div class="piece-dot" style="background:${color};"></div>
-              <div class="rehearsal-time">${r.start_time} &ndash; ${r.end_time}</div>
-              <div class="rehearsal-details">
-                <div class="rehearsal-piece">${piece.name || 'Rehearsal'}</div>
-                ${meta ? `<div class="rehearsal-meta">${meta}</div>` : ''}
-                ${r.note ? `<div class="rehearsal-note">${r.note}</div>` : ''}
-              </div>`;
-            list.appendChild(row);
-          }
-        }
       } catch (err) {
         window.location.href = 'login.html';
       }

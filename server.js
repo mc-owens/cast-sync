@@ -2062,76 +2062,78 @@ app.get('/api/my-schedule/status', requireAuth('auditionee'), async (req, res) =
   }
 });
 
-// GET /api/my-schedule: the full dated rehearsal list for this auditionee, scoped to
-// pieces they are cast in. Derives the season from the user's submissions -- no session
-// orgId/seasonId required. If the user is in multiple qualifying productions, the most
-// recently created season is used.
+// GET /api/my-schedule: rehearsal list for this auditionee across all qualifying
+// productions. "Qualifying" means my_schedule_enabled AND casting_published are both
+// true on the season, and the user has a submission for it. Returns all of them so
+// the page can render a section per production.
 app.get('/api/my-schedule', requireAuth('auditionee'), async (req, res) => {
   const userId = req.session.userId;
   try {
-    const seasonRes = await pool.query(
-      `SELECT s.id AS season_id, s.name, s.casting_published, s.my_schedule_enabled,
+    const seasonsRes = await pool.query(
+      `SELECT s.id AS season_id, s.name,
               to_char(s.start_date,'YYYY-MM-DD') AS start_date,
               to_char(s.end_date,'YYYY-MM-DD') AS end_date
        FROM submissions sub
        JOIN seasons s ON s.id = sub.season_id
        WHERE sub.user_id = $1
-       ORDER BY s.id DESC
-       LIMIT 1`,
+         AND s.my_schedule_enabled = TRUE
+         AND s.casting_published   = TRUE
+       ORDER BY s.id DESC`,
       [userId]
     );
-    const season = seasonRes.rows[0];
-    if (!season) return res.json({ available: false });
+    if (seasonsRes.rows.length === 0) return res.json({ available: false });
 
-    if (!season.my_schedule_enabled || !season.casting_published) {
-      return res.json({ available: false });
+    const productions = [];
+    for (const season of seasonsRes.rows) {
+      if (!season.start_date || !season.end_date) {
+        productions.push({ season_id: season.season_id, season_name: season.name,
+          start_date: null, end_date: null, rehearsals: [], pieces: {} });
+        continue;
+      }
+
+      const castRes = await pool.query(
+        `SELECT pc.piece_id FROM piece_casts pc
+         JOIN pieces p ON p.id = pc.piece_id
+         WHERE pc.user_id = $1 AND p.season_id = $2`,
+        [userId, season.season_id]
+      );
+      const myPieceIds = castRes.rows.map(r => r.piece_id);
+
+      if (myPieceIds.length === 0) {
+        productions.push({ season_id: season.season_id, season_name: season.name,
+          start_date: season.start_date, end_date: season.end_date, rehearsals: [], pieces: {} });
+        continue;
+      }
+
+      const pieceSet = new Set(myPieceIds);
+      const all  = await generateOccurrences(season.season_id, season.start_date, season.end_date);
+      const mine = all.filter(o => pieceSet.has(o.piece_id));
+
+      const [piecesRes, roomsRes] = await Promise.all([
+        pool.query(`SELECT id, name, color, choreographer_name FROM pieces WHERE id = ANY($1)`, [myPieceIds]),
+        pool.query(`SELECT id, name FROM rooms WHERE season_id = $1`, [season.season_id]),
+      ]);
+      const pieceMap = Object.fromEntries(piecesRes.rows.map(p => [p.id, p]));
+      const roomMap  = Object.fromEntries(roomsRes.rows.map(r => [r.id, r.name]));
+
+      productions.push({
+        season_id:   season.season_id,
+        season_name: season.name,
+        start_date:  season.start_date,
+        end_date:    season.end_date,
+        rehearsals: mine.map(o => ({
+          date:       o.date,
+          piece_id:   o.piece_id,
+          start_time: o.start_time,
+          end_time:   o.end_time,
+          room_name:  o.room_id ? (roomMap[o.room_id] || null) : null,
+          note:       o.note || null,
+        })),
+        pieces: pieceMap,
+      });
     }
 
-    // No date range set yet -- feature is on but director hasn't configured the schedule window.
-    if (!season.start_date || !season.end_date) {
-      return res.json({ available: true, season_name: season.name, rehearsals: [], pieces: {} });
-    }
-
-    const castRes = await pool.query(
-      `SELECT pc.piece_id FROM piece_casts pc
-       JOIN pieces p ON p.id = pc.piece_id
-       WHERE pc.user_id = $1 AND p.season_id = $2`,
-      [userId, season.season_id]
-    );
-    const myPieceIds = new Set(castRes.rows.map(r => r.piece_id));
-
-    if (myPieceIds.size === 0) {
-      return res.json({ available: true, season_name: season.name, rehearsals: [], pieces: {} });
-    }
-
-    const all = await generateOccurrences(season.season_id, season.start_date, season.end_date);
-    const mine = all.filter(o => myPieceIds.has(o.piece_id));
-
-    // Fetch metadata for just the pieces this auditionee is in -- one query, not per-row.
-    const [piecesRes, roomsRes] = await Promise.all([
-      pool.query(
-        `SELECT id, name, color, choreographer_name FROM pieces WHERE id = ANY($1)`,
-        [Array.from(myPieceIds)]
-      ),
-      pool.query(
-        `SELECT id, name FROM rooms WHERE season_id = $1`,
-        [season.season_id]
-      ),
-    ]);
-    const pieceMap = Object.fromEntries(piecesRes.rows.map(p => [p.id, p]));
-    const roomMap  = Object.fromEntries(roomsRes.rows.map(r => [r.id, r.name]));
-
-    const rehearsals = mine.map(o => ({
-      date:               o.date,
-      piece_id:           o.piece_id,
-      start_time:         o.start_time,
-      end_time:           o.end_time,
-      room_name:          o.room_id ? (roomMap[o.room_id] || null) : null,
-      note:               o.note || null,
-      source:             o.source,
-    }));
-
-    res.json({ available: true, season_name: season.name, rehearsals, pieces: pieceMap });
+    res.json({ available: true, productions });
   } catch (err) {
     console.error('My schedule error:', err.message);
     res.status(500).json({ error: 'Failed to load rehearsal schedule.' });
