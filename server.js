@@ -1587,24 +1587,10 @@ app.post('/api/orgs/:orgId/seasons/free', requireAuth('master'), async (req, res
       }
     }
 
-    // Auto-seed mock auditionees into the new season if they already exist for this org
-    const mockUsers = await pool.query(
-      `SELECT id FROM users WHERE email LIKE $1 AND is_mock = TRUE`,
-      [`mock-%-o${req.params.orgId}@trial.castsync.app`]
-    );
-    if (mockUsers.rows.length > 0) {
-      const avail = JSON.stringify(
-        ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
-          .map(day => ({ day, startTime: '9:00 AM', endTime: '9:00 PM' }))
-      );
-      for (const { id: userId } of mockUsers.rows) {
-        await pool.query(
-          `INSERT INTO submissions (user_id, org_id, season_id, availability)
-           VALUES ($1,$2,$3,$4) ON CONFLICT (user_id, season_id) DO NOTHING`,
-          [userId, req.params.orgId, row.id, avail]
-        );
-      }
-    }
+    // Mock auditionees are no longer auto-copied into newly created productions --
+    // mock identity is per-production now (see /seed-mock), so a director chooses
+    // per-production whether to seed demo data rather than a new show silently
+    // inheriting another one's test data.
 
     res.status(201).json(row);
   } catch (err) {
@@ -2306,7 +2292,7 @@ app.get('/api/dancers', requireAuth('master'), async (req, res) => {
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
     const result = await pool.query(
-      `SELECT dp.id AS profile_id, u.id AS user_id,
+      `SELECT dp.id AS profile_id, u.id AS user_id, u.is_mock,
               dp.first_name, dp.last_name, u.email, dp.phone, dp.address,
               dp.grade, dp.technique_classes, sub.injuries, sub.absences,
               sub.created_at, sub.audition_number, sub.custom_responses,
@@ -2365,8 +2351,32 @@ app.delete('/api/dancers', requireAuth('master'), async (req, res) => {
 });
 
 // POST /api/orgs/:orgId/seasons/:seasonId/seed-mock — seed 15 mock auditionees into ALL productions for this org
+// Three availability patterns, not one uniform "open every day" block for all 15 --
+// otherwise there's nothing for a director to actually exercise when testing
+// Availability Analysis / Master Schedule / Cast Builder / Casting against this data,
+// since every dancer would be equally free at every hour.
+function mockAvailabilityPattern(index) {
+  const wideOpen = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+    .map(day => ({ day, startTime: '9:00 AM', endTime: '9:00 PM' }));
+  const weekdayEvenings = ['Monday','Tuesday','Wednesday','Thursday','Friday']
+    .map(day => ({ day, startTime: '4:00 PM', endTime: '9:00 PM' }));
+  const weekendHeavy = [
+    { day: 'Tuesday',  startTime: '5:00 PM', endTime: '9:00 PM' },
+    { day: 'Thursday', startTime: '5:00 PM', endTime: '9:00 PM' },
+    { day: 'Saturday', startTime: '9:00 AM', endTime: '9:00 PM' },
+    { day: 'Sunday',   startTime: '9:00 AM', endTime: '9:00 PM' },
+  ];
+  if (index < 10) return wideOpen;        // dancers 1-10
+  if (index < 13) return weekdayEvenings; // dancers 11-13
+  return weekendHeavy;                    // dancers 14-15
+}
+
+// POST /api/orgs/:orgId/seasons/:seasonId/seed-mock: 15 mock auditionees for THIS
+// production only. Mock identity is season-scoped (mock-N-s{seasonId}@...) specifically
+// so this can be repeated independently per production -- seeding one show never
+// touches, blocks, or duplicates into any other production in the same org.
 app.post('/api/orgs/:orgId/seasons/:seasonId/seed-mock', requireAuth('master'), async (req, res) => {
-  const { orgId } = req.params;
+  const { orgId, seasonId } = req.params;
   try {
     const memberCheck = await pool.query(
       'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
@@ -2374,13 +2384,15 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/seed-mock', requireAuth('master'), 
     );
     if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
 
-    // Check if org already has mock auditionees
+    const seasonCheck = await pool.query('SELECT id FROM seasons WHERE id = $1 AND org_id = $2', [seasonId, orgId]);
+    if (seasonCheck.rows.length === 0) return res.status(404).json({ error: 'Production not found in this organization.' });
+
     const existingMocks = await pool.query(
       `SELECT COUNT(*) FROM users WHERE email LIKE $1 AND is_mock = TRUE`,
-      [`mock-%-o${orgId}@trial.castsync.app`]
+      [`mock-%-s${seasonId}@trial.castsync.app`]
     );
     if (parseInt(existingMocks.rows[0].count) > 0) {
-      return res.status(409).json({ error: 'This organization already has mock auditionees.' });
+      return res.status(409).json({ error: 'This production already has mock auditionees. Clear them first if you want to reseed.' });
     }
 
     const mockDancers = [
@@ -2401,22 +2413,12 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/seed-mock', requireAuth('master'), 
       { first: 'Isabella', last: 'Garcia',    grade: '12th', technique: 'Contemporary, Ballet'   },
     ];
 
-    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-    const availability = JSON.stringify(days.map(day => ({ day, startTime: '9:00 AM', endTime: '9:00 PM' })));
-
-    // Get all active seasons for this org
-    const seasonsResult = await pool.query(
-      `SELECT id FROM seasons WHERE org_id = $1 AND status != 'archived'`,
-      [orgId]
-    );
-    const seasonIds = seasonsResult.rows.map(r => r.id);
-
-    // Create mock users and seed into every season
     let created = 0;
     for (let i = 0; i < mockDancers.length; i++) {
       const { first, last, grade, technique } = mockDancers[i];
-      const email    = `mock-${i + 1}-o${orgId}@trial.castsync.app`;
-      const fakeHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 8);
+      const email       = `mock-${i + 1}-s${seasonId}@trial.castsync.app`;
+      const fakeHash    = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 8);
+      const availability = JSON.stringify(mockAvailabilityPattern(i));
 
       const userResult = await pool.query(
         `INSERT INTO users (email, password_hash, role, email_verified, is_mock)
@@ -2434,19 +2436,43 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/seed-mock', requireAuth('master'), 
         [userId, first, last, grade, technique]
       );
 
-      for (const sid of seasonIds) {
-        await pool.query(
-          `INSERT INTO submissions (user_id, org_id, season_id, availability, audition_number)
-           VALUES ($1,$2,$3,$4,$5) ON CONFLICT (user_id, season_id) DO NOTHING`,
-          [userId, orgId, sid, availability, String(i + 1)]
-        );
-      }
+      // "M" prefix so a mock audition number never visually collides with a real one
+      // (e.g. a real Audition #1 alongside a mock also showing "1").
+      await pool.query(
+        `INSERT INTO submissions (user_id, org_id, season_id, availability, audition_number)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT (user_id, season_id) DO NOTHING`,
+        [userId, orgId, seasonId, availability, `M${i + 1}`]
+      );
       created++;
     }
-    res.json({ created, seasons: seasonIds.length, message: `${created} mock auditionees added to ${seasonIds.length} production(s).` });
+    res.json({ created, message: `${created} mock auditionees added to this production.` });
   } catch (err) {
     console.error('Seed mock error:', err.message);
     res.status(500).json({ error: 'Failed to seed mock auditionees.' });
+  }
+});
+
+// DELETE /api/orgs/:orgId/seasons/:seasonId/mock-auditionees: fully remove this
+// production's mock auditionees -- deletes the actual users rows (not just their
+// submissions), which cascades dancer_profiles and submissions automatically. Unlike
+// the per-row "Remove" button, this doesn't leave the underlying mock account behind.
+app.delete('/api/orgs/:orgId/seasons/:seasonId/mock-auditionees', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.params;
+  try {
+    const memberCheck = await pool.query(
+      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
+      [orgId, req.session.userId]
+    );
+    if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
+
+    const result = await pool.query(
+      `DELETE FROM users WHERE email LIKE $1 AND is_mock = TRUE`,
+      [`mock-%-s${seasonId}@trial.castsync.app`]
+    );
+    res.json({ removed: result.rowCount, message: `${result.rowCount} mock auditionees removed.` });
+  } catch (err) {
+    console.error('Clear mock error:', err.message);
+    res.status(500).json({ error: 'Failed to remove mock auditionees.' });
   }
 });
 
