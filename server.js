@@ -1620,6 +1620,29 @@ app.patch('/api/orgs/:orgId/seasons/:seasonId', requireAuth('master'), async (re
   }
 });
 
+// PATCH /api/orgs/:orgId/seasons/:seasonId/my-schedule-enabled: enable/disable the
+// "My Rehearsals" auditionee portal for this production. Intentionally a separate route
+// from the rename PATCH so each settings concern has a clear, narrow surface area.
+app.patch('/api/orgs/:orgId/seasons/:seasonId/my-schedule-enabled', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.params;
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean.' });
+  try {
+    const check = await pool.query(
+      'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
+      [orgId, req.session.userId]
+    );
+    if (check.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
+    await pool.query(
+      'UPDATE seasons SET my_schedule_enabled = $1 WHERE id = $2 AND org_id = $3',
+      [enabled, seasonId, orgId]
+    );
+    res.json({ enabled });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update My Rehearsals setting.' });
+  }
+});
+
 // PATCH /api/orgs/:orgId/seasons/:seasonId/status — archive or activate a production
 app.patch('/api/orgs/:orgId/seasons/:seasonId/status', requireAuth('master'), async (req, res) => {
   const { status } = req.body;
@@ -2009,6 +2032,100 @@ app.get('/api/my-casting', requireAuth('auditionee'), async (req, res) => {
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to load casting.' });
+  }
+});
+
+// ── My Schedule (auditionee) ─────────────────────────────────────────────────
+
+// GET /api/my-schedule/status: lightweight check so every auditionee page can decide
+// whether to show the "My Rehearsals" nav link without fetching the full schedule.
+// Returns { available: bool } -- true only when BOTH my_schedule_enabled AND
+// casting_published are true for the auditionee's current org/season.
+app.get('/api/my-schedule/status', requireAuth('auditionee'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.json({ available: false });
+  try {
+    const result = await pool.query(
+      'SELECT my_schedule_enabled, casting_published FROM seasons WHERE id = $1 AND org_id = $2',
+      [seasonId, orgId]
+    );
+    const row = result.rows[0];
+    res.json({ available: !!(row?.my_schedule_enabled && row?.casting_published) });
+  } catch (err) {
+    res.json({ available: false });
+  }
+});
+
+// GET /api/my-schedule: the full dated rehearsal list for this auditionee, scoped to
+// pieces they are cast in for their current org/season. Reuses generateOccurrences()
+// (the same function the Master Schedule page uses) and filters the result -- no
+// separate scheduling system.
+app.get('/api/my-schedule', requireAuth('auditionee'), async (req, res) => {
+  const { orgId, seasonId, userId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const seasonRes = await pool.query(
+      `SELECT name, casting_published, my_schedule_enabled,
+              to_char(start_date,'YYYY-MM-DD') AS start_date,
+              to_char(end_date,'YYYY-MM-DD') AS end_date
+       FROM seasons WHERE id = $1 AND org_id = $2`,
+      [seasonId, orgId]
+    );
+    const season = seasonRes.rows[0];
+    if (!season) return res.status(404).json({ error: 'Season not found.' });
+
+    if (!season.my_schedule_enabled || !season.casting_published) {
+      return res.json({ available: false });
+    }
+
+    // No date range set yet -- feature is on but director hasn't configured the schedule window.
+    if (!season.start_date || !season.end_date) {
+      return res.json({ available: true, season_name: season.name, rehearsals: [], pieces: {} });
+    }
+
+    const castRes = await pool.query(
+      `SELECT pc.piece_id FROM piece_casts pc
+       JOIN pieces p ON p.id = pc.piece_id
+       WHERE pc.user_id = $1 AND p.season_id = $2`,
+      [userId, seasonId]
+    );
+    const myPieceIds = new Set(castRes.rows.map(r => r.piece_id));
+
+    if (myPieceIds.size === 0) {
+      return res.json({ available: true, season_name: season.name, rehearsals: [], pieces: {} });
+    }
+
+    const all = await generateOccurrences(seasonId, season.start_date, season.end_date);
+    const mine = all.filter(o => myPieceIds.has(o.piece_id));
+
+    // Fetch metadata for just the pieces this auditionee is in -- one query, not per-row.
+    const [piecesRes, roomsRes] = await Promise.all([
+      pool.query(
+        `SELECT id, name, color, choreographer_name FROM pieces WHERE id = ANY($1)`,
+        [Array.from(myPieceIds)]
+      ),
+      pool.query(
+        `SELECT id, name FROM rooms WHERE season_id = $1`,
+        [seasonId]
+      ),
+    ]);
+    const pieceMap = Object.fromEntries(piecesRes.rows.map(p => [p.id, p]));
+    const roomMap  = Object.fromEntries(roomsRes.rows.map(r => [r.id, r.name]));
+
+    const rehearsals = mine.map(o => ({
+      date:               o.date,
+      piece_id:           o.piece_id,
+      start_time:         o.start_time,
+      end_time:           o.end_time,
+      room_name:          o.room_id ? (roomMap[o.room_id] || null) : null,
+      note:               o.note || null,
+      source:             o.source,
+    }));
+
+    res.json({ available: true, season_name: season.name, rehearsals, pieces: pieceMap });
+  } catch (err) {
+    console.error('My schedule error:', err.message);
+    res.status(500).json({ error: 'Failed to load rehearsal schedule.' });
   }
 });
 
@@ -3297,11 +3414,12 @@ app.get('/api/season/production-dates', requireAuth('master'), async (req, res) 
     const result = await pool.query(
       `SELECT to_char(start_date, 'YYYY-MM-DD') AS start_date,
               to_char(end_date, 'YYYY-MM-DD') AS end_date,
-              to_char(audition_date, 'YYYY-MM-DD') AS audition_date
+              to_char(audition_date, 'YYYY-MM-DD') AS audition_date,
+              my_schedule_enabled
        FROM seasons WHERE id = $1`,
       [seasonId]
     );
-    res.json(result.rows[0] || { start_date: null, end_date: null, audition_date: null });
+    res.json(result.rows[0] || { start_date: null, end_date: null, audition_date: null, my_schedule_enabled: false });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch production dates.' });
   }
@@ -4790,6 +4908,13 @@ async function runMigrations() {
     `);
     console.log('Migration step 26 (performance_dates table + backfill) complete.');
   } catch (err) { console.error('Migration step 26 error:', err.message); }
+
+  try {
+    await pool.query(`
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS my_schedule_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+    console.log('Migration step 27 (seasons.my_schedule_enabled) complete.');
+  } catch (err) { console.error('Migration step 27 error:', err.message); }
 
   console.log('All migrations complete.');
 }

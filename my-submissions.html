@@ -30,6 +30,9 @@
           <li class="nav-item">
             <a class="nav-link" href="my-casting.html">Casting</a>
           </li>
+          <li class="nav-item d-none" id="my-schedule-nav-item">
+            <a class="nav-link" href="my-schedule.html">My Rehearsals</a>
+          </li>
           <li class="nav-item">
             <a class="nav-link" href="request-absence.html">Request Absence</a>
           </li>
@@ -116,6 +119,7 @@
           });
         }
         document.body.style.visibility = 'visible';
+        fetch('/api/my-schedule/status').then(r => r.ok ? r.json() : null).then(d => { if (d?.available) document.getElementById('my-schedule-nav-item')?.classList.remove('d-none'); }).catch(() => {});
       } catch (err) { window.location.href = 'login.html'; }
     })();
   </script>

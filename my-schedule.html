@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Rehearsals | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .rehearsal-date-header {
+      font-weight: 700;
+      font-size: 14px;
+      color: #333;
+      margin: 24px 0 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #e8e8e8;
+    }
+    .rehearsal-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .rehearsal-row:last-child { border-bottom: none; }
+    .piece-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 5px;
+    }
+    .rehearsal-time {
+      font-size: 13px;
+      color: #555;
+      white-space: nowrap;
+      min-width: 130px;
+    }
+    .rehearsal-details { font-size: 14px; flex: 1; }
+    .rehearsal-piece { font-weight: 600; }
+    .rehearsal-meta { font-size: 12px; color: #888; margin-top: 2px; }
+    .rehearsal-note { font-size: 12px; color: #b45309; margin-top: 3px; }
+  </style>
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body style="visibility:hidden">
+
+  <nav class="navbar navbar-expand-lg app-nav">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item"><a class="nav-link" href="auditionForm.html">Audition Form</a></li>
+          <li class="nav-item"><a class="nav-link" href="my-submissions.html">My Submissions</a></li>
+          <li class="nav-item"><a class="nav-link" href="my-casting.html">Casting</a></li>
+          <li class="nav-item" id="my-schedule-nav-item"><a class="nav-link active" href="my-schedule.html">My Rehearsals</a></li>
+          <li class="nav-item"><a class="nav-link" href="request-absence.html">Request Absence</a></li>
+          <li class="nav-item"><a class="nav-link" href="upgrade.html">Director Access</a></li>
+          <li class="nav-item d-flex align-items-center d-none" id="switch-director-item">
+            <button class="btn btn-outline-secondary btn-sm ms-1" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center gap-3" id="right-nav"></div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4" style="max-width:680px;">
+    <div id="schedule-loading" class="text-muted" style="font-size:14px;">Loading your rehearsal schedule...</div>
+    <div id="schedule-content" class="d-none">
+      <h5 id="schedule-title" class="mb-0"></h5>
+      <p class="text-muted mb-0" style="font-size:13px;" id="schedule-subtitle"></p>
+      <div id="rehearsal-list" class="mt-2"></div>
+    </div>
+    <div id="schedule-unavailable" class="d-none text-muted" style="font-size:14px;margin-top:40px;text-align:center;">
+      <p>My Rehearsals is not enabled for this production yet.</p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="app-shell.js"></script>
+  <script>
+    (async () => {
+      try {
+        const res  = await fetch('/api/auth/me');
+        const user = await res.json();
+        if (!res.ok) { window.location.href = 'login.html'; return; }
+        if (user.mode === 'director' || (user.role === 'master' && user.mode !== 'auditionee')) {
+          window.location.href = 'org-select.html'; return;
+        }
+
+        document.getElementById('right-nav').className = 'app-nav-right';
+        document.getElementById('right-nav').innerHTML =
+          `<a href="account.html">Account</a>
+           <button id="logout-btn">Log Out</button>`;
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+        if (user.isDirector) {
+          document.getElementById('switch-director-item').classList.remove('d-none');
+          document.getElementById('switch-mode-btn').addEventListener('click', async () => {
+            await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'director' }) });
+            window.location.href = 'org-select.html';
+          });
+        }
+        document.body.style.visibility = 'visible';
+
+        const schedRes = await fetch('/api/my-schedule');
+        const data     = await schedRes.json();
+
+        document.getElementById('schedule-loading').style.display = 'none';
+
+        if (!schedRes.ok || !data.available) {
+          document.getElementById('schedule-unavailable').classList.remove('d-none');
+          return;
+        }
+
+        document.getElementById('schedule-content').classList.remove('d-none');
+        document.getElementById('schedule-title').textContent = 'My Rehearsals';
+        document.getElementById('schedule-subtitle').textContent = data.season_name || '';
+
+        const list = document.getElementById('rehearsal-list');
+
+        if (!data.rehearsals || data.rehearsals.length === 0) {
+          list.innerHTML = '<p class="text-muted mt-3" style="font-size:14px;">No rehearsals scheduled yet. Check back once your director sets up the rehearsal schedule.</p>';
+          return;
+        }
+
+        // Group by date
+        const byDate = new Map();
+        for (const r of data.rehearsals) {
+          if (!byDate.has(r.date)) byDate.set(r.date, []);
+          byDate.get(r.date).push(r);
+        }
+
+        const pieces = data.pieces || {};
+
+        for (const [date, rehearsals] of byDate) {
+          const niceDateStr = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {
+            weekday: 'long', month: 'long', day: 'numeric',
+          });
+
+          const dateHeader = document.createElement('div');
+          dateHeader.className = 'rehearsal-date-header';
+          dateHeader.textContent = niceDateStr;
+          list.appendChild(dateHeader);
+
+          for (const r of rehearsals) {
+            const piece   = pieces[r.piece_id] || {};
+            const color   = piece.color || '#ccc';
+            const meta    = [r.room_name, piece.choreographer_name].filter(Boolean).join(' · ');
+
+            const row = document.createElement('div');
+            row.className = 'rehearsal-row';
+            row.innerHTML = `
+              <div class="piece-dot" style="background:${color};"></div>
+              <div class="rehearsal-time">${r.start_time} &ndash; ${r.end_time}</div>
+              <div class="rehearsal-details">
+                <div class="rehearsal-piece">${piece.name || 'Rehearsal'}</div>
+                ${meta ? `<div class="rehearsal-meta">${meta}</div>` : ''}
+                ${r.note ? `<div class="rehearsal-note">${r.note}</div>` : ''}
+              </div>`;
+            list.appendChild(row);
+          }
+        }
+      } catch (err) {
+        window.location.href = 'login.html';
+      }
+    })();
+  </script>
+
+</body>
+</html>

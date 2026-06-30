@@ -94,6 +94,19 @@
       <div id="performance-date-error" class="text-danger mt-1 d-none" style="font-size:12px;"></div>
     </div>
 
+    <div class="app-card mb-4">
+      <h6 class="label-gold mb-3">Student Access</h6>
+      <div class="form-check mb-1">
+        <input class="form-check-input" type="checkbox" id="my-schedule-toggle">
+        <label class="form-check-label" for="my-schedule-toggle" style="font-size:14px;font-weight:600;">Enable "My Rehearsals" for cast members</label>
+      </div>
+      <p class="text-muted mb-1" style="font-size:12px;">
+        When enabled and casting is published, cast members can view their own rehearsal
+        schedule in the auditionee portal. They only see rehearsals for pieces they are cast in.
+      </p>
+      <span id="my-schedule-saved-msg" class="text-success d-none" style="font-size:12px;">Saved.</span>
+    </div>
+
   </div>
 
   </div>
@@ -168,8 +181,22 @@
             document.getElementById('start-date-input').value    = dates.start_date || '';
             document.getElementById('end-date-input').value      = dates.end_date || '';
             document.getElementById('audition-date-input').value = dates.audition_date || '';
+            document.getElementById('my-schedule-toggle').checked = !!dates.my_schedule_enabled;
           }
         } catch (e) { /* leave fields blank, no big deal */ }
+
+        document.getElementById('my-schedule-toggle').addEventListener('change', async (e) => {
+          const savedEl = document.getElementById('my-schedule-saved-msg');
+          try {
+            const r = await fetch(`/api/orgs/${user.orgId}/seasons/${user.seasonId}/my-schedule-enabled`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ enabled: e.target.checked }),
+            });
+            if (!r.ok) { const d = await r.json(); alert(d.error || 'Could not save setting.'); e.target.checked = !e.target.checked; return; }
+            savedEl.classList.remove('d-none');
+            setTimeout(() => savedEl.classList.add('d-none'), 2000);
+          } catch (err) { alert('Could not connect to server.'); e.target.checked = !e.target.checked; }
+        });
 
         const dateFieldMap = {
           'start-date-input': 'start_date',
