@@ -137,6 +137,7 @@
     <div class="container-fluid">
       <a class="navbar-brand" href="#"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
       <button class="btn btn-outline-secondary btn-sm ms-2" id="switch-auditionee-btn" style="display:none;font-size:12px;">Switch to Auditionee</button>
+      <button class="btn btn-outline-secondary btn-sm ms-2" id="switch-staff-btn" style="display:none;font-size:12px;">Switch to Staff</button>
       <div class="ms-auto d-flex align-items-center gap-3" id="right-nav"></div>
     </div>
   </nav>
@@ -524,6 +525,14 @@
           btn.addEventListener('click', async () => {
             await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'auditionee' }) });
             window.location.href = 'auditionForm.html';
+          });
+        }
+        if (user.isStaff) {
+          const btn = document.getElementById('switch-staff-btn');
+          btn.style.display = '';
+          btn.addEventListener('click', async () => {
+            await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'staff' }) });
+            window.location.href = 'staff-pieces.html';
           });
         }
       } catch (err) { window.location.href = 'login.html'; }

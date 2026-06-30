@@ -293,6 +293,27 @@
                   </div>
                   <div class="choreo-saved text-success mt-1" id="choreo-saved-${piece.id}" style="font-size:12px;display:none;">Saved.</div>
                 </div>
+
+                <div class="mb-3 pb-2 border-bottom">
+                  <h6 class="mb-2" style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555;">
+                    Production Staff
+                  </h6>
+                  <div id="staff-list-${piece.id}" class="mb-2">
+                    <p class="text-muted mb-0" style="font-size:13px;">Loading...</p>
+                  </div>
+                  <div class="d-flex gap-2 flex-wrap">
+                    <input type="email" class="form-control form-control-sm staff-email" data-piece-id="${piece.id}"
+                      placeholder="email@example.com" style="max-width:220px;" />
+                    <input type="text" class="form-control form-control-sm staff-title" data-piece-id="${piece.id}"
+                      placeholder="Title (e.g. Choreographer)" style="max-width:200px;" />
+                    <button class="btn btn-sm btn-outline-dark add-staff-btn" data-piece-id="${piece.id}">Add</button>
+                  </div>
+                  <div class="text-muted mt-1" style="font-size:11px;">
+                    They'll only be able to see rehearsals, cast list, attendance, and notes for this piece.
+                  </div>
+                  <div class="staff-error text-danger mt-1" id="staff-error-${piece.id}" style="font-size:12px;display:none;"></div>
+                </div>
+
                 <div class="mb-3">
                   <div class="d-flex align-items-center justify-content-between mb-2">
                     <h6 class="mb-0" style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#555;">
@@ -324,6 +345,7 @@
 
           container.appendChild(card);
           setupDragAndDrop(piece.id);
+          loadPieceStaff(piece.id);
         }
 
         // Wire up remove buttons via event delegation on the container
@@ -337,6 +359,93 @@
         document.getElementById('loading-msg').textContent = 'Could not load casting data.';
       }
     }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    async function loadPieceStaff(pieceId) {
+      const listEl = document.getElementById(`staff-list-${pieceId}`);
+      try {
+        const res = await fetch(`/api/pieces/${pieceId}/staff`);
+        if (!res.ok) throw new Error();
+        const staff = await res.json();
+        renderStaffList(pieceId, staff);
+      } catch (err) {
+        if (listEl) listEl.innerHTML = '<p class="text-danger mb-0" style="font-size:13px;">Could not load staff.</p>';
+      }
+    }
+
+    function renderStaffList(pieceId, staff) {
+      const listEl = document.getElementById(`staff-list-${pieceId}`);
+      if (!listEl) return;
+      if (staff.length === 0) {
+        listEl.innerHTML = '<p class="text-muted mb-0" style="font-size:13px;">No staff assigned yet.</p>';
+        return;
+      }
+      listEl.innerHTML = staff.map(s => `
+        <div class="dancer-row">
+          <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">
+            <span style="font-weight:600;">${escapeHtml(s.display_title || 'Staff')}</span>
+            <span class="text-muted" style="font-size:12px;">${escapeHtml(s.email)}</span>
+          </div>
+          <button class="remove-btn" data-remove-staff-id="${s.id}" data-piece-id="${pieceId}" title="Remove">&times;</button>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('pieces-container').addEventListener('click', async (e) => {
+      const addBtn = e.target.closest('.add-staff-btn');
+      if (addBtn) {
+        const pieceId  = addBtn.dataset.pieceId;
+        const card     = document.getElementById(`piece-card-${pieceId}`);
+        const emailEl  = card.querySelector('.staff-email');
+        const titleEl  = card.querySelector('.staff-title');
+        const errEl    = document.getElementById(`staff-error-${pieceId}`);
+        const email    = emailEl.value.trim();
+        const title    = titleEl.value.trim();
+        errEl.classList.add('d-none');
+        errEl.style.display = 'none';
+        if (!email) {
+          errEl.textContent = 'Email is required.';
+          errEl.style.display = 'block';
+          return;
+        }
+        addBtn.disabled = true;
+        try {
+          const res = await fetch(`/api/pieces/${pieceId}/staff`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, display_title: title }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            errEl.textContent = data.error || 'Could not add staff member.';
+            errEl.style.display = 'block';
+            return;
+          }
+          emailEl.value = '';
+          titleEl.value = '';
+          loadPieceStaff(pieceId);
+        } catch (err) {
+          errEl.textContent = 'Could not connect to server.';
+          errEl.style.display = 'block';
+        } finally {
+          addBtn.disabled = false;
+        }
+        return;
+      }
+
+      const removeBtn = e.target.closest('[data-remove-staff-id]');
+      if (removeBtn) {
+        const pieceId = removeBtn.dataset.pieceId;
+        const staffId = removeBtn.dataset.removeStaffId;
+        try {
+          const res = await fetch(`/api/pieces/${pieceId}/staff/${staffId}`, { method: 'DELETE' });
+          if (res.ok) loadPieceStaff(pieceId);
+        } catch (err) { console.error(err); }
+      }
+    });
 
     function buildDancerList(casts, pieceId, role) {
       if (casts.length === 0) return '';

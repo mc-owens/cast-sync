@@ -80,6 +80,9 @@
             <li class="nav-item d-flex align-items-center d-none" id="switch-director-item">
               <button class="btn btn-outline-secondary btn-sm ms-1" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>
             </li>
+            <li class="nav-item d-flex align-items-center d-none" id="switch-staff-item">
+              <button class="btn btn-outline-secondary btn-sm ms-1" id="switch-staff-btn" style="font-size:12px;">Switch to Staff</button>
+            </li>
           </ul>
           <div class="d-flex align-items-center gap-3" id="right-nav">
             <!-- email + logout injected here by JS -->
@@ -222,6 +225,7 @@
           if (user.mode === 'director' || (user.role === 'master' && user.mode !== 'auditionee')) {
             window.location.href = 'org-select.html'; return;
           }
+          if (user.mode === 'staff') { window.location.href = 'staff-pieces.html'; return; }
 
           // Right side: account + logout
           document.getElementById('right-nav').className = 'app-nav-right';
@@ -239,6 +243,13 @@
             document.getElementById('switch-mode-btn').addEventListener('click', async () => {
               await fetch('/api/auth/switch-mode', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'director' }) });
               window.location.href = 'org-select.html';
+            });
+          }
+          if (user.isStaff) {
+            document.getElementById('switch-staff-item').classList.remove('d-none');
+            document.getElementById('switch-staff-btn').addEventListener('click', async () => {
+              await fetch('/api/auth/switch-mode', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'staff' }) });
+              window.location.href = 'staff-pieces.html';
             });
           }
           document.body.style.visibility = 'visible';

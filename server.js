@@ -351,7 +351,12 @@ function requireAuth(role) {
       }
     } else if (role === 'auditionee') {
       // Allow if their base role is auditionee OR they are in auditionee mode
-      if (req.session.mode === 'director' && req.session.role !== 'auditionee') {
+      if (req.session.mode !== 'auditionee' && req.session.role !== 'auditionee') {
+        return res.status(403).json({ error: 'Access denied.' });
+      }
+    } else if (role === 'staff') {
+      // Allow if their base role is staff OR they are in staff mode
+      if (req.session.mode !== 'staff' && req.session.role !== 'staff') {
         return res.status(403).json({ error: 'Access denied.' });
       }
     }
@@ -467,7 +472,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
   try {
     const result = await pool.query(
-      'SELECT id, email, password_hash, role, is_director, email_verified FROM users WHERE email = $1',
+      'SELECT id, email, password_hash, role, is_director, is_staff, email_verified FROM users WHERE email = $1',
       [email.toLowerCase().trim()]
     );
     const user = result.rows[0];
@@ -485,8 +490,11 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     req.session.role       = user.role;
     req.session.email      = user.email;
     req.session.isDirector = user.is_director || user.role === 'master';
-    req.session.mode       = (user.role === 'master' || user.is_director) ? 'director' : 'auditionee';
-    res.json({ id: user.id, email: user.email, role: user.role, isDirector: req.session.isDirector });
+    req.session.isStaff    = user.is_staff || user.role === 'staff';
+    req.session.mode       = (user.role === 'master' || user.is_director) ? 'director'
+                            : (user.role === 'staff' || user.is_staff)    ? 'staff'
+                            : 'auditionee';
+    res.json({ id: user.id, email: user.email, role: user.role, isDirector: req.session.isDirector, isStaff: req.session.isStaff });
   } catch (err) {
     console.error('Login error:', err.message);
     res.status(500).json({ error: 'Login failed.' });
@@ -505,7 +513,7 @@ app.get('/api/auth/verify-email', async (req, res) => {
     const result = await pool.query(
       `UPDATE users SET email_verified = TRUE, verification_token = NULL
        WHERE verification_token = $1
-       RETURNING id, email, role, is_director`,
+       RETURNING id, email, role, is_director, is_staff`,
       [token]
     );
     if (!result.rows.length) {
@@ -516,8 +524,11 @@ app.get('/api/auth/verify-email', async (req, res) => {
     req.session.role       = user.role;
     req.session.email      = user.email;
     req.session.isDirector = user.is_director || user.role === 'master';
-    req.session.mode       = (user.role === 'master' || user.is_director) ? 'director' : 'auditionee';
-    res.json({ ok: true, role: user.role, isDirector: req.session.isDirector });
+    req.session.isStaff    = user.is_staff || user.role === 'staff';
+    req.session.mode       = (user.role === 'master' || user.is_director) ? 'director'
+                            : (user.role === 'staff' || user.is_staff)    ? 'staff'
+                            : 'auditionee';
+    res.json({ ok: true, role: user.role, isDirector: req.session.isDirector, isStaff: req.session.isStaff });
   } catch (err) {
     console.error('Verify email error:', err.message);
     res.status(500).json({ error: 'Verification failed. Please try again.' });
@@ -822,7 +833,8 @@ app.get('/api/auth/me', (req, res) => {
     email:      req.session.email,
     role:       req.session.role,
     isDirector: req.session.isDirector || req.session.role === 'master',
-    mode:       req.session.mode || (req.session.role === 'master' ? 'director' : 'auditionee'),
+    isStaff:    req.session.isStaff || req.session.role === 'staff',
+    mode:       req.session.mode || (req.session.role === 'master' ? 'director' : req.session.role === 'staff' ? 'staff' : 'auditionee'),
     orgId:      req.session.orgId    || null,
     seasonId:   req.session.seasonId || null,
     orgName:    req.session.orgName  || null,
@@ -847,14 +859,16 @@ app.post('/api/auth/upgrade', async (req, res) => {
   }
 });
 
-// Switch between auditionee and director mode
+// Switch between auditionee, staff, and director mode
 app.post('/api/auth/switch-mode', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
   const { mode } = req.body;
-  if (!['auditionee', 'director'].includes(mode))
+  if (!['auditionee', 'staff', 'director'].includes(mode))
     return res.status(400).json({ error: 'Invalid mode.' });
   if (mode === 'director' && !req.session.isDirector && req.session.role !== 'master')
     return res.status(403).json({ error: 'No director access.' });
+  if (mode === 'staff' && !req.session.isStaff && req.session.role !== 'staff')
+    return res.status(403).json({ error: 'No staff access.' });
   req.session.mode = mode;
   res.json({ mode });
 });
@@ -2140,6 +2154,230 @@ app.get('/api/my-schedule', requireAuth('auditionee'), async (req, res) => {
   }
 });
 
+// ── Production Staff portal routes ────────────────────────────────────────────
+// Everything here is scoped by piece_staff rows keyed to req.session.userId -- never
+// to a single session org/season -- since one staff account can hold assignments
+// across multiple pieces and multiple productions at once. Mirrors the lesson learned
+// from My Schedule: an auditionee/staff member never has a single fixed session
+// org/season the way a director does.
+
+async function verifyStaffPiece(userId, pieceId) {
+  const result = await pool.query(
+    `SELECT p.id, p.season_id, p.name AS piece_name FROM piece_staff ps
+     JOIN pieces p ON p.id = ps.piece_id
+     WHERE ps.user_id = $1 AND ps.piece_id = $2`,
+    [userId, pieceId]
+  );
+  return result.rows[0] || null;
+}
+
+// GET /api/staff/pieces -- dashboard: every piece this user is staff on, across all productions
+app.get('/api/staff/pieces', requireAuth('staff'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT ps.display_title, p.id AS piece_id, p.name AS piece_name, p.color, p.choreographer_name,
+              s.id AS season_id, s.name AS season_name, o.id AS org_id, o.name AS org_name
+       FROM piece_staff ps
+       JOIN pieces p ON p.id = ps.piece_id
+       JOIN seasons s ON s.id = p.season_id
+       JOIN orgs o ON o.id = s.org_id
+       WHERE ps.user_id = $1
+       ORDER BY o.name, s.name, p.name`,
+      [req.session.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load your pieces.' });
+  }
+});
+
+// GET /api/staff/schedule -- rehearsals across every assigned piece, all productions combined.
+// Same response shape as GET /api/my-schedule so the frontend can reuse its rendering logic.
+app.get('/api/staff/schedule', requireAuth('staff'), async (req, res) => {
+  const userId = req.session.userId;
+  try {
+    const seasonsRes = await pool.query(
+      `SELECT DISTINCT p.season_id, s.name AS season_name,
+              to_char(s.start_date,'YYYY-MM-DD') AS start_date,
+              to_char(s.end_date,'YYYY-MM-DD') AS end_date
+       FROM piece_staff ps JOIN pieces p ON p.id = ps.piece_id JOIN seasons s ON s.id = p.season_id
+       WHERE ps.user_id = $1`,
+      [userId]
+    );
+    if (seasonsRes.rows.length === 0) return res.json({ available: true, productions: [] });
+
+    const productions = [];
+    for (const season of seasonsRes.rows) {
+      const pieceRes = await pool.query(
+        `SELECT p.id FROM piece_staff ps JOIN pieces p ON p.id = ps.piece_id
+         WHERE ps.user_id = $1 AND p.season_id = $2`,
+        [userId, season.season_id]
+      );
+      const myPieceIds = pieceRes.rows.map(r => r.id);
+
+      if (!season.start_date || !season.end_date || myPieceIds.length === 0) {
+        productions.push({ season_id: season.season_id, season_name: season.season_name,
+          start_date: season.start_date, end_date: season.end_date, rehearsals: [], pieces: {} });
+        continue;
+      }
+
+      const pieceSet = new Set(myPieceIds);
+      const all  = await generateOccurrences(season.season_id, season.start_date, season.end_date);
+      const mine = all.filter(o => pieceSet.has(o.piece_id));
+
+      const [piecesRes, roomsRes] = await Promise.all([
+        pool.query(`SELECT id, name, color, choreographer_name FROM pieces WHERE id = ANY($1)`, [myPieceIds]),
+        pool.query(`SELECT id, name FROM rooms WHERE season_id = $1`, [season.season_id]),
+      ]);
+      const pieceMap = Object.fromEntries(piecesRes.rows.map(p => [p.id, p]));
+      const roomMap  = Object.fromEntries(roomsRes.rows.map(r => [r.id, r.name]));
+
+      productions.push({
+        season_id:   season.season_id,
+        season_name: season.season_name,
+        start_date:  season.start_date,
+        end_date:    season.end_date,
+        rehearsals: mine.map(o => ({
+          date:       o.date,
+          piece_id:   o.piece_id,
+          start_time: o.start_time,
+          end_time:   o.end_time,
+          room_name:  o.room_id ? (roomMap[o.room_id] || null) : null,
+          note:       o.note || null,
+        })),
+        pieces: pieceMap,
+      });
+    }
+
+    res.json({ available: true, productions });
+  } catch (err) {
+    console.error('Staff schedule error:', err.message);
+    res.status(500).json({ error: 'Failed to load schedule.' });
+  }
+});
+
+// GET /api/staff/pieces/:pieceId/cast -- read-only roster for one assigned piece
+app.get('/api/staff/pieces/:pieceId/cast', requireAuth('staff'), async (req, res) => {
+  try {
+    const piece = await verifyStaffPiece(req.session.userId, req.params.pieceId);
+    if (!piece) return res.status(403).json({ error: 'Not assigned to this piece.' });
+
+    const result = await pool.query(
+      `SELECT u.id AS user_id, dp.first_name, dp.last_name, pc.cast_role, pc.role_name
+       FROM piece_casts pc JOIN users u ON u.id = pc.user_id
+       LEFT JOIN dancer_profiles dp ON dp.user_id = u.id
+       WHERE pc.piece_id = $1 ORDER BY dp.last_name, dp.first_name`,
+      [req.params.pieceId]
+    );
+    res.json({ piece_name: piece.piece_name, dancers: result.rows });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load cast list.' });
+  }
+});
+
+// GET /api/staff/pieces/:pieceId/attendance?date= and POST -- same shape as
+// /api/season/attendance, scoped via piece_staff instead of session.seasonId, and
+// hard-limited to the one pieceId in the URL.
+app.get('/api/staff/pieces/:pieceId/attendance', requireAuth('staff'), async (req, res) => {
+  const { date } = req.query;
+  if (!date) return res.status(400).json({ error: 'date is required.' });
+  try {
+    const piece = await verifyStaffPiece(req.session.userId, req.params.pieceId);
+    if (!piece) return res.status(403).json({ error: 'Not assigned to this piece.' });
+
+    const result = await pool.query(
+      `SELECT u.id AS user_id, dp.first_name, dp.last_name, pc.cast_role,
+              COALESCE(ar.present, TRUE) AS present,
+              COALESCE(ar.status, 'none') AS status,
+              ar.status_note
+       FROM piece_casts pc
+       JOIN users u ON u.id = pc.user_id
+       JOIN dancer_profiles dp ON dp.user_id = u.id
+       LEFT JOIN attendance_records ar ON ar.user_id = u.id AND ar.piece_id = $1 AND ar.rehearsal_date = $2
+       WHERE pc.piece_id = $1
+       ORDER BY dp.last_name, dp.first_name`,
+      [req.params.pieceId, date]
+    );
+    res.json({ date, piece_name: piece.piece_name, dancers: result.rows });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load attendance.' });
+  }
+});
+
+app.post('/api/staff/pieces/:pieceId/attendance', requireAuth('staff'), async (req, res) => {
+  const { date, user_id, present, status, status_note } = req.body;
+  if (!date || !user_id) return res.status(400).json({ error: 'date and user_id are required.' });
+  const st = ATTENDANCE_STATUSES.includes(status) ? status : 'none';
+  try {
+    const piece = await verifyStaffPiece(req.session.userId, req.params.pieceId);
+    if (!piece) return res.status(403).json({ error: 'Not assigned to this piece.' });
+
+    const castCheck = await pool.query('SELECT 1 FROM piece_casts WHERE piece_id = $1 AND user_id = $2', [req.params.pieceId, user_id]);
+    if (castCheck.rows.length === 0) return res.status(400).json({ error: 'Dancer not cast in this piece.' });
+
+    await pool.query(
+      `INSERT INTO attendance_records (season_id, piece_id, user_id, rehearsal_date, present, status, status_note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (piece_id, user_id, rehearsal_date)
+       DO UPDATE SET present = $5, status = $6, status_note = $7, updated_at = NOW()`,
+      [piece.season_id, req.params.pieceId, user_id, date, present !== false, st, status_note || null]
+    );
+    res.json({ message: 'Saved.' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save attendance.' });
+  }
+});
+
+// GET /api/staff/pieces/:pieceId/notes and POST -- production notes tagged to one
+// assigned piece. Creation is hard-limited to the one pieceId in the URL, so a staff
+// member can never tag a note to a piece they aren't assigned to.
+app.get('/api/staff/pieces/:pieceId/notes', requireAuth('staff'), async (req, res) => {
+  try {
+    const piece = await verifyStaffPiece(req.session.userId, req.params.pieceId);
+    if (!piece) return res.status(403).json({ error: 'Not assigned to this piece.' });
+
+    const result = await pool.query(
+      `SELECT pn.id, pn.note_text, pn.category, pn.created_at, u.email AS author_email
+       FROM production_notes pn
+       JOIN production_note_pieces pnp ON pnp.note_id = pn.id
+       LEFT JOIN users u ON u.id = pn.author_user_id
+       WHERE pnp.piece_id = $1
+       ORDER BY pn.created_at DESC`,
+      [req.params.pieceId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load notes.' });
+  }
+});
+
+app.post('/api/staff/pieces/:pieceId/notes', requireAuth('staff'), async (req, res) => {
+  const { note_text, category } = req.body;
+  if (!note_text || !note_text.trim()) return res.status(400).json({ error: 'Note text is required.' });
+  try {
+    const piece = await verifyStaffPiece(req.session.userId, req.params.pieceId);
+    if (!piece) return res.status(403).json({ error: 'Not assigned to this piece.' });
+    const cat = NOTE_CATEGORIES.includes(category) ? category : 'general';
+
+    const result = await pool.query(
+      `INSERT INTO production_notes (season_id, author_user_id, note_text, category)
+       VALUES ($1,$2,$3,$4) RETURNING id`,
+      [piece.season_id, req.session.userId, note_text.trim(), cat]
+    );
+    const noteId = result.rows[0].id;
+    await pool.query('INSERT INTO production_note_pieces (note_id, piece_id) VALUES ($1,$2)', [noteId, req.params.pieceId]);
+    res.status(201).json({ id: noteId });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save note.' });
+  }
+});
+
 // ── Absence requests ─────────────────────────────────────────────────────────
 // Lightweight request workflow: an auditionee submits a date/time/reason and,
 // once casting is published, which of their own pieces it affects (or TBD before
@@ -2878,6 +3116,136 @@ app.delete('/api/pieces/:id', requireAuth('master'), async (req, res) => {
     res.json({ message: 'Piece deleted.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete piece.' });
+  }
+});
+
+// ── Production Staff routes ───────────────────────────────────────────────────
+// piece_staff grants narrow, piece-scoped access (rehearsals, cast list, attendance,
+// production notes) to choreographers, rehearsal directors, and guest artists -- never
+// full director access. display_title is informational only (chosen freely by the
+// director) and never affects what the assignee can see or do.
+
+// GET /api/pieces/:pieceId/staff -- current staff assignments for one piece
+app.get('/api/pieces/:pieceId/staff', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const pieceCheck = await pool.query('SELECT id FROM pieces WHERE id = $1 AND season_id = $2', [req.params.pieceId, seasonId]);
+    if (pieceCheck.rows.length === 0) return res.status(403).json({ error: 'Piece not in active season.' });
+
+    const result = await pool.query(
+      `SELECT ps.id, ps.display_title, ps.created_at, u.id AS user_id, u.email
+       FROM piece_staff ps JOIN users u ON u.id = ps.user_id
+       WHERE ps.piece_id = $1 ORDER BY ps.created_at ASC`,
+      [req.params.pieceId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load staff.' });
+  }
+});
+
+// POST /api/pieces/:pieceId/staff -- add (or update the title of) a staff member by email
+app.post('/api/pieces/:pieceId/staff', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  const { email, display_title } = req.body;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  if (!email) return res.status(400).json({ error: 'Email is required.' });
+  try {
+    const pieceResult = await pool.query(
+      `SELECT p.id, p.name AS piece_name, s.name AS season_name, o.name AS org_name
+       FROM pieces p JOIN seasons s ON s.id = p.season_id JOIN orgs o ON o.id = s.org_id
+       WHERE p.id = $1 AND p.season_id = $2`,
+      [req.params.pieceId, seasonId]
+    );
+    if (pieceResult.rows.length === 0) return res.status(403).json({ error: 'Piece not in active season.' });
+    const { piece_name: pieceName, season_name: seasonName, org_name: orgName } = pieceResult.rows[0];
+
+    const adderResult = await pool.query('SELECT email FROM users WHERE id = $1', [req.session.userId]);
+    const adderEmail   = adderResult.rows[0]?.email || 'A director';
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const title = (display_title || '').trim() || null;
+    let staffUserId;
+    let isNewUser = false;
+
+    const userResult = await pool.query('SELECT id, is_staff FROM users WHERE email = $1', [normalizedEmail]);
+    if (userResult.rows.length > 0) {
+      staffUserId = userResult.rows[0].id;
+      if (!userResult.rows[0].is_staff) {
+        await pool.query('UPDATE users SET is_staff = TRUE WHERE id = $1', [staffUserId]);
+      }
+    } else {
+      isNewUser = true;
+      const newUser = await pool.query(
+        `INSERT INTO users (email, role, is_staff, email_verified)
+         VALUES ($1, 'staff', TRUE, TRUE) RETURNING id`,
+        [normalizedEmail]
+      );
+      staffUserId = newUser.rows[0].id;
+    }
+
+    await pool.query(
+      `INSERT INTO piece_staff (piece_id, user_id, display_title, added_by)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (piece_id, user_id) DO UPDATE SET display_title = EXCLUDED.display_title`,
+      [req.params.pieceId, staffUserId, title, req.session.userId]
+    );
+
+    if (emailEnabled) {
+      const actionURL   = isNewUser ? `${APP_URL}/forgot-password.html` : `${APP_URL}/login.html`;
+      const actionLabel = isNewUser ? 'Set Up Your Account' : 'Go to CastSync';
+      const roleLabel   = title || 'production staff';
+      const bodyText    = isNewUser
+        ? `${adderEmail} has added you as ${roleLabel} for <strong>${pieceName}</strong> in <strong>${seasonName}</strong> at <strong>${orgName}</strong> on CastSync. Click below to set up your password and get started.`
+        : `${adderEmail} has added you as ${roleLabel} for <strong>${pieceName}</strong> in <strong>${seasonName}</strong> at <strong>${orgName}</strong> on CastSync.`;
+
+      await resend.emails.send({
+        from:    FROM_EMAIL,
+        to:      normalizedEmail,
+        subject: `You've been added to ${pieceName} on CastSync`,
+        html: `
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#111;">
+            <div style="font-family:'Georgia',serif;font-size:22px;font-weight:700;margin-bottom:24px;">CastSync</div>
+            <p style="font-size:15px;line-height:1.6;">${bodyText}</p>
+            <p style="font-size:13px;color:#6b7280;margin-top:0;">You'll only see this piece, not the rest of the production.</p>
+            <div style="margin:28px 0;">
+              <a href="${actionURL}"
+                 style="background:#111111;color:#fff;padding:12px 24px;border-radius:8px;
+                        text-decoration:none;font-weight:600;font-size:14px;display:inline-block;">
+                ${actionLabel}
+              </a>
+            </div>
+            <p style="font-size:12px;color:#9ca3af;">If you didn't expect this email, you can ignore it.</p>
+          </div>`,
+      }).catch(err => console.error('Production staff invite email error:', err.message));
+    }
+
+    res.json({ message: 'Staff member added.' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to add staff member.' });
+  }
+});
+
+// DELETE /api/pieces/:pieceId/staff/:id -- remove a staff assignment
+app.delete('/api/pieces/:pieceId/staff/:id', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const pieceCheck = await pool.query('SELECT id FROM pieces WHERE id = $1 AND season_id = $2', [req.params.pieceId, seasonId]);
+    if (pieceCheck.rows.length === 0) return res.status(403).json({ error: 'Piece not in active season.' });
+
+    const result = await pool.query(
+      'DELETE FROM piece_staff WHERE id = $1 AND piece_id = $2 RETURNING id',
+      [req.params.id, req.params.pieceId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Staff assignment not found.' });
+    res.json({ message: 'Removed.' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to remove staff member.' });
   }
 });
 
@@ -4932,6 +5300,31 @@ async function runMigrations() {
     `);
     console.log('Migration step 27 (seasons.my_schedule_enabled) complete.');
   } catch (err) { console.error('Migration step 27 error:', err.message); }
+
+  // Step 28: Production Staff. piece_staff is the join table granting piece-scoped
+  // access (rehearsals, cast list, attendance, notes) to choreographers, rehearsal
+  // directors, and guest artists, independent of choreographer_name/choreographer_email
+  // (which remain display/credit fields only). is_staff mirrors is_director: a flag
+  // that can be true regardless of a user's base role, so an existing director or
+  // auditionee can also hold staff access without changing their primary identity.
+  try {
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_staff BOOLEAN NOT NULL DEFAULT FALSE;
+      CREATE TABLE IF NOT EXISTS piece_staff (
+        id            SERIAL PRIMARY KEY,
+        piece_id      INTEGER NOT NULL REFERENCES pieces(id) ON DELETE CASCADE,
+        user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        display_title VARCHAR(100),
+        added_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at    TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE (piece_id, user_id)
+      );
+      ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+      ALTER TABLE users ADD CONSTRAINT users_role_check
+        CHECK (role IN ('master', 'auditionee', 'staff'));
+    `);
+    console.log('Migration step 28 (piece_staff table + users.is_staff) complete.');
+  } catch (err) { console.error('Migration step 28 error:', err.message); }
 
   console.log('All migrations complete.');
 }
