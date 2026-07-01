@@ -885,14 +885,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     photo_dress:     '#e91e63',
     performance:     '#c0392b',
     warm_up:         '#e67e22',
-    costume_fitting:  '#2980b9',
-    company_meeting:  '#0369a1',
-    other:            '#7f8c8d',
+    costume_fitting: '#2980b9',
+    company_meeting: '#0369a1',
+    no_rehearsal:    '#64748b',
+    notes_cleaning:  '#0d9488',
+    load_in_strike:  '#b45309',
+    other:           '#7f8c8d',
   };
   const EVENT_LABELS = {
     tech: 'Tech Rehearsal', dress: 'Dress Rehearsal', spacing: 'Spacing Rehearsal',
     photo_dress: 'Photo Dress', performance: 'Performance', warm_up: 'Warm Up',
-    costume_fitting: 'Costume Fitting', company_meeting: 'Company Meeting', other: 'Other',
+    costume_fitting: 'Costume Fitting', company_meeting: 'Company Meeting',
+    no_rehearsal: 'No Rehearsal / Day Off', notes_cleaning: 'Notes / Cleaning',
+    load_in_strike: 'Load-In / Strike', other: 'Other',
   };
 
   function fmt24hBand(s) {
@@ -907,6 +912,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const band = document.getElementById('se-band');
     const cols  = band ? [...band.querySelectorAll('.se-band-col')] : [];
     cols.forEach(c => { c.innerHTML = ''; });
+    document.querySelectorAll('.master-block, .one-time-block')
+      .forEach(el => el.classList.remove('block-day-off'));
 
     const monday = window._currentWeekMonday;
     if (!monday || !band) return;
@@ -955,6 +962,16 @@ document.addEventListener('DOMContentLoaded', async () => {
           ${timeStr   ? `<div style="font-size:10px;color:rgba(255,255,255,.85);">${timeStr}</div>`   : ''}
           ${ev.location ? `<div style="font-size:10px;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${ev.location}</div>` : ''}`;
         cols[idx].appendChild(chip);
+      });
+
+      // Grey out all blocks on no-rehearsal days
+      events.forEach(ev => {
+        if (ev.event_type !== 'no_rehearsal') return;
+        const idx = dayIndexInWeek(monday, ev.date);
+        if (idx === -1) return;
+        const dayName = DAYS[idx];
+        document.querySelectorAll(`.master-block[data-day="${dayName}"], .one-time-block[data-day="${dayName}"]`)
+          .forEach(el => el.classList.add('block-day-off'));
       });
 
       const total = cols.reduce((n, c) => n + c.children.length, 0);

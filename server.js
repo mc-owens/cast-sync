@@ -4015,7 +4015,7 @@ app.delete('/api/season/performance-dates/:id', requireAuth('master'), async (re
 
 // ── Special Events ────────────────────────────────────────────────────────────
 
-const VALID_EVENT_TYPES   = new Set(['tech','dress','spacing','photo_dress','performance','warm_up','costume_fitting','company_meeting','other']);
+const VALID_EVENT_TYPES   = new Set(['tech','dress','spacing','photo_dress','performance','warm_up','costume_fitting','company_meeting','no_rehearsal','notes_cleaning','load_in_strike','other']);
 const VALID_EVENT_APPLIES = new Set(['full_cast','selected_pieces','staff_only']);
 
 app.get('/api/season/special-events', requireAuth('master'), async (req, res) => {
@@ -4184,7 +4184,7 @@ Production context:
 ${pieces.length ? pieces.map(p => `  - ID ${p.id}: "${p.name}"`).join('\n') : '  (no pieces defined yet)'}
 
 Available event_type values (use exactly these strings):
-tech, dress, spacing, photo_dress, performance, warm_up, costume_fitting, other
+tech, dress, spacing, photo_dress, performance, warm_up, costume_fitting, company_meeting, no_rehearsal, notes_cleaning, load_in_strike, other
 
 Extract every special event. Return ONLY valid JSON, no prose.
 
@@ -4194,7 +4194,7 @@ Extract every special event. Return ONLY valid JSON, no prose.
       "status": "ready" | "needs_review" | "missing",
       "status_reason": "brief explanation if not ready" | null,
       "original_text": "exact source text snippet for this event",
-      "event_type": "tech" | "dress" | "spacing" | "photo_dress" | "performance" | "warm_up" | "costume_fitting" | "other",
+      "event_type": "tech" | "dress" | "spacing" | "photo_dress" | "performance" | "warm_up" | "costume_fitting" | "company_meeting" | "no_rehearsal" | "notes_cleaning" | "load_in_strike" | "other",
       "title": "event title",
       "date": "YYYY-MM-DD" | null,
       "start_time": "HH:MM" | null,

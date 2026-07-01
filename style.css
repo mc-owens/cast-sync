@@ -288,6 +288,13 @@ body {
   display: none;
 }
 
+.master-block.block-day-off, .one-time-block.block-day-off {
+  background: rgba(100, 116, 139, 0.08) !important;
+  border-color: rgba(100, 116, 139, 0.2) !important;
+  color: #94a3b8 !important;
+  pointer-events: none;
+}
+
 /* === SPECIAL EVENTS BAND === */
 .se-band {
   display: grid;

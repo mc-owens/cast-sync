@@ -161,12 +161,15 @@
     const SE_COLORS = {
       tech:'#2c3e50', dress:'#8e44ad', spacing:'#16a085', photo_dress:'#e91e63',
       performance:'#c0392b', warm_up:'#e67e22', costume_fitting:'#2980b9',
-      company_meeting:'#0369a1', other:'#7f8c8d',
+      company_meeting:'#0369a1', no_rehearsal:'#64748b', notes_cleaning:'#0d9488',
+      load_in_strike:'#b45309', other:'#7f8c8d',
     };
     const SE_LABELS = {
       tech:'Tech Rehearsal', dress:'Dress Rehearsal', spacing:'Spacing Rehearsal',
       photo_dress:'Photo Dress', performance:'Performance', warm_up:'Warm Up',
-      costume_fitting:'Costume Fitting', company_meeting:'Company Meeting', other:'Other',
+      costume_fitting:'Costume Fitting', company_meeting:'Company Meeting',
+      no_rehearsal:'No Rehearsal / Day Off', notes_cleaning:'Notes / Cleaning',
+      load_in_strike:'Load-In / Strike', other:'Other',
     };
     function fmt24h(str) {
       if (!str) return '';
@@ -277,12 +280,21 @@
               ...r,
               production_name: prod.season_name,
               piece: prod.pieces[r.piece_id] || {},
+              season_id: prod.season_id,
             });
           }
         }
 
         // ── Merge in special events ────────────────────────────────────────
         const specialEvents = seRes.ok ? await seRes.json() : [];
+
+        // Suppress rehearsals on days marked No Rehearsal / Day Off (per production)
+        const dayOffKeys = new Set(
+          specialEvents.filter(e => e.event_type === 'no_rehearsal').map(e => `${e.season_id}:${e.date}`)
+        );
+        if (dayOffKeys.size > 0) {
+          flat.splice(0, flat.length, ...flat.filter(r => !dayOffKeys.has(`${r.season_id}:${r.date}`)));
+        }
         specialEvents.forEach(ev => {
           flat.push({ ...ev, _isSpecialEvent: true, start_time: ev.start_time || null, end_time: ev.end_time || null });
         });
