@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Import Schedule | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="app-shell.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <style>
+    .drop-zone {
+      border: 2px dashed #d1d5db;
+      border-radius: 10px;
+      padding: 40px 24px;
+      text-align: center;
+      transition: border-color .15s, background .15s;
+      cursor: pointer;
+      background: #fafafa;
+    }
+    .drop-zone.drag-over {
+      border-color: #c4943a;
+      background: rgba(196,148,58,.05);
+    }
+    .drop-zone-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+      color: #d1d5db;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 5px;
+    }
+    .event-card {
+      transition: opacity .15s;
+    }
+    .event-card.excluded {
+      opacity: .5;
+    }
+    .divider-label {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #9ca3af;
+      font-size: 12px;
+      margin: 16px 0;
+    }
+    .divider-label::before, .divider-label::after {
+      content: '';
+      flex: 1;
+      border-top: 1px solid #e5e7eb;
+    }
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .file-chip-remove {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #9ca3af;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .file-chip-remove:hover { color: #374151; }
+    .status-banner {
+      border-radius: 5px;
+      padding: 5px 9px;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+    .original-text {
+      font-size: 11px;
+      color: #9ca3af;
+      font-style: italic;
+      margin-top: 4px;
+    }
+    .summary-type-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 20px;
+      margin-top: 4px;
+    }
+    .summary-type-item {
+      font-size: 13px;
+      color: #374151;
+    }
+    .summary-type-item strong {
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body style="visibility:hidden">
+
+  <div id="app-shell-root"></div>
+  <script src="app-shell.js"></script>
+
+  <div class="app-main">
+
+  <!-- Trial banner -->
+  <div id="trial-banner" style="display:none;background:#fefce8;border-bottom:1px solid #fde68a;">
+    <div class="container-fluid px-4 py-2 d-flex align-items-center justify-content-between gap-3">
+      <span style="font-size:13px;color:#92400e;" id="trial-banner-text"></span>
+      <div class="d-flex gap-2 flex-shrink-0">
+        <a href="plan-select.html" class="btn btn-sm btn-warning" style="font-size:12px;font-weight:600;">Upgrade</a>
+        <button class="btn btn-sm btn-link p-0" style="font-size:12px;color:#92400e;text-decoration:none;" id="trial-banner-dismiss">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container-fluid mt-4 px-4" style="max-width:720px;">
+
+    <div class="mb-3">
+      <a href="production-settings.html" style="font-size:13px;color:#6b7280;text-decoration:none;">
+        &larr; Production Settings
+      </a>
+    </div>
+
+    <div class="mb-4">
+      <h5 class="mb-1 fw-semibold">Import Schedule</h5>
+      <p class="text-muted mb-0" style="font-size:13px;">Upload a file or paste your schedule. CastSync will extract the events for you to review before anything is saved.</p>
+    </div>
+
+    <!-- Step: Upload -->
+    <div id="upload-step">
+      <div class="app-card mb-3">
+        <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop schedule file here">
+          <div class="drop-zone-icon">&#8613;</div>
+          <div style="font-size:15px;font-weight:600;margin-bottom:4px;">Drop your schedule here</div>
+          <div style="font-size:13px;color:#6b7280;margin-bottom:12px;">or <a href="#" id="browse-link" style="color:#c4943a;font-weight:600;">browse files</a></div>
+          <div style="font-size:11px;color:#9ca3af;">PDF, images, Excel, Word, CSV, or plain text</div>
+        </div>
+        <input type="file" id="file-input" style="display:none"
+          accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.csv,.xlsx,.xls,.docx,.doc,.txt,.eml,.msg,.rtf">
+
+        <div id="file-chip-wrap" style="display:none;margin-top:12px;">
+          <span class="file-chip">
+            <span id="file-chip-name"></span>
+            <button class="file-chip-remove" id="file-clear-btn" aria-label="Remove file">&times;</button>
+          </span>
+        </div>
+
+        <div class="divider-label">or paste text below</div>
+
+        <textarea id="paste-text" class="form-control" rows="6"
+          placeholder="Paste your schedule, email, or any text here..."></textarea>
+      </div>
+
+      <div id="analyze-error" style="display:none;font-size:13px;color:#dc2626;margin-bottom:12px;"></div>
+
+      <div class="d-flex justify-content-end">
+        <button id="analyze-btn" class="btn btn-dark px-4">Analyze Schedule</button>
+      </div>
+    </div>
+
+    <!-- Step: Loading -->
+    <div id="loading-step" style="display:none;">
+      <div class="app-card text-center py-5">
+        <div class="spinner-border text-secondary mb-3" role="status" style="width:2rem;height:2rem;"></div>
+        <div style="font-size:15px;font-weight:600;margin-bottom:4px;">Reading your schedule...</div>
+        <div class="text-muted" style="font-size:13px;">This usually takes 5 to 15 seconds.</div>
+      </div>
+    </div>
+
+    <!-- Step: Review -->
+    <div id="review-step" style="display:none;">
+
+      <!-- Summary -->
+      <div class="app-card mb-4" id="summary-card"></div>
+
+      <!-- Event cards -->
+      <div id="event-cards"></div>
+
+      <!-- Bottom bar -->
+      <div class="d-flex justify-content-between align-items-center mt-4 mb-5">
+        <button id="start-over-btn" class="btn btn-sm btn-outline-secondary">Start Over</button>
+        <button id="import-btn" class="btn btn-gold px-4" style="font-size:14px;font-weight:600;" disabled>Import Events</button>
+      </div>
+
+    </div>
+
+  </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function fmt24h(t) {
+      if (!t) return '';
+      const [h, m] = t.split(':').map(Number);
+      const ap = h >= 12 ? 'PM' : 'AM';
+      return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${ap}`;
+    }
+
+    function fmtDate(d) {
+      if (!d) return '';
+      return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    const EVENT_META = {
+      tech:            { label: 'Tech Rehearsal',    color: '#2c3e50' },
+      dress:           { label: 'Dress Rehearsal',   color: '#8e44ad' },
+      spacing:         { label: 'Spacing Rehearsal', color: '#16a085' },
+      photo_dress:     { label: 'Photo Dress',       color: '#e91e63' },
+      performance:     { label: 'Performance',       color: '#c0392b' },
+      warm_up:         { label: 'Warm Up',           color: '#e67e22' },
+      costume_fitting: { label: 'Costume Fitting',   color: '#2980b9' },
+      other:           { label: 'Other',             color: '#7f8c8d' },
+    };
+
+    const STATUS = {
+      ready:        { dot: '#16a34a', label: 'Ready',               bg: null,       fg: null },
+      needs_review: { dot: '#d97706', label: 'Needs Review',        bg: '#fef3c7', fg: '#92400e' },
+      missing:      { dot: '#dc2626', label: 'Missing Information', bg: '#fef2f2', fg: '#991b1b' },
+    };
+
+    const TYPE_OPTS = Object.entries(EVENT_META).map(([v, m]) => `<option value="${v}">${m.label}</option>`).join('');
+
+    let proposedEvents = [];
+    let availablePieces = [];
+    let currentFile = null;
+
+    function canImport(ev) {
+      return !!(ev.title && ev.title.trim() && ev.date && /^\d{4}-\d{2}-\d{2}$/.test(ev.date));
+    }
+
+    // ── Steps ──────────────────────────────────────────────────────────────────
+
+    function showStep(name) {
+      ['upload-step','loading-step','review-step'].forEach(id => {
+        document.getElementById(id).style.display = id === name + '-step' ? '' : 'none';
+      });
+    }
+
+    // ── Upload step ────────────────────────────────────────────────────────────
+
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) setFile(f);
+    });
+    dropZone.addEventListener('click', e => {
+      if (e.target.id !== 'browse-link') fileInput.click();
+    });
+    dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+    document.getElementById('browse-link').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); fileInput.click(); });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+    document.getElementById('file-clear-btn').addEventListener('click', clearFile);
+
+    function setFile(f) {
+      currentFile = f;
+      document.getElementById('file-chip-name').textContent = f.name;
+      document.getElementById('file-chip-wrap').style.display = '';
+      document.getElementById('paste-text').value = '';
+    }
+
+    function clearFile() {
+      currentFile = null;
+      fileInput.value = '';
+      document.getElementById('file-chip-wrap').style.display = 'none';
+    }
+
+    document.getElementById('analyze-btn').addEventListener('click', async () => {
+      const errEl = document.getElementById('analyze-error');
+      errEl.style.display = 'none';
+      const pastedText = document.getElementById('paste-text').value.trim();
+      if (!currentFile && !pastedText) {
+        errEl.textContent = 'Please upload a file or paste text before analyzing.';
+        errEl.style.display = '';
+        return;
+      }
+
+      showStep('loading');
+
+      try {
+        const formData = new FormData();
+        if (currentFile) formData.append('file', currentFile);
+        if (pastedText)  formData.append('text', pastedText);
+
+        const res = await fetch('/api/season/special-events/import', { method: 'POST', body: formData });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Analysis failed. Please try again.');
+
+        proposedEvents = (data.events || []).map(ev => ({
+          ...ev,
+          _included: ev.status !== 'missing',
+          _editing: false,
+        }));
+        availablePieces = data.pieces || [];
+
+        renderReview();
+        showStep('review');
+      } catch (err) {
+        showStep('upload');
+        errEl.textContent = err.message;
+        errEl.style.display = '';
+      }
+    });
+
+    // ── Review step ────────────────────────────────────────────────────────────
+
+    function renderReview() {
+      renderSummary();
+      renderCards();
+      updateImportBtn();
+    }
+
+    function renderSummary() {
+      const total = proposedEvents.length;
+      const byType = {};
+      let needsReview = 0, missing = 0;
+      proposedEvents.forEach(ev => {
+        const label = EVENT_META[ev.event_type]?.label || 'Other';
+        byType[label] = (byType[label] || 0) + 1;
+        if (ev.status === 'needs_review') needsReview++;
+        else if (ev.status === 'missing')  missing++;
+      });
+
+      const typesHtml = Object.entries(byType)
+        .sort((a, b) => b[1] - a[1])
+        .map(([label, n]) => `<span class="summary-type-item"><strong>${n}</strong> ${label}${n !== 1 ? 's' : ''}</span>`)
+        .join('');
+
+      const alerts = [
+        needsReview > 0 ? `<div style="color:#d97706;font-size:13px;margin-top:6px;">&#9679; ${needsReview} event${needsReview !== 1 ? 's' : ''} need${needsReview === 1 ? 's' : ''} review</div>` : '',
+        missing > 0     ? `<div style="color:#dc2626;font-size:13px;margin-top:4px;">&#9679; ${missing} event${missing !== 1 ? 's' : ''} need${missing === 1 ? 's' : ''} attention before import</div>` : '',
+      ].filter(Boolean).join('');
+
+      document.getElementById('summary-card').innerHTML = `
+        <h6 class="label-gold mb-2">Import Summary</h6>
+        <div style="font-size:22px;font-weight:700;line-height:1.2;margin-bottom:4px;">${total} event${total !== 1 ? 's' : ''} detected</div>
+        <div class="summary-type-row">${typesHtml}</div>
+        ${alerts || `<div style="color:#16a34a;font-size:13px;margin-top:6px;">&#9679; All events ready to import</div>`}
+      `;
+    }
+
+    function renderCards() {
+      document.getElementById('event-cards').innerHTML =
+        proposedEvents.map((ev, idx) => buildCardHtml(ev, idx)).join('');
+    }
+
+    function updateImportBtn() {
+      const count = proposedEvents.filter(ev => ev._included && canImport(ev)).length;
+      const btn = document.getElementById('import-btn');
+      btn.textContent = count > 0 ? `Import ${count} Event${count !== 1 ? 's' : ''}` : 'Import Events';
+      btn.disabled = count === 0;
+    }
+
+    // ── Card rendering ─────────────────────────────────────────────────────────
+
+    function buildCardHtml(ev, idx) {
+      const meta   = EVENT_META[ev.event_type] || EVENT_META.other;
+      const status = STATUS[ev.status] || STATUS.ready;
+      const ok     = canImport(ev);
+
+      const details = [fmtDate(ev.date), [fmt24h(ev.start_time), fmt24h(ev.end_time)].filter(Boolean).join(' - '), ev.location, appliesToLabel(ev)].filter(Boolean).join(' &middot; ');
+
+      const warningMsg = (ev.status === 'needs_review' || ev.status === 'missing') && (ev.status_reason || ev.piece_match_notes)
+        ? escapeHtml(ev.status_reason || ev.piece_match_notes) : '';
+      const warningHtml = warningMsg
+        ? `<div class="status-banner" style="background:${status.bg};color:${status.fg};">${warningMsg}</div>` : '';
+
+      const origHtml = ev.original_text && ev.status !== 'ready'
+        ? `<div class="original-text">Original: &ldquo;${escapeHtml(ev.original_text)}&rdquo;</div>` : '';
+
+      const controls = ev._editing ? '' : `
+        <div class="d-flex align-items-center gap-3 flex-shrink-0">
+          ${ok ? `<label class="d-flex align-items-center gap-1 mb-0 user-select-none" style="cursor:pointer;font-size:13px;">
+            <input type="checkbox" data-action="toggle-include" data-idx="${idx}" ${ev._included ? 'checked' : ''} style="cursor:pointer;">
+            Include
+          </label>` : `<span style="font-size:12px;color:#dc2626;font-weight:500;">Edit to fix</span>`}
+          <button class="btn btn-link btn-sm p-0" data-action="edit" data-idx="${idx}" style="font-size:12px;color:#6b7280;">${ev.status === 'missing' ? 'Edit to fix' : 'Edit'}</button>
+        </div>`;
+
+      const editPanel = ev._editing ? buildEditPanel(ev, idx) : '';
+
+      return `<div class="app-card mb-2 event-card${ev._included && ok ? '' : ' excluded'}" data-card-idx="${idx}">
+        <div class="d-flex gap-3 align-items-start">
+          <div class="status-dot" style="background:${status.dot};"></div>
+          <div class="flex-grow-1" style="min-width:0;">
+            <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+              <div>
+                <span class="badge me-1" style="background:${meta.color};font-size:10px;">${meta.label}</span>
+                <span style="font-weight:600;font-size:14px;">${escapeHtml(ev.title || 'Untitled')}</span>
+              </div>
+              ${controls}
+            </div>
+            ${details ? `<div style="font-size:12px;color:#555;margin-top:2px;">${details}</div>` : ''}
+            ${warningHtml}
+            ${origHtml}
+          </div>
+        </div>
+        ${editPanel}
+      </div>`;
+    }
+
+    function appliesToLabel(ev) {
+      if (ev.applies_to === 'staff_only') return 'Staff Only';
+      if (ev.applies_to === 'selected_pieces' && ev.piece_ids?.length) {
+        return ev.piece_ids.map(id => availablePieces.find(p => p.id === id)?.name || `Piece ${id}`).join(', ');
+      }
+      return 'Full Cast';
+    }
+
+    function buildEditPanel(ev, idx) {
+      const typeOpts = Object.entries(EVENT_META)
+        .map(([v, m]) => `<option value="${v}" ${ev.event_type === v ? 'selected' : ''}>${m.label}</option>`).join('');
+      const appliesOpts = [['full_cast','Full Cast'],['selected_pieces','Selected Pieces'],['staff_only','Staff Only']]
+        .map(([v, l]) => `<option value="${v}" ${ev.applies_to === v ? 'selected' : ''}>${l}</option>`).join('');
+      const piecesHtml = availablePieces.length
+        ? availablePieces.map(p => `<div class="form-check form-check-sm">
+            <input class="form-check-input" type="checkbox" id="ep-p-${idx}-${p.id}" value="${p.id}" ${(ev.piece_ids||[]).includes(p.id) ? 'checked' : ''}>
+            <label class="form-check-label" for="ep-p-${idx}-${p.id}" style="font-size:12px;">${escapeHtml(p.name)}</label>
+          </div>`).join('')
+        : '<span style="font-size:12px;color:#888;">No pieces defined.</span>';
+
+      return `<div style="margin-top:14px;padding-top:14px;border-top:1px solid #eee;">
+        <div class="row g-2 mb-2">
+          <div class="col-sm-6">
+            <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">Type</label>
+            <select class="form-select form-select-sm" id="ep-type-${idx}">${typeOpts}</select>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">Title</label>
+            <input type="text" class="form-control form-control-sm" id="ep-title-${idx}" value="${escapeHtml(ev.title || '')}">
+          </div>
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-sm-4">
+            <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">Date</label>
+            <input type="date" class="form-control form-control-sm" id="ep-date-${idx}" value="${escapeHtml(ev.date || '')}">
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">Start</label>
+            <input type="time" class="form-control form-control-sm" id="ep-start-${idx}" value="${escapeHtml(ev.start_time || '')}">
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">End</label>
+            <input type="time" class="form-control form-control-sm" id="ep-end-${idx}" value="${escapeHtml(ev.end_time || '')}">
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">Location</label>
+          <input type="text" class="form-control form-control-sm" id="ep-location-${idx}" value="${escapeHtml(ev.location || '')}">
+        </div>
+        <div class="mb-2">
+          <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">Applies To</label>
+          <select class="form-select form-select-sm" id="ep-applies-${idx}" data-action="applies-change" data-idx="${idx}">${appliesOpts}</select>
+        </div>
+        <div id="ep-pieces-${idx}" class="${ev.applies_to === 'selected_pieces' ? '' : 'd-none'} mb-2">
+          <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">Pieces</label>
+          <div style="max-height:100px;overflow-y:auto;border:1px solid #dee2e6;border-radius:4px;padding:6px;">${piecesHtml}</div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label mb-1" style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#888;">Notes</label>
+          <textarea class="form-control form-control-sm" id="ep-notes-${idx}" rows="2">${escapeHtml(ev.notes || '')}</textarea>
+        </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" id="ep-visible-${idx}" ${ev.visible_to_dancers !== false ? 'checked' : ''}>
+          <label class="form-check-label" for="ep-visible-${idx}" style="font-size:13px;">Show to dancers on My Schedule</label>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-dark" data-action="save-edit" data-idx="${idx}">Save</button>
+          <button class="btn btn-sm btn-outline-secondary" data-action="cancel-edit" data-idx="${idx}">Cancel</button>
+        </div>
+      </div>`;
+    }
+
+    // ── Event delegation ───────────────────────────────────────────────────────
+
+    const cardsEl = document.getElementById('event-cards');
+
+    cardsEl.addEventListener('change', e => {
+      const el = e.target;
+      if (el.matches('[data-action="toggle-include"]')) {
+        const idx = parseInt(el.dataset.idx);
+        proposedEvents[idx]._included = el.checked;
+        const card = document.querySelector(`[data-card-idx="${idx}"]`);
+        if (card) card.classList.toggle('excluded', !el.checked || !canImport(proposedEvents[idx]));
+        updateImportBtn();
+      }
+      if (el.matches('[data-action="applies-change"]')) {
+        const idx = parseInt(el.dataset.idx);
+        document.getElementById(`ep-pieces-${idx}`)?.classList.toggle('d-none', el.value !== 'selected_pieces');
+      }
+    });
+
+    cardsEl.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn || btn.tagName === 'INPUT' || btn.tagName === 'SELECT') return;
+      const idx = parseInt(btn.dataset.idx);
+      const action = btn.dataset.action;
+
+      if (action === 'edit') {
+        proposedEvents[idx]._editing = true;
+        renderReview();
+      }
+      if (action === 'cancel-edit') {
+        proposedEvents[idx]._editing = false;
+        renderReview();
+      }
+      if (action === 'save-edit') {
+        saveEdit(idx);
+      }
+    });
+
+    function saveEdit(idx) {
+      const ev = proposedEvents[idx];
+      const title    = document.getElementById(`ep-title-${idx}`).value.trim();
+      const date     = document.getElementById(`ep-date-${idx}`).value;
+      const applies  = document.getElementById(`ep-applies-${idx}`).value;
+      const piece_ids = applies === 'selected_pieces'
+        ? [...document.querySelectorAll(`#ep-pieces-${idx} input[type="checkbox"]:checked`)].map(cb => parseInt(cb.value))
+        : [];
+
+      const updated = {
+        ...ev,
+        event_type:        document.getElementById(`ep-type-${idx}`).value,
+        title,
+        date,
+        start_time:        document.getElementById(`ep-start-${idx}`).value || null,
+        end_time:          document.getElementById(`ep-end-${idx}`).value   || null,
+        location:          document.getElementById(`ep-location-${idx}`).value.trim() || null,
+        notes:             document.getElementById(`ep-notes-${idx}`).value.trim()    || null,
+        applies_to:        applies,
+        piece_ids,
+        visible_to_dancers: document.getElementById(`ep-visible-${idx}`).checked,
+        _editing: false,
+      };
+
+      if (ev.status === 'missing' && title && date) {
+        updated.status = 'needs_review';
+        updated.status_reason = 'Edited manually. Please confirm.';
+        updated.piece_match_notes = null;
+      }
+      updated._included = canImport(updated);
+
+      proposedEvents[idx] = updated;
+      renderReview();
+    }
+
+    // ── Import ─────────────────────────────────────────────────────────────────
+
+    document.getElementById('start-over-btn').addEventListener('click', () => {
+      proposedEvents = [];
+      availablePieces = [];
+      currentFile = null;
+      document.getElementById('file-chip-wrap').style.display = 'none';
+      fileInput.value = '';
+      document.getElementById('paste-text').value = '';
+      document.getElementById('analyze-error').style.display = 'none';
+      showStep('upload');
+    });
+
+    document.getElementById('import-btn').addEventListener('click', async () => {
+      const toImport = proposedEvents.filter(ev => ev._included && canImport(ev));
+      if (toImport.length === 0) return;
+
+      const btn = document.getElementById('import-btn');
+      btn.disabled = true;
+      btn.textContent = 'Importing...';
+
+      try {
+        const res = await fetch('/api/season/special-events/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ events: toImport }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Import failed.');
+
+        document.getElementById('review-step').innerHTML = `
+          <div class="app-card text-center py-5">
+            <div style="font-size:2.5rem;margin-bottom:12px;color:#16a34a;">&#10003;</div>
+            <div style="font-size:18px;font-weight:700;margin-bottom:6px;">${data.created} event${data.created !== 1 ? 's' : ''} imported.</div>
+            <p class="text-muted" style="font-size:13px;margin-bottom:20px;">Your schedule has been added to this production.</p>
+            <a href="production-settings.html" class="btn btn-dark">Back to Production Settings</a>
+          </div>`;
+      } catch (err) {
+        btn.disabled = false;
+        updateImportBtn();
+        const errEl = document.createElement('div');
+        errEl.style.cssText = 'font-size:13px;color:#dc2626;margin-top:8px;text-align:right;';
+        errEl.textContent = err.message;
+        document.getElementById('import-btn').insertAdjacentElement('afterend', errEl);
+        setTimeout(() => errEl.remove(), 5000);
+      }
+    });
+
+    // ── Auth + init ────────────────────────────────────────────────────────────
+
+    (async () => {
+      try {
+        const authRes = await fetch('/api/auth/me');
+        if (!authRes.ok) { window.location.href = 'login.html'; return; }
+        const user = await authRes.json();
+        if (user.role !== 'master' && user.mode !== 'director') { window.location.href = 'login.html'; return; }
+        document.body.style.visibility = '';
+
+        try {
+          const subRes = await fetch('/api/subscription');
+          if (subRes.ok) {
+            const sub = await subRes.json();
+            if (sub.isTrial) {
+              const days = sub.daysRemaining;
+              document.getElementById('trial-banner-text').textContent =
+                days <= 1 ? 'Explore mode: your trial expires today. Upgrade to start your first real production.'
+                          : `Explore mode: ${days} day${days === 1 ? '' : 's'} left. Upgrade any time.`;
+              document.getElementById('trial-banner').style.display = '';
+              document.getElementById('trial-banner-dismiss').addEventListener('click', () => {
+                document.getElementById('trial-banner').style.display = 'none';
+              });
+            }
+          }
+        } catch (_) {}
+      } catch (err) {
+        window.location.href = 'login.html';
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -168,7 +168,11 @@
         </div>
       </div>
 
-      <button type="button" class="btn btn-sm btn-outline-secondary" id="add-special-event-btn">+ Add Event</button>
+      <div class="d-flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="add-special-event-btn">+ Add Event</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-create-btn">Bulk Create</button>
+        <button type="button" class="btn btn-sm btn-gold" id="import-schedule-btn">Import Schedule</button>
+      </div>
     </div>
 
     <div class="app-card mb-4">
@@ -479,6 +483,7 @@
         });
 
         document.getElementById('add-special-event-btn').addEventListener('click', () => openSeForm(null));
+        document.getElementById('import-schedule-btn').addEventListener('click', () => { window.location.href = 'import-schedule.html'; });
         document.getElementById('se-cancel-btn').addEventListener('click', closeSeForm);
 
         document.getElementById('se-save-btn').addEventListener('click', async () => {

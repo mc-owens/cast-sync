@@ -26,6 +26,19 @@ const crypto         = require('crypto');
 const Stripe         = require('stripe');
 const rateLimit      = require('express-rate-limit');
 const fs             = require('fs');
+const multer         = require('multer');
+const Anthropic      = require('@anthropic-ai/sdk');
+const XLSX           = require('xlsx');
+const mammoth        = require('mammoth');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+});
+
+const anthropic = process.env.ANTHROPIC_API_KEY
+  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  : null;
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? Stripe(process.env.STRIPE_SECRET_KEY)
@@ -4127,6 +4140,172 @@ app.get('/api/my-schedule/special-events', requireAuth('auditionee'), async (req
   } catch (err) {
     console.error('my-schedule special events error:', err.message);
     res.status(500).json({ error: 'Failed to load special events.' });
+  }
+});
+
+// ── Import Schedule ────────────────────────────────────────────────────────────
+
+async function extractImportContent(file) {
+  const { mimetype, originalname, buffer } = file;
+  const ext = (originalname || '').split('.').pop().toLowerCase();
+
+  if (mimetype.startsWith('image/')) {
+    return { type: 'image', mediaType: mimetype, data: buffer.toString('base64') };
+  }
+  if (mimetype === 'application/pdf' || ext === 'pdf') {
+    return { type: 'pdf', data: buffer.toString('base64') };
+  }
+  if (['xlsx','xls','csv'].includes(ext) || mimetype.includes('spreadsheet') || mimetype.includes('excel') || mimetype === 'text/csv' || mimetype === 'application/csv') {
+    const wb = XLSX.read(buffer, { type: 'buffer' });
+    const parts = wb.SheetNames.map(n => `--- ${n} ---\n${XLSX.utils.sheet_to_csv(wb.Sheets[n])}`);
+    return { type: 'text', data: parts.join('\n\n') };
+  }
+  if (['docx','doc'].includes(ext) || mimetype.includes('wordprocessingml') || mimetype === 'application/msword') {
+    const result = await mammoth.extractRawText({ buffer });
+    return { type: 'text', data: result.value };
+  }
+  return { type: 'text', data: buffer.toString('utf-8') };
+}
+
+async function parseScheduleWithAI(content, { season, pieces }) {
+  if (!anthropic) throw new Error('ANTHROPIC_API_KEY not configured.');
+
+  const fmt = d => d ? new Date(d).toISOString().slice(0,10) : null;
+  const dateRange = (season.start_date && season.end_date)
+    ? `${fmt(season.start_date)} to ${fmt(season.end_date)}`
+    : 'not specified';
+
+  const system = `You are extracting special events from a dance production schedule document.
+
+Production context:
+- Season: ${season.season_name || 'Unnamed'}
+- Season dates: ${dateRange}
+- Pieces in this production:
+${pieces.length ? pieces.map(p => `  - ID ${p.id}: "${p.name}"`).join('\n') : '  (no pieces defined yet)'}
+
+Available event_type values (use exactly these strings):
+tech, dress, spacing, photo_dress, performance, warm_up, costume_fitting, other
+
+Extract every special event. Return ONLY valid JSON, no prose.
+
+{
+  "events": [
+    {
+      "status": "ready" | "needs_review" | "missing",
+      "status_reason": "brief explanation if not ready" | null,
+      "original_text": "exact source text snippet for this event",
+      "event_type": "tech" | "dress" | "spacing" | "photo_dress" | "performance" | "warm_up" | "costume_fitting" | "other",
+      "title": "event title",
+      "date": "YYYY-MM-DD" | null,
+      "start_time": "HH:MM" | null,
+      "end_time": "HH:MM" | null,
+      "location": null,
+      "applies_to": "full_cast" | "selected_pieces" | "staff_only",
+      "piece_ids": [],
+      "piece_match_notes": "explanation if piece matching was inferred or uncertain" | null,
+      "notes": null,
+      "visible_to_dancers": true
+    }
+  ]
+}
+
+Status rules:
+- "ready": event_type, title, and date are all clear and confident.
+- "needs_review": something was inferred or uncertain (partial piece match, ambiguous date, inferred time, etc.).
+- "missing": title or date cannot be determined.
+
+Piece matching: match document piece names to the production pieces above by ID. Confident match: include ID and set applies_to to "selected_pieces". Partial match: include best-guess ID but set status to "needs_review" and explain in piece_match_notes. No match or full-cast event: applies_to = "full_cast", piece_ids = []. All times 24-hour HH:MM. All dates YYYY-MM-DD.`;
+
+  let msgContent;
+  if (content.type === 'text') {
+    msgContent = [{ type: 'text', text: content.data }];
+  } else if (content.type === 'image') {
+    msgContent = [{ type: 'image', source: { type: 'base64', media_type: content.mediaType, data: content.data } }];
+  } else {
+    msgContent = [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: content.data } }];
+  }
+
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 8192,
+    system,
+    messages: [{ role: 'user', content: msgContent }],
+  });
+
+  const raw = response.content[0]?.text || '';
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('AI did not return valid JSON.');
+  return JSON.parse(match[0]);
+}
+
+app.post('/api/season/special-events/import', requireAuth('master'), upload.single('file'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  if (!anthropic) return res.status(503).json({ error: 'Import feature not configured. Contact support.' });
+  try {
+    const [seasonRes, piecesRes] = await Promise.all([
+      pool.query('SELECT name AS season_name, start_date, end_date FROM seasons WHERE id = $1', [seasonId]),
+      pool.query('SELECT id, name FROM pieces WHERE season_id = $1 ORDER BY name', [seasonId]),
+    ]);
+    const season = seasonRes.rows[0];
+    const pieces = piecesRes.rows;
+
+    let content;
+    const pastedText = (req.body.text || '').trim();
+    if (req.file) {
+      content = await extractImportContent(req.file);
+    } else if (pastedText) {
+      content = { type: 'text', data: pastedText };
+    } else {
+      return res.status(400).json({ error: 'Please provide a file or paste text.' });
+    }
+
+    const parsed = await parseScheduleWithAI(content, { season, pieces });
+    res.json({ events: parsed.events || [], pieces });
+  } catch (err) {
+    console.error('Import schedule error:', err.message);
+    res.status(500).json({ error: 'Could not analyze schedule. Please try again.' });
+  }
+});
+
+app.post('/api/season/special-events/batch', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { events } = req.body;
+  if (!Array.isArray(events) || events.length === 0) return res.status(400).json({ error: 'No events provided.' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const ids = [];
+    for (const ev of events) {
+      const { event_type, title, date, start_time, end_time, location, notes, applies_to, piece_ids, visible_to_dancers } = ev;
+      if (!title?.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(date || '')) continue;
+      const r = await client.query(
+        `INSERT INTO special_events (season_id, event_type, title, date, start_time, end_time, location, notes, applies_to, piece_ids, visible_to_dancers)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+        [
+          seasonId,
+          VALID_EVENT_TYPES.has(event_type) ? event_type : 'other',
+          title.trim(), date,
+          start_time || null, end_time || null,
+          (location || '').trim() || null,
+          (notes || '').trim() || null,
+          VALID_EVENT_APPLIES.has(applies_to) ? applies_to : 'full_cast',
+          Array.isArray(piece_ids) ? piece_ids : [],
+          visible_to_dancers !== false,
+        ]
+      );
+      ids.push(r.rows[0].id);
+    }
+    await client.query('COMMIT');
+    res.status(201).json({ created: ids.length });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Batch import error:', err.message);
+    res.status(500).json({ error: 'Failed to import events.' });
+  } finally {
+    client.release();
   }
 });
 
