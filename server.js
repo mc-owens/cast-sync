@@ -552,11 +552,15 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
   try {
     const result = await pool.query(
-      'SELECT id, email, password_hash, role, is_director, is_staff, email_verified FROM users WHERE email = $1',
+      'SELECT id, email, password_hash, role, is_director, is_staff, email_verified, google_id FROM users WHERE email = $1',
       [email.toLowerCase().trim()]
     );
     const user = result.rows[0];
-    if (!user || !user.password_hash) return res.status(401).json({ error: 'Incorrect email or password.' });
+    if (!user) return res.status(401).json({ error: 'Incorrect email or password.' });
+    if (!user.password_hash) {
+      if (user.google_id) return res.status(401).json({ error: 'This account was created with Google. Please sign in with Google.', googleAccount: true });
+      return res.status(401).json({ error: 'Incorrect email or password.' });
+    }
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) return res.status(401).json({ error: 'Incorrect email or password.' });
     if (!user.email_verified) {
