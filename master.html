@@ -428,8 +428,7 @@
 
       const weekParam = new URLSearchParams(location.search).get('week');
       let currentMonday = (weekParam && /^\d{4}-\d{2}-\d{2}$/.test(weekParam)) ? mondayOf(dateFromYMD(weekParam)) : mondayOf(new Date());
-      if (currentMonday < firstMonday) currentMonday = new Date(firstMonday);
-      if (currentMonday > lastMonday)  currentMonday = new Date(lastMonday);
+      if (currentMonday < firstMonday || currentMonday > lastMonday) currentMonday = new Date(firstMonday);
 
       const prevBtn = document.getElementById('week-prev-btn');
       const nextBtn = document.getElementById('week-next-btn');
