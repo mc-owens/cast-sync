@@ -199,8 +199,9 @@
           </div>
         </div>
 
+        <div id="submission-closed-msg" class="alert alert-warning py-2 px-3 mb-2 d-none" style="font-size:13px;"></div>
         <div class="d-flex gap-2 align-items-center">
-          <button type="button" class="btn btn-primary px-4" onclick="addDancer()">Submit</button>
+          <button type="button" class="btn btn-primary px-4" id="submit-btn" onclick="addDancer()">Submit</button>
           <button type="button" class="btn btn-outline-secondary" id="save-draft-btn">Save Draft</button>
           <span id="draft-saved-msg" class="text-success d-none" style="font-size:13px;">Draft saved.</span>
         </div>
@@ -399,6 +400,19 @@
             });
           }
 
+          function setSubmitClosed(closed, message) {
+            const btn = document.getElementById('submit-btn');
+            const msg = document.getElementById('submission-closed-msg');
+            if (closed) {
+              btn.disabled = true;
+              msg.textContent = message || 'Submissions are currently closed for this production.';
+              msg.classList.remove('d-none');
+            } else {
+              btn.disabled = false;
+              msg.classList.add('d-none');
+            }
+          }
+
           function prefillFromSubmission(sub) {
             const injuriesEl = document.getElementById('injuries');
             if (injuriesEl && sub.injuries) injuriesEl.value = sub.injuries;
@@ -472,6 +486,7 @@
               previewEl.style.display = 'none';
               renderDynamicFields([]);
               setAvailabilityUI('grid');
+              setSubmitClosed(false);
               hideDraftBanner();
               return;
             }
@@ -488,10 +503,19 @@
                     data.availability_mode === 'detailed' ? 'detailed' : 'grid',
                     { categories: data.detailed_categories || null, instructions: data.detailed_instructions || null }
                   );
+                  window._submissionsOpen = data.submissions_open_effective !== false;
+                  window._updatesOpen    = data.updates_open_effective    !== false;
                   if (urlCode) {
                     try {
                       const subRes = await fetch(`/api/submissions/me?join_code=${encodeURIComponent(code)}`);
-                      if (subRes.ok) prefillFromSubmission(await subRes.json());
+                      if (subRes.ok) {
+                        prefillFromSubmission(await subRes.json());
+                        setSubmitClosed(!window._updatesOpen,
+                          'Submission updates are currently closed for this production.');
+                      } else if (subRes.status === 404) {
+                        setSubmitClosed(!window._submissionsOpen,
+                          'Submissions are currently closed for this production.');
+                      }
                     } catch (e) {}
                   }
                 } else {
@@ -500,6 +524,7 @@
                     `<span style="color:#dc3545;">&#10007; That code doesn't match any active organization. Check with your director.</span>`;
                   renderDynamicFields([]);
                   setAvailabilityUI('grid');
+                  setSubmitClosed(false);
                 }
               } catch (e) { previewEl.style.display = 'none'; }
               checkForDraft(code);

@@ -32,7 +32,11 @@ async function submitToServer(data, isUpdate) {
     });
     const result = await response.json();
     if (!response.ok) {
-      alert('Error: ' + result.error);
+      if (result.submissionsClosed || result.updatesClosed) {
+        alert(result.error);
+      } else {
+        alert('Error: ' + result.error);
+      }
       return;
     }
     document.getElementById('successModalLabel').textContent = isUpdate ? 'Submission Updated!' : 'Submitted!';
@@ -118,6 +122,10 @@ async function addDancer() {
   try {
     const checkRes = await fetch(`/api/submissions/me?join_code=${encodeURIComponent(join_code)}`);
     if (checkRes.ok) {
+      if (window._updatesOpen === false) {
+        alert('Submission updates are currently closed for this production.');
+        return;
+      }
       const existing = await checkRes.json();
       document.getElementById('existing-org-name').textContent = existing.org_name + ': ' + existing.season_name;
       pendingSubmission = data;
@@ -126,5 +134,9 @@ async function addDancer() {
     }
   } catch (err) { /* no existing — proceed */ }
 
+  if (window._submissionsOpen === false) {
+    alert('Submissions are currently closed for this production.');
+    return;
+  }
   await submitToServer(data, false);
 }

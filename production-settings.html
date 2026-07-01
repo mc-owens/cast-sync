@@ -179,6 +179,43 @@
       </div>
     </div>
 
+    <div class="app-card mb-4" id="submission-window-card">
+      <h6 class="label-gold mb-3">Submission Window</h6>
+      <p class="text-muted mb-3" style="font-size:12px;">Control whether dancers can submit new audition forms or update existing ones. Set an optional deadline to close automatically, or toggle manually at any time.</p>
+
+      <div class="mb-4">
+        <div class="d-flex align-items-center gap-3 mb-1">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" role="switch" id="submissions-open-toggle" checked>
+            <label class="form-check-label fw-semibold" for="submissions-open-toggle" style="font-size:14px;">Accept New Submissions</label>
+          </div>
+          <span id="submissions-status-badge" class="badge rounded-pill" style="font-size:11px;"></span>
+        </div>
+        <div class="d-flex align-items-center gap-2 mt-2">
+          <label style="font-size:12px;color:#6b7280;white-space:nowrap;">Auto-close at:</label>
+          <input type="datetime-local" class="form-control form-control-sm" id="submissions-deadline-input" style="max-width:220px;">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="submissions-deadline-clear" style="font-size:12px;white-space:nowrap;">Clear</button>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <div class="d-flex align-items-center gap-3 mb-1">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" role="switch" id="updates-open-toggle" checked>
+            <label class="form-check-label fw-semibold" for="updates-open-toggle" style="font-size:14px;">Allow Submission Updates</label>
+          </div>
+          <span id="updates-status-badge" class="badge rounded-pill" style="font-size:11px;"></span>
+        </div>
+        <div class="d-flex align-items-center gap-2 mt-2">
+          <label style="font-size:12px;color:#6b7280;white-space:nowrap;">Auto-close at:</label>
+          <input type="datetime-local" class="form-control form-control-sm" id="updates-deadline-input" style="max-width:220px;">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="updates-deadline-clear" style="font-size:12px;white-space:nowrap;">Clear</button>
+        </div>
+      </div>
+
+      <span id="submission-window-saved-msg" class="text-success d-none" style="font-size:12px;">Saved.</span>
+    </div>
+
     <div class="app-card mb-4">
       <h6 class="label-gold mb-3">Student Access</h6>
       <div class="form-check mb-1">
@@ -273,6 +310,73 @@
             document.getElementById('my-schedule-toggle').checked = !!dates.my_schedule_enabled;
           }
         } catch (e) { /* leave fields blank, no big deal */ }
+
+        // ── Submission Window ──────────────────────────────────────────────────
+        function utcToLocal(iso) {
+          if (!iso) return '';
+          const d = new Date(iso);
+          const pad = n => String(n).padStart(2, '0');
+          return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+        function updateSubmissionBadge(badgeId, toggleId, deadlineInputId) {
+          const open     = document.getElementById(toggleId).checked;
+          const deadline = document.getElementById(deadlineInputId).value;
+          const badge    = document.getElementById(badgeId);
+          const deadlinePassed = deadline && new Date(deadline) <= new Date();
+          const effective = open && !deadlinePassed;
+          badge.textContent = effective ? 'Open' : 'Closed';
+          badge.style.background = effective ? '#198754' : '#dc3545';
+          badge.style.color = '#fff';
+        }
+        function refreshBadges() {
+          updateSubmissionBadge('submissions-status-badge', 'submissions-open-toggle', 'submissions-deadline-input');
+          updateSubmissionBadge('updates-status-badge',     'updates-open-toggle',     'updates-deadline-input');
+        }
+        async function saveSubmissionWindow() {
+          const savedEl = document.getElementById('submission-window-saved-msg');
+          const subDeadlineVal = document.getElementById('submissions-deadline-input').value;
+          const updDeadlineVal = document.getElementById('updates-deadline-input').value;
+          try {
+            const r = await fetch('/api/season/submission-settings', {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                submissions_open: document.getElementById('submissions-open-toggle').checked,
+                updates_open:     document.getElementById('updates-open-toggle').checked,
+                submissions_deadline: subDeadlineVal ? new Date(subDeadlineVal).toISOString() : null,
+                updates_deadline:     updDeadlineVal ? new Date(updDeadlineVal).toISOString() : null,
+              }),
+            });
+            if (!r.ok) { const d = await r.json(); alert(d.error || 'Could not save.'); return; }
+            refreshBadges();
+            savedEl.classList.remove('d-none');
+            setTimeout(() => savedEl.classList.add('d-none'), 2000);
+          } catch (e) { alert('Could not connect to server.'); }
+        }
+        try {
+          const swRes = await fetch('/api/season/submission-settings');
+          if (swRes.ok) {
+            const sw = await swRes.json();
+            document.getElementById('submissions-open-toggle').checked = sw.submissions_open;
+            document.getElementById('updates-open-toggle').checked     = sw.updates_open;
+            document.getElementById('submissions-deadline-input').value = utcToLocal(sw.submissions_deadline);
+            document.getElementById('updates-deadline-input').value     = utcToLocal(sw.updates_deadline);
+            refreshBadges();
+          }
+        } catch (e) { refreshBadges(); }
+        ['submissions-open-toggle','updates-open-toggle'].forEach(id => {
+          document.getElementById(id).addEventListener('change', saveSubmissionWindow);
+        });
+        ['submissions-deadline-input','updates-deadline-input'].forEach(id => {
+          document.getElementById(id).addEventListener('change', () => { saveSubmissionWindow(); refreshBadges(); });
+        });
+        document.getElementById('submissions-deadline-clear').addEventListener('click', () => {
+          document.getElementById('submissions-deadline-input').value = '';
+          saveSubmissionWindow();
+        });
+        document.getElementById('updates-deadline-clear').addEventListener('click', () => {
+          document.getElementById('updates-deadline-input').value = '';
+          saveSubmissionWindow();
+        });
 
         document.getElementById('my-schedule-toggle').addEventListener('change', async (e) => {
           const savedEl = document.getElementById('my-schedule-saved-msg');

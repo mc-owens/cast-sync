@@ -118,6 +118,12 @@ function generateJoinCode() {
   return crypto.randomBytes(3).toString('hex').toUpperCase(); // e.g. "A3F9C2"
 }
 
+function effectiveOpen(manualOpen, deadline) {
+  if (!manualOpen) return false;
+  if (deadline && new Date(deadline) <= new Date()) return false;
+  return true;
+}
+
 function timeToMinutes(t) {
   const [time, ampm] = t.trim().split(' ');
   const [h, m] = time.split(':').map(Number);
@@ -1007,23 +1013,79 @@ app.get('/api/orgs/preview', async (req, res) => {
     // Look up by season join code (production code)
     const result = await pool.query(
       `SELECT o.name AS org_name, s.name AS season_name, s.form_schema, s.availability_mode,
-              s.detailed_categories, s.detailed_instructions
+              s.detailed_categories, s.detailed_instructions,
+              s.submissions_open, s.updates_open, s.submissions_deadline, s.updates_deadline
        FROM seasons s JOIN orgs o ON o.id = s.org_id
        WHERE UPPER(s.join_code) = UPPER($1) LIMIT 1`,
       [join_code.trim()]
     );
     if (result.rows.length === 0) return res.json({ found: false });
+    const row = result.rows[0];
     res.json({
       found: true,
-      org_name: result.rows[0].org_name,
-      season_name: result.rows[0].season_name,
-      form_schema: result.rows[0].form_schema || [],
-      availability_mode: result.rows[0].availability_mode || 'grid',
-      detailed_categories: result.rows[0].detailed_categories || null,
-      detailed_instructions: result.rows[0].detailed_instructions || null,
+      org_name: row.org_name,
+      season_name: row.season_name,
+      form_schema: row.form_schema || [],
+      availability_mode: row.availability_mode || 'grid',
+      detailed_categories: row.detailed_categories || null,
+      detailed_instructions: row.detailed_instructions || null,
+      submissions_open_effective: effectiveOpen(row.submissions_open !== false, row.submissions_deadline),
+      updates_open_effective: effectiveOpen(row.updates_open !== false, row.updates_deadline),
     });
   } catch (err) {
     res.json({ found: false });
+  }
+});
+
+// GET /api/season/submission-settings — director reads current window settings
+app.get('/api/season/submission-settings', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      'SELECT submissions_open, updates_open, submissions_deadline, updates_deadline FROM seasons WHERE id = $1',
+      [seasonId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Season not found.' });
+    const row = result.rows[0];
+    // Lazy-flip toggles if their deadline has already passed
+    const now = new Date();
+    const flips = {};
+    if (row.submissions_open && row.submissions_deadline && new Date(row.submissions_deadline) <= now) flips.submissions_open = false;
+    if (row.updates_open    && row.updates_deadline    && new Date(row.updates_deadline)    <= now) flips.updates_open    = false;
+    if (Object.keys(flips).length > 0) {
+      const sets = Object.keys(flips).map((k, i) => `${k} = $${i + 2}`).join(', ');
+      await pool.query(`UPDATE seasons SET ${sets} WHERE id = $1`, [seasonId, ...Object.values(flips)]);
+      Object.assign(row, flips);
+    }
+    res.json({
+      submissions_open:    row.submissions_open    !== false,
+      updates_open:        row.updates_open        !== false,
+      submissions_deadline: row.submissions_deadline || null,
+      updates_deadline:    row.updates_deadline    || null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch submission settings.' });
+  }
+});
+
+// PATCH /api/season/submission-settings — director updates window settings
+app.patch('/api/season/submission-settings', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { submissions_open, updates_open, submissions_deadline, updates_deadline } = req.body;
+  if (typeof submissions_open !== 'boolean' || typeof updates_open !== 'boolean') {
+    return res.status(400).json({ error: 'submissions_open and updates_open must be booleans.' });
+  }
+  try {
+    await pool.query(
+      `UPDATE seasons SET submissions_open = $2, updates_open = $3,
+        submissions_deadline = $4, updates_deadline = $5 WHERE id = $1`,
+      [seasonId, submissions_open, updates_open, submissions_deadline || null, updates_deadline || null]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save submission settings.' });
   }
 });
 
@@ -1840,6 +1902,31 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
     );
 
     const isUpdate = existing.rows.length > 0;
+
+    // Submission window enforcement
+    const windowRow = await pool.query(
+      'SELECT submissions_open, updates_open, submissions_deadline, updates_deadline FROM seasons WHERE id = $1',
+      [season.id]
+    );
+    if (windowRow.rows.length > 0) {
+      const sw = windowRow.rows[0];
+      const now = new Date();
+      if (isUpdate) {
+        const deadlinePassed = sw.updates_deadline && new Date(sw.updates_deadline) <= now;
+        if (!sw.updates_open || deadlinePassed) {
+          if (deadlinePassed && sw.updates_open)
+            pool.query('UPDATE seasons SET updates_open = FALSE WHERE id = $1', [season.id]).catch(() => {});
+          return res.status(403).json({ error: 'Submission updates are currently closed for this production.', updatesClosed: true });
+        }
+      } else {
+        const deadlinePassed = sw.submissions_deadline && new Date(sw.submissions_deadline) <= now;
+        if (!sw.submissions_open || deadlinePassed) {
+          if (deadlinePassed && sw.submissions_open)
+            pool.query('UPDATE seasons SET submissions_open = FALSE WHERE id = $1', [season.id]).catch(() => {});
+          return res.status(403).json({ error: 'Submissions are currently closed for this production.', submissionsClosed: true });
+        }
+      }
+    }
 
     // Trial cap: new submissions only; block at 15 real (non-mock) auditionees per production
     if (!isUpdate) {
@@ -5778,6 +5865,17 @@ async function runMigrations() {
     `);
     console.log('Migration step 30 (special_events table) complete.');
   } catch (err) { console.error('Migration step 30 error:', err.message); }
+
+  // Step 31: Submission window controls -- per-production toggles and optional deadlines
+  try {
+    await pool.query(`
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS submissions_open BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS updates_open     BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS submissions_deadline TIMESTAMPTZ;
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS updates_deadline     TIMESTAMPTZ;
+    `);
+    console.log('Migration step 31 (submission window columns) complete.');
+  } catch (err) { console.error('Migration step 31 error:', err.message); }
 
   console.log('All migrations complete.');
 }
