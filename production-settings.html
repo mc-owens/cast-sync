@@ -115,6 +115,7 @@
               <option value="performance">Performance</option>
               <option value="warm_up">Warm Up</option>
               <option value="costume_fitting">Costume Fitting</option>
+              <option value="company_meeting">Company Meeting</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -356,6 +357,7 @@
           performance:     { label: 'Performance',       color: '#c0392b' },
           warm_up:         { label: 'Warm Up',           color: '#e67e22' },
           costume_fitting: { label: 'Costume Fitting',   color: '#2980b9' },
+          company_meeting: { label: 'Company Meeting',  color: '#0369a1' },
           other:           { label: 'Other',             color: '#7f8c8d' },
         };
 
@@ -484,6 +486,7 @@
 
         document.getElementById('add-special-event-btn').addEventListener('click', () => openSeForm(null));
         document.getElementById('import-schedule-btn').addEventListener('click', () => { window.location.href = 'import-schedule.html'; });
+        document.getElementById('bulk-create-btn').addEventListener('click', () => { window.location.href = 'bulk-create.html'; });
         document.getElementById('se-cancel-btn').addEventListener('click', closeSeForm);
 
         document.getElementById('se-save-btn').addEventListener('click', async () => {

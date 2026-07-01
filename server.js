@@ -4015,7 +4015,7 @@ app.delete('/api/season/performance-dates/:id', requireAuth('master'), async (re
 
 // ── Special Events ────────────────────────────────────────────────────────────
 
-const VALID_EVENT_TYPES   = new Set(['tech','dress','spacing','photo_dress','performance','warm_up','costume_fitting','other']);
+const VALID_EVENT_TYPES   = new Set(['tech','dress','spacing','photo_dress','performance','warm_up','costume_fitting','company_meeting','other']);
 const VALID_EVENT_APPLIES = new Set(['full_cast','selected_pieces','staff_only']);
 
 app.get('/api/season/special-events', requireAuth('master'), async (req, res) => {

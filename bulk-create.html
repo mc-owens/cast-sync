@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bulk Create Special Events | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="app-shell.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <style>
+    .type-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: border-color .12s, background .12s;
+      user-select: none;
+    }
+    .type-option:hover { border-color: #9ca3af; }
+    .type-option.selected {
+      border-color: #111;
+      background: #111;
+      color: #fff;
+    }
+    .type-option input[type="radio"] { display: none; }
+    .type-dot {
+      width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+    }
+    .step-divider {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 20px 0;
+    }
+    .preview-slot {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .preview-slot:last-child { border-bottom: none; }
+    .slot-piece-name { font-size: 14px; font-weight: 600; min-width: 0; flex: 1; }
+    .slot-time { font-size: 13px; color: #374151; white-space: nowrap; }
+    .slot-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .slot-btn {
+      background: none; border: none; padding: 2px 6px; cursor: pointer;
+      color: #9ca3af; font-size: 13px; border-radius: 4px; line-height: 1.4;
+    }
+    .slot-btn:hover { color: #374151; background: #f3f4f6; }
+    .slot-btn.danger:hover { color: #dc2626; }
+    .slot-edit-row {
+      display: flex; align-items: center; gap: 8px; padding: 8px 0;
+      flex-wrap: wrap; border-bottom: 1px solid #f0f0f0;
+    }
+    .slot-edit-row:last-child { border-bottom: none; }
+  </style>
+</head>
+<body style="visibility:hidden">
+
+  <div id="app-shell-root"></div>
+  <script src="app-shell.js"></script>
+
+  <div class="app-main">
+
+  <div id="trial-banner" style="display:none;background:#fefce8;border-bottom:1px solid #fde68a;">
+    <div class="container-fluid px-4 py-2 d-flex align-items-center justify-content-between gap-3">
+      <span style="font-size:13px;color:#92400e;" id="trial-banner-text"></span>
+      <div class="d-flex gap-2 flex-shrink-0">
+        <a href="plan-select.html" class="btn btn-sm btn-warning" style="font-size:12px;font-weight:600;">Upgrade</a>
+        <button class="btn btn-sm btn-link p-0" style="font-size:12px;color:#92400e;text-decoration:none;" id="trial-banner-dismiss">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container-fluid mt-4 px-4" style="max-width:680px;">
+
+    <div class="mb-3">
+      <a href="production-settings.html" style="font-size:13px;color:#6b7280;text-decoration:none;">&larr; Production Settings</a>
+    </div>
+    <div class="mb-4">
+      <h5 class="mb-1 fw-semibold">Bulk Create Special Events</h5>
+      <p class="text-muted mb-0" style="font-size:13px;">Schedule an event type for multiple pieces at once.</p>
+    </div>
+
+    <!-- Step 1: Event Type -->
+    <div class="app-card mb-3">
+      <h6 class="label-gold mb-3">Step 1 - Event Type</h6>
+      <div id="type-grid" class="d-flex flex-wrap gap-2"></div>
+    </div>
+
+    <!-- Step 2: Scope -->
+    <div class="app-card mb-3">
+      <h6 class="label-gold mb-3">Step 2 - Scope</h6>
+      <div class="d-flex flex-column gap-2 mb-3">
+        <label class="d-flex align-items-center gap-2" style="cursor:pointer;font-size:14px;">
+          <input type="radio" name="bc-scope" value="full_cast" checked> Full Cast
+        </label>
+        <label class="d-flex align-items-center gap-2" style="cursor:pointer;font-size:14px;">
+          <input type="radio" name="bc-scope" value="selected_pieces"> Selected Pieces
+        </label>
+        <label class="d-flex align-items-center gap-2" style="cursor:pointer;font-size:14px;">
+          <input type="radio" name="bc-scope" value="staff_only"> Production Staff Only
+        </label>
+      </div>
+
+      <div id="pieces-wrap" style="display:none;">
+        <div class="mb-1" style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#888;">Select Pieces</div>
+        <div id="pieces-list" style="max-height:180px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px;padding:8px;"></div>
+      </div>
+    </div>
+
+    <!-- Step 3: Scheduling -->
+    <div class="app-card mb-3">
+      <h6 class="label-gold mb-3">Step 3 - Scheduling</h6>
+
+      <div class="row g-2 mb-3">
+        <div class="col-sm-5">
+          <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Date</label>
+          <input type="date" class="form-control form-control-sm" id="bc-date">
+        </div>
+        <div class="col-sm-4">
+          <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Start Time</label>
+          <input type="time" class="form-control form-control-sm" id="bc-start">
+        </div>
+      </div>
+
+      <!-- Full Cast / Staff Only: single duration -->
+      <div id="bc-simple">
+        <div class="row g-2 mb-2">
+          <div class="col-sm-4">
+            <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Duration (minutes)</label>
+            <input type="number" class="form-control form-control-sm" id="bc-duration" value="60" min="1">
+          </div>
+        </div>
+      </div>
+
+      <!-- Selected Pieces: scheduling method -->
+      <div id="bc-piece-sched" style="display:none;">
+        <div class="mb-3">
+          <div class="mb-1" style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#888;">Scheduling Method</div>
+          <label class="d-flex align-items-center gap-2 mb-2" style="cursor:pointer;font-size:14px;">
+            <input type="radio" name="bc-method" value="same" checked> Same duration for every selected piece
+          </label>
+          <label class="d-flex align-items-center gap-2" style="cursor:pointer;font-size:14px;">
+            <input type="radio" name="bc-method" value="custom"> Custom duration for each selected piece
+          </label>
+        </div>
+
+        <!-- Same method inputs -->
+        <div id="bc-same-inputs">
+          <div class="row g-2 mb-2">
+            <div class="col-sm-4">
+              <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Minutes per Piece</label>
+              <input type="number" class="form-control form-control-sm" id="bc-mpp" value="30" min="1">
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Break Between Pieces</label>
+              <div class="input-group input-group-sm">
+                <input type="number" class="form-control form-control-sm" id="bc-break-same" value="5" min="0">
+                <span class="input-group-text" style="font-size:12px;">min</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Custom method inputs -->
+        <div id="bc-custom-inputs" style="display:none;">
+          <div class="mb-2">
+            <div class="mb-1" style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#888;">Duration per Piece</div>
+            <div id="bc-custom-list"></div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-sm-4">
+              <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Break Between Pieces</label>
+              <div class="input-group input-group-sm">
+                <input type="number" class="form-control form-control-sm" id="bc-break-custom" value="5" min="0">
+                <span class="input-group-text" style="font-size:12px;">min</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-2">
+        <label class="form-label mb-1" style="font-size:12px;font-weight:600;">Location</label>
+        <input type="text" class="form-control form-control-sm" id="bc-location" placeholder="e.g. Main Stage">
+      </div>
+
+      <div class="form-check mt-2">
+        <input class="form-check-input" type="checkbox" id="bc-visible" checked>
+        <label class="form-check-label" for="bc-visible" style="font-size:13px;">Show to dancers on My Schedule</label>
+      </div>
+    </div>
+
+    <div id="config-error" style="display:none;font-size:13px;color:#dc2626;margin-bottom:12px;"></div>
+    <div class="d-flex justify-content-end mb-4">
+      <button id="preview-btn" class="btn btn-dark px-4">Preview</button>
+    </div>
+
+    <!-- Step 4: Preview -->
+    <div id="preview-section" style="display:none;">
+      <div class="app-card mb-3">
+        <h6 class="label-gold mb-3">Step 4 - Preview</h6>
+        <div id="preview-slots-list"></div>
+        <div id="preview-empty" style="display:none;font-size:13px;color:#9ca3af;">No events to preview. Add pieces or adjust settings above.</div>
+      </div>
+      <div id="generate-error" style="display:none;font-size:13px;color:#dc2626;margin-bottom:10px;text-align:right;'"></div>
+      <div class="d-flex justify-content-between align-items-center mb-5">
+        <button id="back-btn" class="btn btn-sm btn-outline-secondary">Edit Schedule</button>
+        <button id="generate-btn" class="btn btn-gold px-4" style="font-size:14px;font-weight:600;">Generate Events</button>
+      </div>
+    </div>
+
+  </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function minToHHMM(min) {
+      const h = Math.floor(min / 60) % 24;
+      const m = min % 60;
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    }
+
+    function fmt24h(hhmm) {
+      if (!hhmm) return '';
+      const [h, m] = hhmm.split(':').map(Number);
+      return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${h >= 12 ? 'PM' : 'AM'}`;
+    }
+
+    function timeToMin(t) {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    }
+
+    const EVENT_META = {
+      tech:             { label: 'Tech Rehearsal',    color: '#2c3e50' },
+      dress:            { label: 'Dress Rehearsal',   color: '#8e44ad' },
+      spacing:          { label: 'Spacing Rehearsal', color: '#16a085' },
+      photo_dress:      { label: 'Photo Dress',       color: '#e91e63' },
+      performance:      { label: 'Performance',       color: '#c0392b' },
+      warm_up:          { label: 'Warm Up',           color: '#e67e22' },
+      costume_fitting:  { label: 'Costume Fitting',   color: '#2980b9' },
+      company_meeting:  { label: 'Company Meeting',   color: '#0369a1' },
+      other:            { label: 'Other',             color: '#7f8c8d' },
+    };
+
+    let allPieces = [];
+    let selectedType = null;
+    let previewSlots = [];
+    let globalStartMin = 0;
+    let globalDate = '';
+    let editingIdx = null;
+
+    // ── Type grid ──────────────────────────────────────────────────────────────
+
+    function renderTypeGrid() {
+      const grid = document.getElementById('type-grid');
+      grid.innerHTML = Object.entries(EVENT_META).map(([val, m]) => `
+        <label class="type-option${selectedType === val ? ' selected' : ''}" data-val="${val}">
+          <input type="radio" name="bc-type" value="${val}">
+          <span class="type-dot" style="background:${m.color};${selectedType === val ? 'background:#fff;' : ''}"></span>
+          ${m.label}
+        </label>`).join('');
+      grid.querySelectorAll('.type-option').forEach(el => {
+        el.addEventListener('click', () => {
+          selectedType = el.dataset.val;
+          renderTypeGrid();
+        });
+      });
+    }
+
+    // ── Pieces ─────────────────────────────────────────────────────────────────
+
+    function renderPiecesList() {
+      const container = document.getElementById('pieces-list');
+      if (allPieces.length === 0) {
+        container.innerHTML = '<span style="font-size:12px;color:#888;">No pieces in this production yet.</span>';
+        return;
+      }
+      container.innerHTML = allPieces.map(p => `
+        <div class="form-check form-check-sm">
+          <input class="form-check-input piece-check" type="checkbox" id="piece-${p.id}" value="${p.id}" checked>
+          <label class="form-check-label" for="piece-${p.id}" style="font-size:13px;">${escapeHtml(p.name)}</label>
+        </div>`).join('');
+      container.querySelectorAll('.piece-check').forEach(cb => {
+        cb.addEventListener('change', updateCustomPiecesList);
+      });
+    }
+
+    function getSelectedPieces() {
+      return allPieces.filter(p => {
+        const cb = document.getElementById(`piece-${p.id}`);
+        return cb && cb.checked;
+      });
+    }
+
+    function updateCustomPiecesList() {
+      const selected = getSelectedPieces();
+      const container = document.getElementById('bc-custom-list');
+      container.innerHTML = selected.map(p => `
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name)}</span>
+          <input type="number" class="form-control form-control-sm" style="width:72px;" id="bc-dur-${p.id}" value="30" min="1">
+          <span style="font-size:12px;color:#6b7280;">min</span>
+        </div>`).join('');
+    }
+
+    // ── Scope / method toggles ─────────────────────────────────────────────────
+
+    document.querySelectorAll('[name="bc-scope"]').forEach(r => {
+      r.addEventListener('change', () => {
+        const scope = document.querySelector('[name="bc-scope"]:checked').value;
+        document.getElementById('pieces-wrap').style.display = scope === 'selected_pieces' ? '' : 'none';
+        document.getElementById('bc-simple').style.display = scope !== 'selected_pieces' ? '' : 'none';
+        document.getElementById('bc-piece-sched').style.display = scope === 'selected_pieces' ? '' : 'none';
+      });
+    });
+
+    document.querySelectorAll('[name="bc-method"]').forEach(r => {
+      r.addEventListener('change', () => {
+        const method = document.querySelector('[name="bc-method"]:checked').value;
+        document.getElementById('bc-same-inputs').style.display = method === 'same' ? '' : 'none';
+        document.getElementById('bc-custom-inputs').style.display = method === 'custom' ? '' : 'none';
+        if (method === 'custom') updateCustomPiecesList();
+      });
+    });
+
+    // ── Preview generation ─────────────────────────────────────────────────────
+
+    function getBreak() {
+      const scope  = document.querySelector('[name="bc-scope"]:checked').value;
+      const method = scope === 'selected_pieces' ? document.querySelector('[name="bc-method"]:checked')?.value : null;
+      const id = method === 'custom' ? 'bc-break-custom' : 'bc-break-same';
+      return parseInt(document.getElementById(id)?.value) || 0;
+    }
+
+    function recalcFromStart() {
+      const breakMin = getBreak();
+      let cursor = globalStartMin;
+      previewSlots.forEach(slot => {
+        slot.startMin = cursor;
+        slot.endMin   = cursor + slot.durationMinutes;
+        cursor        = slot.endMin + breakMin;
+      });
+    }
+
+    document.getElementById('preview-btn').addEventListener('click', () => {
+      const errEl = document.getElementById('config-error');
+      errEl.style.display = 'none';
+
+      if (!selectedType) { errEl.textContent = 'Please select an event type.'; errEl.style.display = ''; return; }
+
+      const date  = document.getElementById('bc-date').value;
+      const start = document.getElementById('bc-start').value;
+      if (!date)  { errEl.textContent = 'Please enter a date.'; errEl.style.display = ''; return; }
+      if (!start) { errEl.textContent = 'Please enter a start time.'; errEl.style.display = ''; return; }
+
+      const scope  = document.querySelector('[name="bc-scope"]:checked').value;
+      const startMin = timeToMin(start);
+      globalStartMin = startMin;
+      globalDate     = date;
+      editingIdx     = null;
+
+      if (scope !== 'selected_pieces') {
+        const dur = parseInt(document.getElementById('bc-duration').value) || 60;
+        const name = scope === 'staff_only' ? 'Production Staff' : 'Full Cast';
+        previewSlots = [{ pieceId: null, pieceName: name, durationMinutes: dur, startMin, endMin: startMin + dur }];
+      } else {
+        const selected = getSelectedPieces();
+        if (selected.length === 0) { errEl.textContent = 'Please select at least one piece.'; errEl.style.display = ''; return; }
+
+        const method   = document.querySelector('[name="bc-method"]:checked').value;
+        const breakMin = getBreak();
+        let cursor     = startMin;
+
+        if (method === 'same') {
+          const mpp = parseInt(document.getElementById('bc-mpp').value) || 30;
+          previewSlots = selected.map(p => {
+            const s = cursor;
+            const slot = { pieceId: p.id, pieceName: p.name, durationMinutes: mpp, startMin: s, endMin: s + mpp };
+            cursor = s + mpp + breakMin;
+            return slot;
+          });
+        } else {
+          previewSlots = selected.map(p => {
+            const dur  = parseInt(document.getElementById(`bc-dur-${p.id}`)?.value) || 30;
+            const s    = cursor;
+            const slot = { pieceId: p.id, pieceName: p.name, durationMinutes: dur, startMin: s, endMin: s + dur };
+            cursor = s + dur + breakMin;
+            return slot;
+          });
+        }
+      }
+
+      renderPreview();
+      document.getElementById('preview-section').style.display = '';
+      document.getElementById('preview-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    // ── Preview rendering ──────────────────────────────────────────────────────
+
+    function renderPreview() {
+      const container = document.getElementById('preview-slots-list');
+      const emptyEl   = document.getElementById('preview-empty');
+
+      if (previewSlots.length === 0) {
+        container.innerHTML = '';
+        emptyEl.style.display = '';
+        document.getElementById('generate-btn').disabled = true;
+        return;
+      }
+      emptyEl.style.display = 'none';
+      document.getElementById('generate-btn').disabled = false;
+
+      container.innerHTML = previewSlots.map((slot, idx) => {
+        if (editingIdx === idx) return buildEditRow(slot, idx);
+        return buildSlotRow(slot, idx);
+      }).join('');
+
+      container.querySelectorAll('[data-slot-action]').forEach(el => {
+        el.addEventListener('click', () => handleSlotAction(el));
+      });
+      container.querySelectorAll('[data-slot-save]').forEach(el => {
+        el.addEventListener('click', () => saveSlotEdit(parseInt(el.dataset.slotSave)));
+      });
+      container.querySelectorAll('[data-slot-cancel]').forEach(el => {
+        el.addEventListener('click', () => { editingIdx = null; renderPreview(); });
+      });
+    }
+
+    function buildSlotRow(slot, idx) {
+      const upBtn   = idx > 0 ? `<button class="slot-btn" data-slot-action="up" data-idx="${idx}" title="Move up">&#8593;</button>` : '<span style="width:24px;display:inline-block;"></span>';
+      const downBtn = idx < previewSlots.length - 1 ? `<button class="slot-btn" data-slot-action="down" data-idx="${idx}" title="Move down">&#8595;</button>` : '<span style="width:24px;display:inline-block;"></span>';
+      return `<div class="preview-slot">
+        <div class="slot-piece-name">${escapeHtml(slot.pieceName)}</div>
+        <div class="slot-time">${fmt24h(minToHHMM(slot.startMin))} &ndash; ${fmt24h(minToHHMM(slot.endMin))}</div>
+        <div class="slot-actions">
+          ${upBtn}${downBtn}
+          <button class="slot-btn" data-slot-action="edit" data-idx="${idx}" title="Edit">Edit</button>
+          <button class="slot-btn danger" data-slot-action="delete" data-idx="${idx}" title="Remove">&times;</button>
+        </div>
+      </div>`;
+    }
+
+    function buildEditRow(slot, idx) {
+      const startVal = minToHHMM(slot.startMin);
+      const endVal   = minToHHMM(slot.endMin);
+      return `<div class="slot-edit-row">
+        <span style="font-size:14px;font-weight:600;flex:1;min-width:120px;">${escapeHtml(slot.pieceName)}</span>
+        <div class="d-flex align-items-center gap-1">
+          <input type="time" class="form-control form-control-sm" id="edit-start-${idx}" value="${startVal}" style="width:120px;">
+          <span style="font-size:13px;color:#6b7280;">to</span>
+          <input type="time" class="form-control form-control-sm" id="edit-end-${idx}" value="${endVal}" style="width:120px;">
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-dark" data-slot-save="${idx}">Save</button>
+          <button class="btn btn-sm btn-outline-secondary" data-slot-cancel="${idx}">Cancel</button>
+        </div>
+      </div>`;
+    }
+
+    function handleSlotAction(el) {
+      const action = el.dataset.slotAction;
+      const idx    = parseInt(el.dataset.idx);
+      const breakMin = getBreak();
+
+      if (action === 'edit') {
+        editingIdx = idx;
+        renderPreview();
+      }
+      if (action === 'delete') {
+        previewSlots.splice(idx, 1);
+        editingIdx = null;
+        if (idx < previewSlots.length) recalcFrom(idx, breakMin);
+        renderPreview();
+      }
+      if (action === 'up' && idx > 0) {
+        [previewSlots[idx], previewSlots[idx - 1]] = [previewSlots[idx - 1], previewSlots[idx]];
+        editingIdx = null;
+        recalcFromStart();
+        renderPreview();
+      }
+      if (action === 'down' && idx < previewSlots.length - 1) {
+        [previewSlots[idx], previewSlots[idx + 1]] = [previewSlots[idx + 1], previewSlots[idx]];
+        editingIdx = null;
+        recalcFromStart();
+        renderPreview();
+      }
+    }
+
+    function saveSlotEdit(idx) {
+      const startInput = document.getElementById(`edit-start-${idx}`);
+      const endInput   = document.getElementById(`edit-end-${idx}`);
+      if (!startInput || !endInput || !startInput.value || !endInput.value) {
+        editingIdx = null; renderPreview(); return;
+      }
+      const newStart = timeToMin(startInput.value);
+      const newEnd   = timeToMin(endInput.value);
+      const dur      = Math.max(newEnd - newStart, 1);
+      previewSlots[idx].startMin         = newStart;
+      previewSlots[idx].endMin           = newEnd;
+      previewSlots[idx].durationMinutes  = dur;
+      editingIdx = null;
+      const breakMin = getBreak();
+      recalcFrom(idx + 1, breakMin);
+      renderPreview();
+    }
+
+    function recalcFrom(fromIdx, breakMin) {
+      for (let i = fromIdx; i < previewSlots.length; i++) {
+        const prev = previewSlots[i - 1];
+        previewSlots[i].startMin = prev.endMin + breakMin;
+        previewSlots[i].endMin   = previewSlots[i].startMin + previewSlots[i].durationMinutes;
+      }
+    }
+
+    // ── Generate Events ────────────────────────────────────────────────────────
+
+    document.getElementById('back-btn').addEventListener('click', () => {
+      document.getElementById('preview-section').style.display = 'none';
+      editingIdx = null;
+    });
+
+    document.getElementById('generate-btn').addEventListener('click', async () => {
+      if (previewSlots.length === 0) return;
+      const btn = document.getElementById('generate-btn');
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+
+      const scope    = document.querySelector('[name="bc-scope"]:checked').value;
+      const location = document.getElementById('bc-location').value.trim() || null;
+      const visible  = document.getElementById('bc-visible').checked;
+      const meta     = EVENT_META[selectedType] || EVENT_META.other;
+
+      const events = previewSlots.map(slot => ({
+        event_type:        selectedType,
+        title:             meta.label,
+        date:              globalDate,
+        start_time:        minToHHMM(slot.startMin),
+        end_time:          minToHHMM(slot.endMin),
+        location,
+        applies_to:        (scope === 'selected_pieces' && slot.pieceId) ? 'selected_pieces' : scope,
+        piece_ids:         slot.pieceId ? [slot.pieceId] : [],
+        visible_to_dancers: visible,
+        notes:             null,
+      }));
+
+      try {
+        const res  = await fetch('/api/season/special-events/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ events }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not create events.');
+
+        document.querySelector('.app-main > .container-fluid').innerHTML = `
+          <div class="mt-5 text-center py-5">
+            <div style="font-size:2.5rem;color:#16a34a;margin-bottom:12px;">&#10003;</div>
+            <div style="font-size:18px;font-weight:700;margin-bottom:6px;">${data.created} event${data.created !== 1 ? 's' : ''} created.</div>
+            <p class="text-muted" style="font-size:13px;margin-bottom:20px;">Your events have been added to this production.</p>
+            <a href="production-settings.html" class="btn btn-dark">Back to Production Settings</a>
+          </div>`;
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Generate Events';
+        const errEl = document.getElementById('generate-error');
+        errEl.textContent = err.message;
+        errEl.style.display = '';
+        setTimeout(() => { errEl.style.display = 'none'; }, 5000);
+      }
+    });
+
+    // ── Auth + init ────────────────────────────────────────────────────────────
+
+    (async () => {
+      try {
+        const authRes = await fetch('/api/auth/me');
+        if (!authRes.ok) { window.location.href = 'login.html'; return; }
+        const user = await authRes.json();
+        if (user.role !== 'master' && user.mode !== 'director') { window.location.href = 'login.html'; return; }
+
+        const piecesRes = await fetch('/api/pieces');
+        allPieces = piecesRes.ok ? await piecesRes.json() : [];
+
+        renderTypeGrid();
+        renderPiecesList();
+        updateCustomPiecesList();
+
+        document.body.style.visibility = '';
+
+        try {
+          const subRes = await fetch('/api/subscription');
+          if (subRes.ok) {
+            const sub = await subRes.json();
+            if (sub.isTrial) {
+              const days = sub.daysRemaining;
+              document.getElementById('trial-banner-text').textContent =
+                days <= 1 ? 'Explore mode: your trial expires today.'
+                          : `Explore mode: ${days} day${days === 1 ? '' : 's'} left. Upgrade any time.`;
+              document.getElementById('trial-banner').style.display = '';
+              document.getElementById('trial-banner-dismiss').addEventListener('click', () => {
+                document.getElementById('trial-banner').style.display = 'none';
+              });
+            }
+          }
+        } catch (_) {}
+      } catch (err) {
+        window.location.href = 'login.html';
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -885,12 +885,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     photo_dress:     '#e91e63',
     performance:     '#c0392b',
     warm_up:         '#e67e22',
-    costume_fitting: '#2980b9',
-    other:           '#7f8c8d',
+    costume_fitting:  '#2980b9',
+    company_meeting:  '#0369a1',
+    other:            '#7f8c8d',
   };
   const EVENT_LABELS = {
     tech: 'Tech', dress: 'Dress', spacing: 'Spacing', photo_dress: 'Photo Dress',
-    performance: 'Performance', warm_up: 'Warm Up', costume_fitting: 'Costume Fitting', other: 'Other',
+    performance: 'Performance', warm_up: 'Warm Up', costume_fitting: 'Costume Fitting',
+    company_meeting: 'Company Meeting', other: 'Other',
   };
 
   function hhmm24ToTopPx(str) {
