@@ -298,17 +298,17 @@ body {
 }
 .se-band-gutter {
   background: #fafafa;
-  border-right: 1px solid var(--border);
   padding: 5px 0;
 }
 .se-band-col {
-  border-right: 1px solid #f0f0f0;
+  border-left: 1px solid #f0f0f0;
   padding: 4px 3px;
   display: flex;
   flex-direction: column;
   gap: 3px;
+  min-width: 0;
 }
-.se-band-col:last-child { border-right: none; }
+.se-band-col:nth-child(2) { border-left-color: var(--border); }
 .se-chip {
   border-radius: 5px;
   padding: 4px 7px;
