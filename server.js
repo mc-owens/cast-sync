@@ -1959,7 +1959,8 @@ app.post('/api/submissions', requireAuth('auditionee'), async (req, res) => {
     const customResponsesJson = JSON.stringify(custom_responses || {});
     if (isUpdate) {
       await pool.query(
-        `UPDATE submissions SET injuries=$1, absences=$2, availability=$3, audition_number=$4, custom_responses=$5
+        `UPDATE submissions SET injuries=$1, absences=$2, availability=$3, audition_number=$4, custom_responses=$5,
+              updated_at=NOW()
          WHERE user_id=$6 AND season_id=$7`,
         [injuries||null, absences||null, JSON.stringify(availability||[]), audNum, customResponsesJson, req.session.userId, season.id]
       );
@@ -2026,7 +2027,7 @@ app.get('/api/submissions/me', requireAuth('auditionee'), async (req, res) => {
 app.get('/api/my-submissions', requireAuth('auditionee'), async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT sub.created_at, o.name AS org_name, s.join_code, s.name AS season_name
+      `SELECT sub.created_at, sub.updated_at, o.name AS org_name, s.join_code, s.name AS season_name
        FROM submissions sub
        JOIN orgs o ON o.id = sub.org_id
        JOIN seasons s ON s.id = sub.season_id
@@ -5876,6 +5877,12 @@ async function runMigrations() {
     `);
     console.log('Migration step 31 (submission window columns) complete.');
   } catch (err) { console.error('Migration step 31 error:', err.message); }
+
+  // Step 32: Track when a submission was last updated
+  try {
+    await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;`);
+    console.log('Migration step 32 (submissions.updated_at) complete.');
+  } catch (err) { console.error('Migration step 32 error:', err.message); }
 
   console.log('All migrations complete.');
 }
