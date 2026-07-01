@@ -465,13 +465,22 @@
           if ((ev ? ev.applies_to : 'full_cast') === 'selected_pieces') {
             loadSePieces().then(() => renderSePiecesList(ev ? ev.piece_ids || [] : []));
           }
+          // For editing, move the form inline right after the row being edited
+          if (ev) {
+            const rowEl = document.querySelector(`[data-se-row="${ev.id}"]`);
+            if (rowEl) rowEl.insertAdjacentElement('afterend', form);
+          }
           form.classList.remove('d-none');
           document.getElementById('add-special-event-btn').classList.add('d-none');
+          form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
         function closeSeForm() {
-          document.getElementById('special-event-form').classList.add('d-none');
+          const form = document.getElementById('special-event-form');
+          form.classList.add('d-none');
           document.getElementById('add-special-event-btn').classList.remove('d-none');
+          // Return form to its default position (after the list, before the buttons)
+          document.getElementById('special-events-list').insertAdjacentElement('afterend', form);
           seEditingId = null;
         }
 
