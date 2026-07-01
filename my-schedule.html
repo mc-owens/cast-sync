@@ -158,7 +158,39 @@
       return a < d && c < b;
     }
 
+    const SE_COLORS = {
+      tech:'#2c3e50', dress:'#8e44ad', spacing:'#16a085', photo_dress:'#e91e63',
+      performance:'#c0392b', warm_up:'#e67e22', costume_fitting:'#2980b9', other:'#7f8c8d',
+    };
+    const SE_LABELS = {
+      tech:'Tech Rehearsal', dress:'Dress Rehearsal', spacing:'Spacing Rehearsal',
+      photo_dress:'Photo Dress', performance:'Performance', warm_up:'Warm Up',
+      costume_fitting:'Costume Fitting', other:'Other',
+    };
+    function fmt24h(str) {
+      if (!str) return '';
+      const [h, m] = str.split(':').map(Number);
+      const ap = h >= 12 ? 'PM' : 'AM';
+      return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${ap}`;
+    }
+
     function renderCard(r, isConflict, conflictNote) {
+      if (r._isSpecialEvent) {
+        const color  = SE_COLORS[r.event_type] || SE_COLORS.other;
+        const label  = SE_LABELS[r.event_type] || 'Event';
+        const times  = [fmt24h(r.start_time), fmt24h(r.end_time)].filter(Boolean).join(' - ');
+        return `
+          <div class="r-card">
+            <div class="r-bar" style="background:${escapeHtml(color)};"></div>
+            <div class="r-body">
+              <div class="r-prod" style="color:${escapeHtml(color)};font-weight:700;">${escapeHtml(label)}</div>
+              <div class="r-piece">${escapeHtml(r.title)}</div>
+              ${times ? `<div class="r-time">${escapeHtml(times)}</div>` : ''}
+              ${r.location ? `<div class="r-room">${escapeHtml(r.location)}</div>` : ''}
+              ${r.notes    ? `<div class="r-note">${escapeHtml(r.notes)}</div>`    : ''}
+            </div>
+          </div>`;
+      }
       const color = r.piece.color || '#ccc';
       const room  = [r.room_name, r.piece.choreographer_name].filter(Boolean).join(' · ');
       return `
@@ -181,7 +213,7 @@
         : `<div class="week-heading"><span class="week-heading-range">${label}</span></div>`;
 
       if (weekRehearsals.length === 0) {
-        return heading + `<p class="week-empty">No rehearsals scheduled for you this week.</p>`;
+        return heading + `<p class="week-empty">No rehearsals or events scheduled for you this week.</p>`;
       }
 
       const cards = weekRehearsals.map(({ r, idx }) =>
@@ -224,8 +256,11 @@
         }
         document.body.style.visibility = 'visible';
 
-        const schedRes = await fetch('/api/my-schedule');
-        const data     = await schedRes.json();
+        const [schedRes, seRes] = await Promise.all([
+          fetch('/api/my-schedule'),
+          fetch('/api/my-schedule/special-events'),
+        ]);
+        const data = await schedRes.json();
         document.getElementById('schedule-loading').style.display = 'none';
 
         if (!schedRes.ok || !data.available) {
@@ -244,10 +279,23 @@
             });
           }
         }
+
+        // ── Merge in special events ────────────────────────────────────────
+        const specialEvents = seRes.ok ? await seRes.json() : [];
+        specialEvents.forEach(ev => {
+          flat.push({ ...ev, _isSpecialEvent: true, start_time: ev.start_time || null, end_time: ev.end_time || null });
+        });
+
+        function parse24hMinutes(t) {
+          if (!t) return null;
+          const [h, m] = t.split(':').map(Number);
+          return h * 60 + (m || 0);
+        }
+
         flat.sort((a, b) => {
           if (a.date !== b.date) return a.date.localeCompare(b.date);
-          const ta = parseMinutes(a.start_time) ?? 0;
-          const tb = parseMinutes(b.start_time) ?? 0;
+          const ta = a._isSpecialEvent ? (parse24hMinutes(a.start_time) ?? 0) : (parseMinutes(a.start_time) ?? 0);
+          const tb = b._isSpecialEvent ? (parse24hMinutes(b.start_time) ?? 0) : (parseMinutes(b.start_time) ?? 0);
           return ta - tb;
         });
 
@@ -266,6 +314,7 @@
             for (let y = x + 1; y < items.length; y++) {
               const { r: a, i: ai } = items[x];
               const { r: b, i: bi } = items[y];
+              if (a._isSpecialEvent || b._isSpecialEvent) continue;
               if (!timesOverlap(a.start_time, a.end_time, b.start_time, b.end_time)) continue;
               conflictIndices.add(ai);
               conflictIndices.add(bi);
@@ -298,7 +347,7 @@
 
         // ── Next Rehearsal card ────────────────────────────────────────────
         const nextEl = document.getElementById('next-section');
-        const upcoming = flat.filter(r => r.date >= todayIso);
+        const upcoming = flat.filter(r => r.date >= todayIso && !r._isSpecialEvent);
         if (upcoming.length === 0) {
           nextEl.innerHTML = `<p class="no-next-msg">No upcoming rehearsals scheduled.</p>`;
         } else {

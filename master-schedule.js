@@ -876,6 +876,71 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   window.addEventListener('weekChanged', applyMilestoneDateMarkers);
 
+  // ── Special Event Blocks ──────────────────────────────────────────────────────
+
+  const EVENT_COLORS = {
+    tech:            '#2c3e50',
+    dress:           '#8e44ad',
+    spacing:         '#16a085',
+    photo_dress:     '#e91e63',
+    performance:     '#c0392b',
+    warm_up:         '#e67e22',
+    costume_fitting: '#2980b9',
+    other:           '#7f8c8d',
+  };
+  const EVENT_LABELS = {
+    tech: 'Tech', dress: 'Dress', spacing: 'Spacing', photo_dress: 'Photo Dress',
+    performance: 'Performance', warm_up: 'Warm Up', costume_fitting: 'Costume Fitting', other: 'Other',
+  };
+
+  function hhmm24ToTopPx(str) {
+    if (!str) return null;
+    const [h, m] = str.split(':').map(Number);
+    return ((h * 60 + m - startHour * 60) / increment) * slotHeight;
+  }
+
+  async function applySpecialEventBlocks() {
+    document.querySelectorAll('.special-event-block').forEach(b => b.remove());
+    const monday = window._currentWeekMonday;
+    if (!monday) return;
+    try {
+      const res = await fetch('/api/season/special-events');
+      if (!res.ok) return;
+      const events = await res.json();
+      events.forEach(ev => {
+        const idx = dayIndexInWeek(monday, ev.date);
+        if (idx === -1) return;
+        const color   = EVENT_COLORS[ev.event_type] || EVENT_COLORS.other;
+        const topPx   = hhmm24ToTopPx(ev.start_time);
+        const btmPx   = hhmm24ToTopPx(ev.end_time);
+        const hasTime = topPx !== null && btmPx !== null && btmPx > topPx;
+
+        const block = document.createElement('div');
+        block.className = 'block special-event-block';
+        block.style.cssText = `
+          position:absolute; box-sizing:border-box; z-index:4; pointer-events:auto;
+          left:calc(${idx} * 100% / 7); width:calc(100% / 7);
+          top:${hasTime ? topPx : 0}px;
+          height:${hasTime ? Math.max(btmPx - topPx, slotHeight * 2) : slotHeight * 3}px;
+          background:${hexToRgba(color, 0.18)};
+          border-left:3px solid ${color}; border-radius:3px;
+          padding:3px 4px; overflow:hidden; cursor:default;
+        `;
+        const label  = EVENT_LABELS[ev.event_type] || 'Event';
+        const fmt24 = s => { if (!s) return ''; const [h,m] = s.split(':').map(Number); const ap = h>=12?'PM':'AM'; return `${h%12||12}:${String(m).padStart(2,'0')} ${ap}`; };
+        const timeStr = [fmt24(ev.start_time), fmt24(ev.end_time)].filter(Boolean).join(' - ');
+        block.innerHTML = `
+          <span style="font-size:9px;font-weight:700;text-transform:uppercase;color:${color};display:block;line-height:1.2;">${label}</span>
+          <span style="font-size:11px;font-weight:600;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${ev.title}</span>
+          ${timeStr ? `<span style="font-size:10px;opacity:0.8;display:block;">${timeStr}</span>` : ''}
+          ${ev.location ? `<span style="font-size:10px;opacity:0.7;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${ev.location}</span>` : ''}`;
+        block.title = [ev.title, timeStr, ev.location, ev.notes].filter(Boolean).join(' | ');
+        grid.appendChild(block);
+      });
+    } catch (e) { /* leave grid as-is */ }
+  }
+  window.addEventListener('weekChanged', applySpecialEventBlocks);
+
   function renderOneTimeBlock(occ) {
     const dayName  = new Date(`${occ.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
     const dayIndex = DAYS.indexOf(dayName);
@@ -1230,6 +1295,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // actually has both the rendered blocks and the active week available together.
   applyWeekExceptionStyling();
   applyMilestoneDateMarkers();
+  applySpecialEventBlocks();
 
   // Toggle other-productions overlay visibility
   document.getElementById('org-blocks-toggle')?.addEventListener('change', function () {

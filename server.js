@@ -4000,6 +4000,136 @@ app.delete('/api/season/performance-dates/:id', requireAuth('master'), async (re
   }
 });
 
+// ── Special Events ────────────────────────────────────────────────────────────
+
+const VALID_EVENT_TYPES   = new Set(['tech','dress','spacing','photo_dress','performance','warm_up','costume_fitting','other']);
+const VALID_EVENT_APPLIES = new Set(['full_cast','selected_pieces','staff_only']);
+
+app.get('/api/season/special-events', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      `SELECT id, event_type, title, to_char(date,'YYYY-MM-DD') AS date,
+              start_time, end_time, location, notes, applies_to, piece_ids, visible_to_dancers
+       FROM special_events WHERE season_id = $1 ORDER BY date, start_time NULLS LAST`,
+      [seasonId]
+    );
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: 'Failed to fetch special events.' }); }
+});
+
+app.post('/api/season/special-events', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { event_type, title, date, start_time, end_time, location, notes, applies_to, piece_ids, visible_to_dancers } = req.body;
+  if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required.' });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return res.status(400).json({ error: 'date must be YYYY-MM-DD.' });
+  if (event_type && !VALID_EVENT_TYPES.has(event_type)) return res.status(400).json({ error: 'Invalid event type.' });
+  if (applies_to && !VALID_EVENT_APPLIES.has(applies_to)) return res.status(400).json({ error: 'Invalid applies_to value.' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO special_events
+         (season_id, event_type, title, date, start_time, end_time, location, notes, applies_to, piece_ids, visible_to_dancers)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       RETURNING id, event_type, title, to_char(date,'YYYY-MM-DD') AS date,
+                 start_time, end_time, location, notes, applies_to, piece_ids, visible_to_dancers`,
+      [seasonId, event_type || 'other', title.trim(), date,
+       start_time || null, end_time || null, (location || '').trim() || null,
+       (notes || '').trim() || null, applies_to || 'full_cast',
+       Array.isArray(piece_ids) ? piece_ids : [], visible_to_dancers !== false]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: 'Failed to create special event.' }); }
+});
+
+app.patch('/api/season/special-events/:id', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { event_type, title, date, start_time, end_time, location, notes, applies_to, piece_ids, visible_to_dancers } = req.body;
+  const fields = [], vals = [];
+  if (event_type !== undefined) {
+    if (!VALID_EVENT_TYPES.has(event_type)) return res.status(400).json({ error: 'Invalid event type.' });
+    fields.push(`event_type=$${vals.length+1}`); vals.push(event_type);
+  }
+  if (title !== undefined) {
+    if (!title.trim()) return res.status(400).json({ error: 'Title is required.' });
+    fields.push(`title=$${vals.length+1}`); vals.push(title.trim());
+  }
+  if (date !== undefined) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD.' });
+    fields.push(`date=$${vals.length+1}`); vals.push(date);
+  }
+  if (start_time       !== undefined) { fields.push(`start_time=$${vals.length+1}`);       vals.push(start_time || null); }
+  if (end_time         !== undefined) { fields.push(`end_time=$${vals.length+1}`);         vals.push(end_time || null); }
+  if (location         !== undefined) { fields.push(`location=$${vals.length+1}`);         vals.push((location||'').trim()||null); }
+  if (notes            !== undefined) { fields.push(`notes=$${vals.length+1}`);            vals.push((notes||'').trim()||null); }
+  if (applies_to       !== undefined) {
+    if (!VALID_EVENT_APPLIES.has(applies_to)) return res.status(400).json({ error: 'Invalid applies_to value.' });
+    fields.push(`applies_to=$${vals.length+1}`); vals.push(applies_to);
+  }
+  if (piece_ids        !== undefined) { fields.push(`piece_ids=$${vals.length+1}`);        vals.push(Array.isArray(piece_ids) ? piece_ids : []); }
+  if (visible_to_dancers !== undefined) { fields.push(`visible_to_dancers=$${vals.length+1}`); vals.push(!!visible_to_dancers); }
+  if (fields.length === 0) return res.status(400).json({ error: 'Nothing to update.' });
+  vals.push(req.params.id, seasonId);
+  try {
+    const result = await pool.query(
+      `UPDATE special_events SET ${fields.join(',')}
+       WHERE id=$${vals.length-1} AND season_id=$${vals.length}
+       RETURNING id, event_type, title, to_char(date,'YYYY-MM-DD') AS date,
+                 start_time, end_time, location, notes, applies_to, piece_ids, visible_to_dancers`,
+      vals
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Event not found.' });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).json({ error: 'Failed to update event.' }); }
+});
+
+app.delete('/api/season/special-events/:id', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query('DELETE FROM special_events WHERE id=$1 AND season_id=$2', [req.params.id, seasonId]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Event not found.' });
+    res.json({ message: 'Event deleted.' });
+  } catch (err) { res.status(500).json({ error: 'Failed to delete event.' }); }
+});
+
+app.get('/api/my-schedule/special-events', requireAuth('auditionee'), async (req, res) => {
+  const userId = req.session.userId;
+  try {
+    const seasonsRes = await pool.query(
+      `SELECT DISTINCT s.id AS season_id
+       FROM submissions sub
+       JOIN seasons s ON s.id = sub.season_id
+       WHERE sub.user_id = $1 AND s.my_schedule_enabled = TRUE AND s.casting_published = TRUE`,
+      [userId]
+    );
+    if (seasonsRes.rows.length === 0) return res.json([]);
+    const seasonIds = seasonsRes.rows.map(r => r.season_id);
+    const result = await pool.query(
+      `SELECT se.id, se.season_id, s.name AS season_name, se.event_type, se.title,
+              to_char(se.date,'YYYY-MM-DD') AS date, se.start_time, se.end_time, se.location, se.notes
+       FROM special_events se
+       JOIN seasons s ON s.id = se.season_id
+       WHERE se.season_id = ANY($1)
+         AND se.visible_to_dancers = TRUE
+         AND (
+           se.applies_to = 'full_cast'
+           OR (se.applies_to = 'selected_pieces' AND EXISTS (
+             SELECT 1 FROM piece_casts pc WHERE pc.user_id = $2 AND pc.piece_id = ANY(se.piece_ids)
+           ))
+         )
+       ORDER BY se.date, se.start_time NULLS LAST`,
+      [seasonIds, userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('my-schedule special events error:', err.message);
+    res.status(500).json({ error: 'Failed to load special events.' });
+  }
+});
+
 // GET /api/season/form-schema — return current production's audition form schema
 app.get('/api/season/form-schema', requireAuth('master'), async (req, res) => {
   const { seasonId } = req.session;
@@ -5439,6 +5569,29 @@ async function runMigrations() {
     `);
     console.log('Migration step 29 (detailed_categories + detailed_instructions) complete.');
   } catch (err) { console.error('Migration step 29 error:', err.message); }
+
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS special_events (
+        id                 SERIAL PRIMARY KEY,
+        season_id          INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        event_type         VARCHAR(50) NOT NULL DEFAULT 'other',
+        title              VARCHAR(200) NOT NULL,
+        date               DATE NOT NULL,
+        start_time         VARCHAR(10),
+        end_time           VARCHAR(10),
+        location           VARCHAR(200),
+        notes              TEXT,
+        applies_to         VARCHAR(50) NOT NULL DEFAULT 'full_cast',
+        piece_ids          INTEGER[] NOT NULL DEFAULT '{}',
+        visible_to_dancers BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at         TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS special_events_season_idx ON special_events(season_id);
+      CREATE INDEX IF NOT EXISTS special_events_date_idx   ON special_events(date);
+    `);
+    console.log('Migration step 30 (special_events table) complete.');
+  } catch (err) { console.error('Migration step 30 error:', err.message); }
 
   console.log('All migrations complete.');
 }
