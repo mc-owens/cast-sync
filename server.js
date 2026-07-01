@@ -1914,13 +1914,16 @@ app.get('/api/submissions/me', requireAuth('auditionee'), async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT sub.id, sub.injuries, sub.absences, sub.availability,
-              dp.first_name, dp.last_name, dp.phone, dp.address, dp.grade, dp.technique_classes,
-              s.name AS season_name, o.name AS org_name
+              sub.custom_responses, sub.audition_number,
+              dp.first_name, dp.last_name, dp.phone, dp.address, dp.grade,
+              dp.technique_classes, dp.secondary_email,
+              s.name AS season_name, s.form_schema, s.availability_mode,
+              s.detailed_categories, s.detailed_instructions,
+              o.name AS org_name
        FROM submissions sub
        JOIN dancer_profiles dp ON dp.user_id = sub.user_id
-       JOIN seasons s ON s.id = sub.season_id
+       JOIN seasons s ON s.id = sub.season_id AND UPPER(s.join_code) = UPPER($1)
        JOIN orgs o ON o.id = sub.org_id
-       JOIN orgs ojc ON ojc.id = sub.org_id AND UPPER(ojc.join_code) = UPPER($1)
        WHERE sub.user_id = $2
        ORDER BY sub.created_at DESC LIMIT 1`,
       [join_code.trim(), req.session.userId]

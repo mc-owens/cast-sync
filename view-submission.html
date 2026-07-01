@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>View Submission | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body style="visibility:hidden">
+
+  <nav class="navbar navbar-expand-lg app-nav">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item">
+            <a class="nav-link" href="auditionForm.html">Audition Form</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link active" href="my-submissions.html">My Submissions</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="my-casting.html">Casting</a>
+          </li>
+          <li class="nav-item d-none" id="my-schedule-nav-item">
+            <a class="nav-link" href="my-schedule.html">My Schedule</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="request-absence.html">Request Absence</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="upgrade.html">Director Access</a>
+          </li>
+          <li class="nav-item d-flex align-items-center d-none" id="switch-director-item">
+            <button class="btn btn-outline-secondary btn-sm ms-1" id="switch-mode-btn" style="font-size:12px;">Switch to Director</button>
+          </li>
+          <li class="nav-item d-flex align-items-center d-none" id="switch-staff-item">
+            <button class="btn btn-outline-secondary btn-sm ms-1" id="switch-staff-btn" style="font-size:12px;">Switch to Staff</button>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center gap-3" id="right-nav"></div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-4" style="max-width:700px;">
+
+    <div class="d-flex align-items-center gap-2 mb-1">
+      <a href="my-submissions.html" class="text-muted" style="font-size:13px;text-decoration:none;">&#8592; My Submissions</a>
+    </div>
+
+    <div id="loading-msg" class="text-muted mt-3">Loading...</div>
+    <div id="error-msg" class="alert alert-danger d-none mt-3"></div>
+
+    <div id="view-content" class="d-none">
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+          <h5 class="mb-0 fw-semibold" id="view-title"></h5>
+          <div class="text-muted" style="font-size:13px;" id="view-subtitle"></div>
+        </div>
+        <a id="update-link" href="#" class="btn btn-sm btn-outline-dark">Update</a>
+      </div>
+
+      <div class="app-card mb-3">
+        <div class="label-gold mb-3">Dancer Info</div>
+        <div id="basic-fields"></div>
+      </div>
+
+      <div id="schema-fields-card" class="app-card mb-3 d-none">
+        <div class="label-gold mb-3">Form Responses</div>
+        <div id="schema-fields"></div>
+      </div>
+
+      <div class="app-card mb-3">
+        <div class="label-gold mb-3">Availability</div>
+        <div id="availability-section-label" class="text-muted mb-2" style="font-size:13px;">Select all times you are free</div>
+        <div style="pointer-events:none;user-select:none;">
+          <div class="schedule-wrapper">
+            <div class="day-header-row" id="day-header-row"></div>
+            <div class="schedule-container">
+              <div class="time-column" id="time-column"></div>
+              <div class="grid" id="grid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="schedule.js"></script>
+  <script src="detailed-schedule.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function row(label, value) {
+      if (!value && value !== 0) return '';
+      return `<div class="mb-3">
+        <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#9ca3af;">${escapeHtml(label)}</div>
+        <div style="font-size:14px;margin-top:2px;">${escapeHtml(String(value))}</div>
+      </div>`;
+    }
+
+    function renderSchemaField(field, sub) {
+      if (field.builtin) {
+        const label = field.label || field.builtin;
+        if (field.builtin === 'grade')            return row(label, sub.grade);
+        if (field.builtin === 'address')          return row(label, sub.address);
+        if (field.builtin === 'technique_classes') return row(label, sub.technique_classes);
+        if (field.builtin === 'secondary_email')  return row(label, sub.secondary_email);
+        if (field.builtin === 'injuries')         return row(label, sub.injuries);
+        if (field.builtin === 'absences')         return row(label, sub.absences);
+        return '';
+      }
+      const responses = sub.custom_responses || {};
+      const val = responses[field.id];
+      if (val === undefined || val === null || val === '') return '';
+      const label = field.label || field.id;
+      if (Array.isArray(val)) {
+        return val.length ? row(label, val.join(', ')) : '';
+      }
+      return row(label, val);
+    }
+
+    function restoreAvailabilityBlocks(availability, mode) {
+      const parseMins = str => {
+        const [t, ap] = str.trim().split(' ');
+        const [h, m]  = t.split(':').map(Number);
+        let hr = h;
+        if (ap === 'PM' && hr !== 12) hr += 12;
+        if (ap === 'AM' && hr === 12) hr = 0;
+        return hr * 60 + m;
+      };
+      if (mode === 'detailed') {
+        if (typeof window._setDetailedAvailability === 'function') {
+          window._setDetailedAvailability(availability);
+        }
+        return;
+      }
+      const SLOT_HEIGHT = 12.5, START_HOUR = 8, INCREMENT = 15;
+      const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+      const gridEl = document.getElementById('grid');
+      const dayWidth = gridEl.clientWidth / 7;
+      availability.forEach(({ day, startTime, endTime }) => {
+        const di = DAYS.indexOf(day);
+        if (di === -1) return;
+        const sM = parseMins(startTime), eM = parseMins(endTime);
+        const startSlot = (sM - START_HOUR * 60) / INCREMENT;
+        const numSlots  = (eM - sM) / INCREMENT;
+        if (numSlots <= 0) return;
+        const block = document.createElement('div');
+        block.className = 'block';
+        block.style.left   = `${di * dayWidth}px`;
+        block.style.top    = `${startSlot * SLOT_HEIGHT}px`;
+        block.style.height = `${numSlots * SLOT_HEIGHT}px`;
+        block.innerHTML = `<span class="time-label-text">${escapeHtml(startTime)} - ${escapeHtml(endTime)}</span>`;
+        gridEl.appendChild(block);
+      });
+    }
+
+    (async () => {
+      try {
+        const res  = await fetch('/api/auth/me');
+        const user = await res.json();
+        if (!res.ok) { window.location.href = 'login.html'; return; }
+        if (user.mode === 'director' || (user.role === 'master' && user.mode !== 'auditionee')) {
+          window.location.href = 'org-select.html'; return;
+        }
+        if (user.mode === 'staff') { window.location.href = 'staff-pieces.html'; return; }
+
+        document.getElementById('right-nav').className = 'app-nav-right';
+        document.getElementById('right-nav').innerHTML =
+          `<a href="account.html">Account</a>
+           <button id="logout-btn">Log Out</button>`;
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+        if (user.isDirector) {
+          document.getElementById('switch-director-item').classList.remove('d-none');
+          document.getElementById('switch-mode-btn').addEventListener('click', async () => {
+            await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'director' }) });
+            window.location.href = 'org-select.html';
+          });
+        }
+        if (user.isStaff) {
+          document.getElementById('switch-staff-item').classList.remove('d-none');
+          document.getElementById('switch-staff-btn').addEventListener('click', async () => {
+            await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'staff' }) });
+            window.location.href = 'staff-pieces.html';
+          });
+        }
+        fetch('/api/my-schedule/status').then(r => r.ok ? r.json() : null).then(d => {
+          if (d?.available) document.getElementById('my-schedule-nav-item')?.classList.remove('d-none');
+        }).catch(() => {});
+
+        const joinCode = new URLSearchParams(window.location.search).get('code');
+        if (!joinCode) {
+          document.getElementById('loading-msg').textContent = 'No submission code provided.';
+          document.body.style.visibility = 'visible';
+          return;
+        }
+
+        const subRes = await fetch(`/api/submissions/me?join_code=${encodeURIComponent(joinCode)}`);
+        if (!subRes.ok) {
+          document.getElementById('loading-msg').style.display = 'none';
+          const errEl = document.getElementById('error-msg');
+          errEl.textContent = subRes.status === 404
+            ? 'No submission found for this production.'
+            : 'Could not load submission.';
+          errEl.classList.remove('d-none');
+          document.body.style.visibility = 'visible';
+          return;
+        }
+
+        const sub = await subRes.json();
+        document.getElementById('loading-msg').style.display = 'none';
+
+        document.getElementById('view-title').textContent = sub.org_name;
+        document.getElementById('view-subtitle').textContent = sub.season_name;
+        document.getElementById('update-link').href = `auditionForm.html?code=${encodeURIComponent(joinCode)}`;
+
+        // Basic fields (always shown)
+        const basicParts = [
+          row('Name', `${sub.first_name || ''} ${sub.last_name || ''}`.trim()),
+          row('Email', user.email),
+          sub.phone ? row('Phone', sub.phone) : '',
+          sub.audition_number ? row('Audition Number', sub.audition_number) : '',
+        ].join('');
+        document.getElementById('basic-fields').innerHTML = basicParts;
+
+        // Schema-driven fields
+        const schema = Array.isArray(sub.form_schema) ? sub.form_schema : [];
+        const schemaHtml = schema.map(f => renderSchemaField(f, sub)).filter(Boolean).join('');
+        if (schemaHtml) {
+          document.getElementById('schema-fields').innerHTML = schemaHtml;
+          document.getElementById('schema-fields-card').classList.remove('d-none');
+        }
+
+        // Availability grid (schedule.js auto-inits simple mode on DOMContentLoaded)
+        const mode = sub.availability_mode === 'detailed' ? 'detailed' : 'grid';
+        document.getElementById('availability-section-label').textContent = mode === 'detailed'
+          ? 'Availability: weekly schedule'
+          : 'Availability: free time blocks';
+
+        if (mode === 'detailed') {
+          window.teardownSimpleAvailability();
+          window.initDetailedAvailability({
+            categories: sub.detailed_categories || null,
+            instructions: sub.detailed_instructions || null,
+          });
+        }
+
+        const availability = Array.isArray(sub.availability) ? sub.availability : [];
+        if (availability.length) {
+          restoreAvailabilityBlocks(availability, mode);
+        }
+
+        document.getElementById('view-content').classList.remove('d-none');
+        document.body.style.visibility = 'visible';
+      } catch (err) {
+        document.getElementById('loading-msg').textContent = 'Could not load submission.';
+        document.body.style.visibility = 'visible';
+      }
+    })();
+  </script>
+
+</body>
+</html>

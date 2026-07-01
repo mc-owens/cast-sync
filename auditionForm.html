@@ -399,6 +399,33 @@
             });
           }
 
+          function prefillFromSubmission(sub) {
+            const injuriesEl = document.getElementById('injuries');
+            if (injuriesEl && sub.injuries) injuriesEl.value = sub.injuries;
+            const absencesEl = document.getElementById('absences');
+            if (absencesEl && sub.absences) absencesEl.value = sub.absences;
+            const audNumEl = document.getElementById('audition-number');
+            if (audNumEl && sub.audition_number) audNumEl.value = sub.audition_number;
+            const addressEl = document.getElementById('address');
+            if (addressEl && sub.address) addressEl.value = sub.address;
+            const secEmailEl = document.getElementById('secondary-email');
+            if (secEmailEl && sub.secondary_email) secEmailEl.value = sub.secondary_email;
+            const techEl = document.getElementById('techniqueclasses');
+            if (techEl && sub.technique_classes) techEl.value = sub.technique_classes;
+            if (sub.grade) {
+              const idx = currentGradeOptions.indexOf(sub.grade);
+              const radioEl = idx !== -1 && document.getElementById(`flexRadioDefault${idx + 1}`);
+              if (radioEl) radioEl.checked = true;
+            }
+            if (sub.custom_responses) restoreCustomResponses(sub.custom_responses);
+            if (Array.isArray(sub.availability) && sub.availability.length) {
+              const allTagged  = sub.availability.every(b => b.category);
+              const noneTagged = sub.availability.every(b => !b.category);
+              const shapeMatches = currentAvailabilityUI === 'detailed' ? allTagged : noneTagged;
+              if (shapeMatches) restoreAvailabilityBlocks(sub.availability);
+            }
+          }
+
           // ── Profile pre-fill ──────────────────────────────────────────────
           try {
             const profileRes = await fetch('/api/profile');
@@ -461,6 +488,12 @@
                     data.availability_mode === 'detailed' ? 'detailed' : 'grid',
                     { categories: data.detailed_categories || null, instructions: data.detailed_instructions || null }
                   );
+                  if (urlCode) {
+                    try {
+                      const subRes = await fetch(`/api/submissions/me?join_code=${encodeURIComponent(code)}`);
+                      if (subRes.ok) prefillFromSubmission(await subRes.json());
+                    } catch (e) {}
+                  }
                 } else {
                   previewEl.style.display = 'block';
                   previewEl.innerHTML =

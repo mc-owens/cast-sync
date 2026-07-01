@@ -53,7 +53,7 @@
 
   <div class="container mt-4" style="max-width:640px;">
     <h5 class="mb-1 fw-semibold">My Submissions</h5>
-    <p class="text-muted mb-4" style="font-size:13px;">Every audition form you've submitted. Click Update to revise your information for that organization.</p>
+    <p class="text-muted mb-4" style="font-size:13px;">Every audition form you've submitted. View your responses or update your information for that production.</p>
 
     <div id="loading-msg" class="text-muted">Loading...</div>
     <div id="empty-msg" class="alert alert-info d-none">
@@ -85,8 +85,12 @@
                 <div class="fw-semibold">${s.org_name}</div>
                 <div class="text-muted" style="font-size:13px;">${s.season_name} &nbsp;·&nbsp; Submitted ${formatDate(s.created_at)}</div>
               </div>
-              <a href="auditionForm.html?code=${encodeURIComponent(s.join_code)}"
-                 class="btn btn-sm btn-outline-dark">Update</a>
+              <div class="d-flex gap-2">
+                <a href="view-submission.html?code=${encodeURIComponent(s.join_code)}"
+                   class="btn btn-sm btn-outline-secondary">View</a>
+                <a href="auditionForm.html?code=${encodeURIComponent(s.join_code)}"
+                   class="btn btn-sm btn-outline-dark">Update</a>
+              </div>
             </div>`;
           list.appendChild(card);
         });
