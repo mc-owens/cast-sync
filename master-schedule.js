@@ -876,7 +876,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   window.addEventListener('weekChanged', applyMilestoneDateMarkers);
 
-  // ── Special Event Blocks ──────────────────────────────────────────────────────
+  // ── Special Events Band ───────────────────────────────────────────────────────
 
   const EVENT_COLORS = {
     tech:            '#2c3e50',
@@ -890,58 +890,82 @@ document.addEventListener('DOMContentLoaded', async () => {
     other:            '#7f8c8d',
   };
   const EVENT_LABELS = {
-    tech: 'Tech', dress: 'Dress', spacing: 'Spacing', photo_dress: 'Photo Dress',
-    performance: 'Performance', warm_up: 'Warm Up', costume_fitting: 'Costume Fitting',
-    company_meeting: 'Company Meeting', other: 'Other',
+    tech: 'Tech Rehearsal', dress: 'Dress Rehearsal', spacing: 'Spacing Rehearsal',
+    photo_dress: 'Photo Dress', performance: 'Performance', warm_up: 'Warm Up',
+    costume_fitting: 'Costume Fitting', company_meeting: 'Company Meeting', other: 'Other',
   };
 
-  function hhmm24ToTopPx(str) {
-    if (!str) return null;
-    const [h, m] = str.split(':').map(Number);
-    return ((h * 60 + m - startHour * 60) / increment) * slotHeight;
+  function fmt24hBand(s) {
+    if (!s) return '';
+    const [h, m] = s.split(':').map(Number);
+    return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${h >= 12 ? 'PM' : 'AM'}`;
   }
 
-  async function applySpecialEventBlocks() {
-    document.querySelectorAll('.special-event-block').forEach(b => b.remove());
+  let seBandHasContent = false;
+
+  async function applySpecialEventBand() {
+    const band = document.getElementById('se-band');
+    const cols  = band ? [...band.querySelectorAll('.se-band-col')] : [];
+    cols.forEach(c => { c.innerHTML = ''; });
+
     const monday = window._currentWeekMonday;
-    if (!monday) return;
+    if (!monday || !band) return;
+
     try {
-      const res = await fetch('/api/season/special-events');
-      if (!res.ok) return;
-      const events = await res.json();
+      const [seRes, datesRes, perfRes] = await Promise.all([
+        fetch('/api/season/special-events'),
+        fetch('/api/season/production-dates'),
+        fetch('/api/season/performance-dates'),
+      ]);
+
+      const events    = seRes.ok    ? await seRes.json()    : [];
+      const dates     = datesRes.ok ? await datesRes.json() : {};
+      const perfDates = perfRes.ok  ? await perfRes.json()  : [];
+
+      // Milestone chips (outlined)
+      const milestones = [];
+      if (dates.audition_date) milestones.push({ date: dates.audition_date, label: 'Audition Day', color: '#c4943a' });
+      perfDates.forEach(p => milestones.push({ date: p.date, label: 'Performance', color: '#c0392b' }));
+
+      milestones.forEach(m => {
+        const idx = dayIndexInWeek(monday, m.date);
+        if (idx === -1 || !cols[idx]) return;
+        const chip = document.createElement('div');
+        chip.className = 'se-chip';
+        chip.title = m.label;
+        chip.style.cssText = `background:${hexToRgba(m.color, 0.1)};border:2px solid ${m.color};`;
+        chip.innerHTML = `<div style="font-size:12px;font-weight:700;color:${m.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${m.label}</div>`;
+        cols[idx].appendChild(chip);
+      });
+
+      // Special event chips (solid fill)
       events.forEach(ev => {
         const idx = dayIndexInWeek(monday, ev.date);
-        if (idx === -1) return;
+        if (idx === -1 || !cols[idx]) return;
         const color   = EVENT_COLORS[ev.event_type] || EVENT_COLORS.other;
-        const topPx   = hhmm24ToTopPx(ev.start_time);
-        const btmPx   = hhmm24ToTopPx(ev.end_time);
-        const hasTime = topPx !== null && btmPx !== null && btmPx > topPx;
-
-        const block = document.createElement('div');
-        block.className = 'block special-event-block';
-        block.style.cssText = `
-          position:absolute; box-sizing:border-box; z-index:4; pointer-events:auto;
-          left:calc(${idx} * 100% / 7); width:calc(100% / 7);
-          top:${hasTime ? topPx : 0}px;
-          height:${hasTime ? Math.max(btmPx - topPx, slotHeight * 2) : slotHeight * 3}px;
-          background:${hexToRgba(color, 0.18)};
-          border-left:3px solid ${color}; border-radius:3px;
-          padding:3px 4px; overflow:hidden; cursor:default;
-        `;
-        const label  = EVENT_LABELS[ev.event_type] || 'Event';
-        const fmt24 = s => { if (!s) return ''; const [h,m] = s.split(':').map(Number); const ap = h>=12?'PM':'AM'; return `${h%12||12}:${String(m).padStart(2,'0')} ${ap}`; };
-        const timeStr = [fmt24(ev.start_time), fmt24(ev.end_time)].filter(Boolean).join(' - ');
-        block.innerHTML = `
-          <span style="font-size:9px;font-weight:700;text-transform:uppercase;color:${color};display:block;line-height:1.2;">${label}</span>
-          <span style="font-size:11px;font-weight:600;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${ev.title}</span>
-          ${timeStr ? `<span style="font-size:10px;opacity:0.8;display:block;">${timeStr}</span>` : ''}
-          ${ev.location ? `<span style="font-size:10px;opacity:0.7;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${ev.location}</span>` : ''}`;
-        block.title = [ev.title, timeStr, ev.location, ev.notes].filter(Boolean).join(' | ');
-        grid.appendChild(block);
+        const label   = EVENT_LABELS[ev.event_type] || 'Event';
+        const timeStr = [fmt24hBand(ev.start_time), fmt24hBand(ev.end_time)].filter(Boolean).join(' - ');
+        const chip = document.createElement('div');
+        chip.className = 'se-chip';
+        chip.style.background = color;
+        chip.title = [ev.title, timeStr, ev.location, ev.notes].filter(Boolean).join(' | ');
+        chip.innerHTML = `
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:rgba(255,255,255,.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</div>
+          <div style="font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${ev.title}</div>
+          ${timeStr   ? `<div style="font-size:10px;color:rgba(255,255,255,.85);">${timeStr}</div>`   : ''}
+          ${ev.location ? `<div style="font-size:10px;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${ev.location}</div>` : ''}`;
+        cols[idx].appendChild(chip);
       });
-    } catch (e) { /* leave grid as-is */ }
+
+      const total = cols.reduce((n, c) => n + c.children.length, 0);
+      seBandHasContent = total > 0;
+      const toggle = document.getElementById('special-events-toggle');
+      band.style.display = (seBandHasContent && toggle?.checked !== false) ? '' : 'none';
+    } catch (e) {
+      band.style.display = 'none';
+    }
   }
-  window.addEventListener('weekChanged', applySpecialEventBlocks);
+  window.addEventListener('weekChanged', applySpecialEventBand);
 
   function renderOneTimeBlock(occ) {
     const dayName  = new Date(`${occ.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
@@ -1297,7 +1321,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // actually has both the rendered blocks and the active week available together.
   applyWeekExceptionStyling();
   applyMilestoneDateMarkers();
-  applySpecialEventBlocks();
+  applySpecialEventBand();
+
+  // Toggle special events band
+  document.getElementById('special-events-toggle')?.addEventListener('change', function () {
+    const band = document.getElementById('se-band');
+    if (band) band.style.display = (this.checked && seBandHasContent) ? '' : 'none';
+  });
 
   // Toggle other-productions overlay visibility
   document.getElementById('org-blocks-toggle')?.addEventListener('change', function () {

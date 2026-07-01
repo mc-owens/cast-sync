@@ -29,7 +29,7 @@
       body { visibility: visible !important; padding-bottom: 0 !important; }
       .container-fluid { padding: 0 !important; margin: 0 !important; }
       .schedule-wrapper { page-break-inside: avoid; }
-      .block { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .block, .se-chip { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
@@ -236,11 +236,17 @@
       <div class="legend-panel">
         <h6 class="mb-3" style="font-weight:bold;">Pieces</h6>
         <div id="pieces-legend"></div>
-        <div id="org-blocks-toggle-row" style="display:none;margin-top:10px;">
+        <div style="margin-top:10px;">
           <hr style="margin:8px 0;">
-          <div class="form-check form-switch mb-0">
-            <input class="form-check-input" type="checkbox" id="org-blocks-toggle" checked role="switch" style="cursor:pointer;">
-            <label class="form-check-label" for="org-blocks-toggle" style="font-size:11px;color:#555;cursor:pointer;">Other productions</label>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="special-events-toggle" checked role="switch" style="cursor:pointer;">
+            <label class="form-check-label" for="special-events-toggle" style="font-size:11px;color:#555;cursor:pointer;">Special events</label>
+          </div>
+          <div id="org-blocks-toggle-row" style="display:none;">
+            <div class="form-check form-switch mb-0">
+              <input class="form-check-input" type="checkbox" id="org-blocks-toggle" checked role="switch" style="cursor:pointer;">
+              <label class="form-check-label" for="org-blocks-toggle" style="font-size:11px;color:#555;cursor:pointer;">Other productions</label>
+            </div>
           </div>
         </div>
         <hr style="margin:12px 0;">
@@ -302,6 +308,16 @@
         <p class="text-muted" style="font-size:13px;">Drag to create a rehearsal block. Click &times; to delete.</p>
         <div class="schedule-wrapper">
           <div class="day-header-row" id="day-header-row"></div>
+          <div class="se-band" id="se-band" style="display:none;">
+            <div class="se-band-gutter"></div>
+            <div class="se-band-col"></div>
+            <div class="se-band-col"></div>
+            <div class="se-band-col"></div>
+            <div class="se-band-col"></div>
+            <div class="se-band-col"></div>
+            <div class="se-band-col"></div>
+            <div class="se-band-col"></div>
+          </div>
           <div class="schedule-container">
             <div class="time-column" id="time-column"></div>
             <div class="grid" id="grid"></div>

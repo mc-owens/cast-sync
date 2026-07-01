@@ -288,6 +288,36 @@ body {
   display: none;
 }
 
+/* === SPECIAL EVENTS BAND === */
+.se-band {
+  display: grid;
+  grid-template-columns: 72px repeat(7, 1fr);
+  width: 100%;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+.se-band-gutter {
+  background: #fafafa;
+  border-right: 1px solid var(--border);
+  padding: 5px 0;
+}
+.se-band-col {
+  border-right: 1px solid #f0f0f0;
+  padding: 4px 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.se-band-col:last-child { border-right: none; }
+.se-chip {
+  border-radius: 5px;
+  padding: 4px 7px;
+  line-height: 1.3;
+  overflow: hidden;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
 .one-time-block {
   cursor: default;
 }
