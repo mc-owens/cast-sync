@@ -289,11 +289,17 @@ body {
 }
 
 .master-block.block-day-off, .one-time-block.block-day-off {
-  background: rgba(100, 116, 139, 0.08) !important;
-  border-color: rgba(100, 116, 139, 0.2) !important;
-  color: #94a3b8 !important;
-  pointer-events: none;
+  filter: grayscale(90%);
+  opacity: 0.42;
+  cursor: default !important;
 }
+.master-block.block-day-off:hover { z-index: 1 !important; }
+.master-block.block-day-off .delete-btn,
+.master-block.block-day-off .resize-handle,
+.one-time-block.block-day-off .delete-btn,
+.one-time-block.block-day-off .resize-handle { display: none; }
+
+.day-column.day-off { background: rgba(148, 163, 184, 0.09); }
 
 /* === SPECIAL EVENTS BAND === */
 .se-band {

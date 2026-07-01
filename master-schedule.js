@@ -912,8 +912,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const band = document.getElementById('se-band');
     const cols  = band ? [...band.querySelectorAll('.se-band-col')] : [];
     cols.forEach(c => { c.innerHTML = ''; });
-    document.querySelectorAll('.master-block, .one-time-block')
-      .forEach(el => el.classList.remove('block-day-off'));
+    document.querySelectorAll('.master-block, .one-time-block').forEach(el => {
+      el.classList.remove('block-day-off');
+      el.removeAttribute('title');
+    });
+    document.querySelectorAll('.day-column.day-off').forEach(el => el.classList.remove('day-off'));
 
     const monday = window._currentWeekMonday;
     if (!monday || !band) return;
@@ -964,14 +967,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         cols[idx].appendChild(chip);
       });
 
-      // Grey out all blocks on no-rehearsal days
+      // Tint day columns and grey out blocks on no-rehearsal days
       events.forEach(ev => {
         if (ev.event_type !== 'no_rehearsal') return;
         const idx = dayIndexInWeek(monday, ev.date);
         if (idx === -1) return;
         const dayName = DAYS[idx];
+        if (grid.children[idx]) grid.children[idx].classList.add('day-off');
+        const tooltip = ev.notes
+          ? `No Rehearsal / Day Off - ${ev.notes}`
+          : ev.title
+            ? `No Rehearsal / Day Off - ${ev.title}`
+            : 'No Rehearsal / Day Off';
         document.querySelectorAll(`.master-block[data-day="${dayName}"], .one-time-block[data-day="${dayName}"]`)
-          .forEach(el => el.classList.add('block-day-off'));
+          .forEach(el => { el.classList.add('block-day-off'); el.title = tooltip; });
       });
 
       const total = cols.reduce((n, c) => n + c.children.length, 0);
@@ -1094,6 +1103,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Drag a master block
     if (e.target.closest('.master-block')) {
       currentBlock  = e.target.closest('.master-block');
+      if (currentBlock.classList.contains('block-day-off')) return;
       activeBlockId = currentBlock.dataset.dbId;
       const dayWidth = grid.clientWidth / 7;
       const dayIdx   = DAYS.indexOf(currentBlock.dataset.day);
