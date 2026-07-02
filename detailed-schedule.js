@@ -128,6 +128,9 @@
       btn.addEventListener('click', () => {
         selectedCategory = cat.id;
         document.querySelectorAll('#detailed-category-buttons .category-btn').forEach(b => {
+          if (b.dataset.categoryId === '__erase__') {
+            b.style.background = '#fff'; b.style.color = '#aaa'; return;
+          }
           const c = CATEGORY_BY_ID[b.dataset.categoryId];
           const active = b.dataset.categoryId === cat.id;
           b.style.background = active ? c.color : '#fff';
@@ -143,6 +146,28 @@
       });
       catButtonsEl.appendChild(btn);
     });
+
+    // Erase button — clears a slot back to empty
+    const eraseBtn = document.createElement('button');
+    eraseBtn.type = 'button';
+    eraseBtn.className = 'btn btn-sm category-btn';
+    eraseBtn.dataset.categoryId = '__erase__';
+    eraseBtn.textContent = 'Erase';
+    eraseBtn.style.cssText = 'border:2px dashed #aaa;color:#aaa;background:#fff;';
+    eraseBtn.addEventListener('click', () => {
+      selectedCategory = '__erase__';
+      document.querySelectorAll('#detailed-category-buttons .category-btn').forEach(b => {
+        if (b.dataset.categoryId === '__erase__') {
+          b.style.background = '#f3f4f6'; b.style.color = '#555'; return;
+        }
+        const c = CATEGORY_BY_ID[b.dataset.categoryId];
+        b.style.background = '#fff'; b.style.color = c.color;
+      });
+      const labelInp = document.getElementById('detailed-label-input');
+      labelInp.placeholder = 'Optional label (e.g. after-school activity)';
+      labelInp.classList.remove('is-invalid');
+    });
+    catButtonsEl.appendChild(eraseBtn);
 
     const headerRow = document.getElementById('day-header-row');
     headerRow.appendChild(document.createElement('div'));
@@ -210,6 +235,14 @@
     function paintSlot(slotEl) {
       const day = slotEl.parentElement.dataset.day;
       const idx = parseInt(slotEl.dataset.slotIndex);
+      if (selectedCategory === '__erase__') {
+        dayStates[day][idx] = null;
+        dayLabels[day][idx] = null;
+        recolorSlot(day, idx);
+        renderDayOverlays(day);
+        updateCoverageStatus();
+        return;
+      }
       const labelInp = document.getElementById('detailed-label-input');
       const labelVal = labelInp.value.trim();
       if (selectedCategory !== 'available' && !labelVal) {
