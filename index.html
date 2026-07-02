@@ -114,7 +114,9 @@
     /* Features — dark section */
     #features .section-label { color: var(--gold); }
     #features .section-title { color: #fff; }
-    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+    .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    @media (max-width: 768px) { .features-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 500px) { .features-grid { grid-template-columns: 1fr; } }
     .feature-card { padding: 28px; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; background: #fff; transition: border-color .15s, box-shadow .15s, transform .15s; }
     .feature-card:hover { border-color: rgba(196,148,58,.5); box-shadow: 0 8px 28px rgba(196,148,58,.15); transform: translateY(-2px); }
     .feature-icon { font-size: 22px; margin-bottom: 12px; }
@@ -257,7 +259,7 @@
               <div class="step-num">1</div>
               <div>
                 <h5>Share a code. They do the rest.</h5>
-                <p>Create a production in seconds, then share your 6-character code with auditionees. They submit their info, technique background, and availability on their own. No PDFs, no paper forms, no chasing anyone down.</p>
+                <p>Create a production in seconds, build your audition form, then share your 6-character code with auditionees. They submit their info, technique background, and availability on their own. No PDFs, no paper forms, no chasing anyone down.</p>
               </div>
             </div>
             <div class="step-card">
@@ -271,7 +273,7 @@
               <div class="step-num">3</div>
               <div>
                 <h5>One click. Everyone knows.</h5>
-                <p>Publish your cast list to every auditionee at once. They get their role, their rehearsal schedule, and your message. No separate emails, no accidental omissions.</p>
+                <p>Publish your cast list to every auditionee at once. They get their role, their rehearsal schedule, and your message. Then manage the rest of your season in one place: attendance, absence requests, schedule changes, and internal notes.</p>
               </div>
             </div>
           </div>
@@ -291,13 +293,13 @@
       <div class="features-grid">
         <div class="feature-card">
           <div class="feature-icon">📋</div>
-          <h5>Auditionee submissions</h5>
-          <p>Dancers submit everything you need before they leave the audition room: technique background, injury history, absences, and a full availability grid. No follow-up emails.</p>
+          <h5>Custom audition forms</h5>
+          <p>Build your form once: add custom fields on top of the standard ones, set a reusable default for your organization, and customize per show. Dancers can update their submission after the fact if anything changes.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">📅</div>
-          <h5>Master schedule view</h5>
-          <p>Every piece, every rehearsal block, every week in one view. See conflicts before they become 11pm phone calls.</p>
+          <h5>Master schedule</h5>
+          <p>Every piece, every room, every week in one view. Move or cancel individual rehearsal dates without touching the rest of the schedule. Add special events and one-time rehearsals. Room double-bookings are flagged automatically.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">🔍</div>
@@ -307,27 +309,32 @@
         <div class="feature-card">
           <div class="feature-icon">🎭</div>
           <h5>Cast builder</h5>
-          <p>Assign roles, set understudies, and see every conflict before you commit. No surprises on the first day of rehearsal.</p>
+          <p>Assign dancers to roles, add understudies, and attach role names that carry through to the published cast list, email, and CSV export. See every schedule conflict before you commit.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">📣</div>
-          <h5>One-click publish</h5>
-          <p>Send the cast list to every auditionee at once: roles, rehearsal times, and your message included. No one finds out from someone else.</p>
+          <h5>Publish and personal schedules</h5>
+          <p>Send the cast list to every auditionee at once. Cast dancers also get access to their own personal rehearsal schedule, updated automatically whenever you adjust the master.</p>
         </div>
         <div class="feature-card">
-          <div class="feature-icon">📄</div>
-          <h5>PDF & CSV export</h5>
-          <p>Export a printable cast sheet or full spreadsheet for rehearsal packets, department records, or co-directors who still love Excel.</p>
+          <div class="feature-icon">📝</div>
+          <h5>Production notes</h5>
+          <p>Keep internal notes on injuries, absences, attendance concerns, and rehearsal updates. Tag a dancer or piece, email the relevant choreographer, and keep everything in one place. Dancers never see this page.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🗓️</div>
+          <h5>Absence requests and attendance</h5>
+          <p>Dancers submit absence requests directly in CastSync. Directors log attendance per piece per rehearsal. No separate spreadsheet, no chasing people down.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">👥</div>
-          <h5>Co-director access</h5>
-          <p>Bring in a co-director or rehearsal director. They get full access to that production and nothing else.</p>
+          <h5>Team access</h5>
+          <p>Invite co-directors to a specific production, or add choreographers and rehearsal directors as production staff with access to only their assigned pieces. No one sees more than they should.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">🏢</div>
           <h5>Multi-production orgs</h5>
-          <p>Fall concert, spring showcase, student workshop. Manage every production in one place, with separate cast lists, schedules, and codes.</p>
+          <p>Fall concert, spring showcase, student workshop. Manage every production under one organization with separate cast lists, schedules, and codes. Cross-production room conflicts are flagged when two shows share a space.</p>
         </div>
       </div>
     </div>
@@ -418,6 +425,10 @@
       <div class="faq-item">
         <div class="faq-q" onclick="toggleFaq(this)">Is my data secure? <span>+</span></div>
         <div class="faq-a" style="display:none;">Yes. All data is stored in a PostgreSQL database hosted on Railway. Sessions are encrypted, passwords are hashed with bcrypt, and we never share your data with third parties. See our <a href="privacy.html">Privacy Policy</a> for details.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">Can dancers see production notes? <span>+</span></div>
+        <div class="faq-a" style="display:none;">No. Production notes are internal only. Dancers have no way to access them, and nothing in any dancer-facing page references them. They are visible only to directors, co-directors, and production staff you have explicitly invited.</div>
       </div>
       <div class="faq-item">
         <div class="faq-q" onclick="toggleFaq(this)">Who built this, and why? <span>+</span></div>
