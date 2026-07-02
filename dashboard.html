@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="app-shell.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <style>
+    a.app-card {
+      display: block;
+      color: inherit;
+      text-decoration: none;
+      transition: box-shadow .15s, border-color .15s;
+    }
+    a.app-card:hover {
+      box-shadow: 0 4px 16px rgba(0,0,0,.09);
+      border-color: #bbb;
+      color: inherit;
+    }
+  </style>
+</head>
+<body style="visibility:hidden">
+
+  <div id="app-shell-root"></div>
+  <script src="app-shell.js"></script>
+
+  <div class="app-main">
+
+    <!-- Trial banner -->
+    <div id="trial-banner" style="display:none;background:#fefce8;border-bottom:1px solid #fde68a;">
+      <div class="container-fluid px-4 py-2 d-flex align-items-center justify-content-between gap-3">
+        <span style="font-size:13px;color:#92400e;" id="trial-banner-text"></span>
+        <div class="d-flex gap-2 flex-shrink-0">
+          <a href="plan-select.html" class="btn btn-sm btn-warning" style="font-size:12px;font-weight:600;">Upgrade</a>
+          <button class="btn btn-sm btn-link p-0" style="font-size:12px;color:#92400e;text-decoration:none;" id="trial-banner-dismiss">Dismiss</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="container-fluid mt-4 px-4" style="max-width:860px;">
+
+      <div class="mb-4">
+        <h5 class="mb-0 fw-semibold">Dashboard</h5>
+        <p class="text-muted mb-0" style="font-size:13px;" id="page-subtitle">Loading...</p>
+      </div>
+
+      <!-- Needs Attention -->
+      <div id="attention-section" class="mb-4 d-none">
+        <div class="app-card" style="border-left:3px solid #f59e0b;background:#fffbeb;padding:16px 20px;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#92400e;margin-bottom:8px;">Needs Attention</div>
+          <ul id="attention-list" class="mb-0 ps-3" style="font-size:13px;color:#78350f;line-height:1.8;"></ul>
+        </div>
+      </div>
+
+      <!-- Next Up -->
+      <div class="mb-4">
+        <h6 class="label-gold mb-2">Next Up</h6>
+        <a href="master.html" class="app-card" id="next-up-card">
+          <div id="next-up-content">
+            <div class="text-muted" style="font-size:13px;">Loading...</div>
+          </div>
+        </a>
+      </div>
+
+      <!-- Status row: Submissions + Casting -->
+      <div class="row g-3 mb-4">
+        <div class="col-sm-6">
+          <h6 class="label-gold mb-2">Submissions</h6>
+          <a href="dancers.html" class="app-card" id="submissions-card">
+            <div id="submissions-content">
+              <div class="text-muted" style="font-size:13px;">Loading...</div>
+            </div>
+          </a>
+        </div>
+        <div class="col-sm-6">
+          <h6 class="label-gold mb-2">Casting</h6>
+          <a href="casting.html" class="app-card" id="casting-card">
+            <div id="casting-content">
+              <div class="text-muted" style="font-size:13px;">Loading...</div>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Production Timeline (only shown if start + end dates set) -->
+      <div id="timeline-section" class="mb-4 d-none">
+        <h6 class="label-gold mb-2">Production Timeline</h6>
+        <div class="app-card">
+          <div id="timeline-content"></div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="mb-5">
+        <h6 class="label-gold mb-2">Quick Actions</h6>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="dancers.html"           class="btn btn-outline-secondary btn-sm">Auditionees</a>
+          <a href="cast.html"              class="btn btn-outline-secondary btn-sm">Piece Builder</a>
+          <a href="master.html"            class="btn btn-outline-secondary btn-sm">Master Schedule</a>
+          <a href="absence-requests.html"  class="btn btn-outline-secondary btn-sm">Absence Requests</a>
+          <a href="notes.html"             class="btn btn-outline-secondary btn-sm">Production Notes</a>
+          <a href="production-settings.html" class="btn btn-outline-secondary btn-sm">Settings</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    const EVENT_META = {
+      tech:            { label: 'Tech Rehearsal',        color: '#2c3e50' },
+      dress:           { label: 'Dress Rehearsal',        color: '#8e44ad' },
+      spacing:         { label: 'Spacing Rehearsal',      color: '#16a085' },
+      photo_dress:     { label: 'Photo Dress',            color: '#e91e63' },
+      performance:     { label: 'Performance',            color: '#c0392b' },
+      warm_up:         { label: 'Warm Up',                color: '#e67e22' },
+      costume_fitting: { label: 'Costume Fitting',        color: '#2980b9' },
+      company_meeting: { label: 'Company Meeting',        color: '#0369a1' },
+      no_rehearsal:    { label: 'Day Off / No Rehearsal', color: '#64748b' },
+      notes_cleaning:  { label: 'Notes / Cleaning',       color: '#0d9488' },
+      load_in_strike:  { label: 'Load-In / Strike',       color: '#b45309' },
+      other:           { label: 'Other',                  color: '#7f8c8d' },
+    };
+
+    function fmt12h(str) {
+      if (!str) return '';
+      const [h, m] = str.split(':').map(Number);
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const hour = h % 12 || 12;
+      return `${hour}:${String(m).padStart(2,'0')} ${ampm}`;
+    }
+
+    (async () => {
+      try {
+        const meRes = await fetch('/api/auth/me');
+        const user  = await meRes.json();
+        if (!meRes.ok || (user.role !== 'master' && user.mode !== 'director')) {
+          window.location.href = 'login.html'; return;
+        }
+        if (!user.orgId) { window.location.href = 'org-select.html'; return; }
+
+        const nav = document.querySelector('.navbar-nav');
+        nav.insertAdjacentHTML('beforeend',
+          `<li class="nav-item"><span class="nav-link nav-context">${user.orgName} · ${user.seasonName}</span></li>`);
+        document.getElementById('right-nav').innerHTML =
+          window.renderProductionSwitcher(user) +
+          `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+        window.initProductionSwitcher();
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+
+        document.getElementById('page-subtitle').textContent = `${user.orgName} · ${user.seasonName}`;
+        document.body.style.visibility = 'visible';
+
+        // Fetch all dashboard data in parallel
+        const [dates, subSettings, dancers, publishStatus, pieces, events, sub] = await Promise.all([
+          fetch('/api/season/production-dates').then(r => r.ok ? r.json() : {}),
+          fetch('/api/season/submission-settings').then(r => r.ok ? r.json() : {}),
+          fetch('/api/dancers').then(r => r.ok ? r.json() : []),
+          fetch('/api/publish/status').then(r => r.ok ? r.json() : {}),
+          fetch('/api/pieces').then(r => r.ok ? r.json() : []),
+          fetch('/api/season/special-events').then(r => r.ok ? r.json() : []),
+          fetch('/api/subscription').then(r => r.ok ? r.json() : {}),
+        ]);
+
+        // Trial banner
+        if (sub.isTrial) {
+          const days = sub.daysRemaining;
+          document.getElementById('trial-banner-text').textContent = days <= 1
+            ? 'Explore mode: your trial expires today. Upgrade to start your first real production.'
+            : `Explore mode: ${days} day${days === 1 ? '' : 's'} left to explore. Upgrade any time.`;
+          document.getElementById('trial-banner').style.display = '';
+          document.getElementById('trial-banner-dismiss').addEventListener('click', () => {
+            document.getElementById('trial-banner').style.display = 'none';
+          });
+        }
+
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+
+        // ── Needs Attention ────────────────────────────────────────────────────
+        const alerts = [];
+        if (dates.audition_date) {
+          const audDate  = new Date(dates.audition_date + 'T00:00:00');
+          const daysSince = Math.floor((today - audDate) / 86400000);
+          if (daysSince > 0 && subSettings.submissions_open) {
+            alerts.push(`Audition date was ${daysSince} day${daysSince === 1 ? '' : 's'} ago and submissions are still open.`);
+          }
+          if (daysSince > 0 && !publishStatus.published) {
+            alerts.push('Casting has not been published yet.');
+          }
+        }
+        if (pieces.length === 0) {
+          alerts.push('No pieces added yet. Head to Piece Builder to get started.');
+        }
+        if (alerts.length > 0) {
+          document.getElementById('attention-list').innerHTML = alerts.map(a => `<li>${a}</li>`).join('');
+          document.getElementById('attention-section').classList.remove('d-none');
+        }
+
+        // ── Next Up ────────────────────────────────────────────────────────────
+        const futureEvents = events
+          .filter(ev => new Date(ev.date + 'T00:00:00') >= today)
+          .sort((a, b) => a.date.localeCompare(b.date));
+
+        const nextUpEl = document.getElementById('next-up-content');
+        if (futureEvents.length === 0) {
+          nextUpEl.innerHTML = `
+            <div style="font-size:13px;color:#888;">No upcoming events scheduled.</div>
+            <div style="font-size:12px;margin-top:4px;">
+              <a href="production-settings.html" style="color:#aaa;" onclick="event.stopPropagation()">Add events in Production Settings</a>
+            </div>`;
+        } else {
+          const ev    = futureEvents[0];
+          const meta  = EVENT_META[ev.event_type] || EVENT_META.other;
+          const evDate = new Date(ev.date + 'T00:00:00');
+          const daysUntil = Math.ceil((evDate - today) / 86400000);
+          const niceDateStr = evDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+          const daysLabel = daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `in ${daysUntil} days`;
+          const times = [fmt12h(ev.start_time), fmt12h(ev.end_time)].filter(Boolean).join(' - ');
+
+          let upcomingHtml = '';
+          if (futureEvents.length > 1) {
+            upcomingHtml = `<div style="margin-top:14px;padding-top:12px;border-top:1px solid #f0f0f0;">` +
+              futureEvents.slice(1, 3).map(e => {
+                const m  = EVENT_META[e.event_type] || EVENT_META.other;
+                const d  = new Date(e.date + 'T00:00:00');
+                const du = Math.ceil((d - today) / 86400000);
+                const dl = du === 0 ? 'Today' : du === 1 ? 'Tomorrow' : `in ${du} days`;
+                const dn = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                return `<div style="display:flex;align-items:center;gap:10px;padding:5px 0;">
+                  <span style="width:8px;height:8px;border-radius:50%;background:${m.color};flex-shrink:0;"></span>
+                  <span style="font-size:13px;flex:1;">${escapeHtml(e.title)}</span>
+                  <span style="font-size:12px;color:#aaa;white-space:nowrap;">${dn} &middot; ${dl}</span>
+                </div>`;
+              }).join('') +
+              `</div>`;
+          }
+
+          nextUpEl.innerHTML = `
+            <div class="d-flex align-items-start justify-content-between gap-3">
+              <div style="flex:1;">
+                <span class="badge mb-2" style="background:${meta.color};font-size:10px;font-weight:600;letter-spacing:.3px;">${meta.label}</span>
+                <div style="font-size:20px;font-weight:700;line-height:1.2;margin-bottom:5px;">${escapeHtml(ev.title)}</div>
+                <div style="font-size:13px;color:#555;">
+                  ${niceDateStr}
+                  <span style="font-weight:700;color:var(--gold);margin-left:8px;">${daysLabel}</span>
+                </div>
+                ${(times || ev.location) ? `<div style="font-size:12px;color:#888;margin-top:3px;">${[times, ev.location ? escapeHtml(ev.location) : ''].filter(Boolean).join(' &middot; ')}</div>` : ''}
+              </div>
+              <span style="color:#ccc;font-size:18px;flex-shrink:0;align-self:center;">&#8594;</span>
+            </div>
+            ${upcomingHtml}`;
+        }
+
+        // ── Submissions card ───────────────────────────────────────────────────
+        const subCount         = dancers.length;
+        const subOpen          = subSettings.submissions_open;
+        const subDeadline      = subSettings.submissions_deadline;
+        const subDeadlinePassed = subDeadline && new Date(subDeadline) <= new Date();
+        const subEffOpen       = subOpen && !subDeadlinePassed;
+        let   deadlineStr      = '';
+        if (subDeadline && !subDeadlinePassed) {
+          const dl = new Date(subDeadline);
+          deadlineStr = `Closes ${dl.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+        }
+
+        document.getElementById('submissions-content').innerHTML = `
+          <div style="font-size:36px;font-weight:700;line-height:1;color:#111;">${subCount}</div>
+          <div style="font-size:12px;color:#888;margin-top:3px;">submission${subCount !== 1 ? 's' : ''}</div>
+          <div class="mt-3 d-flex align-items-center gap-2 flex-wrap">
+            <span class="badge rounded-pill" style="background:${subEffOpen ? '#198754' : '#6b7280'};color:#fff;font-size:11px;">
+              ${subEffOpen ? 'Open' : 'Closed'}
+            </span>
+            ${deadlineStr ? `<span style="font-size:12px;color:#888;">${deadlineStr}</span>` : ''}
+          </div>`;
+
+        // ── Casting card ───────────────────────────────────────────────────────
+        const published  = publishStatus.published || false;
+        const pieceCount = pieces.length;
+
+        document.getElementById('casting-content').innerHTML = `
+          <div style="font-size:36px;font-weight:700;line-height:1;color:#111;">${pieceCount}</div>
+          <div style="font-size:12px;color:#888;margin-top:3px;">piece${pieceCount !== 1 ? 's' : ''}</div>
+          <div class="mt-3">
+            <span class="badge rounded-pill" style="background:${published ? '#198754' : '#6b7280'};color:#fff;font-size:11px;">
+              ${published ? 'Published' : 'Not Published'}
+            </span>
+          </div>`;
+
+        // ── Timeline ───────────────────────────────────────────────────────────
+        if (dates.start_date && dates.end_date) {
+          const start     = new Date(dates.start_date + 'T00:00:00');
+          const end       = new Date(dates.end_date   + 'T00:00:00');
+          const totalDays = Math.max((end - start) / 86400000, 1);
+          const elapsed   = Math.min(Math.max((today - start) / 86400000, 0), totalDays);
+          const todayPct  = (elapsed / totalDays) * 100;
+
+          let audMarker = '';
+          if (dates.audition_date) {
+            const audD   = new Date(dates.audition_date + 'T00:00:00');
+            const audPct = Math.min(Math.max(((audD - start) / 86400000 / totalDays) * 100, 0), 100);
+            audMarker    = `
+              <div style="position:absolute;left:${audPct}%;top:-20px;transform:translateX(-50%);text-align:center;pointer-events:none;">
+                <div style="font-size:10px;color:var(--gold);white-space:nowrap;font-weight:700;">Auditions</div>
+                <div style="width:2px;height:8px;background:var(--gold);margin:2px auto 0;"></div>
+              </div>`;
+          }
+
+          const startLabel   = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const endLabel     = end.toLocaleDateString('en-US',   { month: 'short', day: 'numeric' });
+          const daysLeft     = Math.ceil((end - today) / 86400000);
+          const daysLeftLabel = daysLeft > 0
+            ? `${daysLeft} day${daysLeft === 1 ? '' : 's'} remaining`
+            : daysLeft === 0 ? 'Production ends today'
+            : 'Production has ended';
+
+          document.getElementById('timeline-content').innerHTML = `
+            <div style="position:relative;padding:28px 0 6px;">
+              ${audMarker}
+              <div style="height:6px;background:#eee;border-radius:3px;position:relative;overflow:visible;">
+                <div style="height:6px;background:var(--gold);border-radius:3px;width:${Math.min(todayPct,100)}%;transition:width .3s;"></div>
+                <div style="position:absolute;left:${todayPct}%;top:50%;transform:translate(-50%,-50%);">
+                  <div style="width:14px;height:14px;border-radius:50%;background:#111;border:2px solid #fff;box-shadow:0 0 0 2px #111;"></div>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-top:10px;">
+                <span style="font-size:11px;color:#888;">${startLabel}</span>
+                <span style="font-size:11px;color:#555;font-weight:600;">${daysLeftLabel}</span>
+                <span style="font-size:11px;color:#888;">${endLabel}</span>
+              </div>
+            </div>`;
+
+          document.getElementById('timeline-section').classList.remove('d-none');
+        }
+
+      } catch (err) {
+        console.error(err);
+        window.location.href = 'login.html';
+      }
+    })();
+  </script>
+</body>
+</html>

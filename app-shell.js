@@ -4,6 +4,9 @@
   // Operations / Settings) -- never add a new top-level category, and never touch the
   // 10 director pages' own HTML to add a nav item again.
   const NAV_SECTIONS = [
+    { section: null, items: [
+      { label: 'Dashboard', href: 'dashboard.html' },
+    ]},
     { section: 'Auditions', items: [
       // id matters here: form-builder.html's own script looks up #form-nav-link
       // directly to remove the active state when viewing the org-level template
@@ -49,7 +52,7 @@
   function renderSidebar() {
     const sections = NAV_SECTIONS.map(({ section, items }) => `
       <div class="app-sidebar-section">
-        <div class="app-sidebar-section-label">${section}</div>
+        ${section ? `<div class="app-sidebar-section-label">${section}</div>` : ''}
         ${items.map(renderSidebarItem).join('')}
       </div>
     `).join('');

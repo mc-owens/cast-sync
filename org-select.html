@@ -443,7 +443,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orgId, seasonId }),
       });
-      if (res.ok) window.location.href = 'master.html';
+      if (res.ok) window.location.href = 'dashboard.html';
     }
 
     document.getElementById('send-invite-btn').addEventListener('click', async () => {
