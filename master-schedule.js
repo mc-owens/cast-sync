@@ -136,6 +136,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const hasRooms = rooms.length > 0;
     document.getElementById('room-count-section').style.display = hasRooms ? 'none' : '';
     document.getElementById('named-rooms-section').style.display = hasRooms ? '' : 'none';
+    const fallbackBtn = document.getElementById('use-room-count-btn');
+    if (fallbackBtn) fallbackBtn.classList.toggle('d-none', hasRooms);
     const bannerText = document.getElementById('room-conflict-banner-text');
     if (bannerText) {
       bannerText.textContent = hasRooms
@@ -164,7 +166,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.deleteRoom;
         try {
-          const res = await fetch(`/api/season/rooms/${id}`, { method: 'DELETE' });
+          let res = await fetch(`/api/season/rooms/${id}`, { method: 'DELETE' });
+          if (res.status === 409) {
+            const data = await res.json();
+            const confirmed = confirm(`${data.count} rehearsal${data.count === 1 ? '' : 's'} ${data.count === 1 ? 'is' : 'are'} assigned to this room. Deleting it will unassign ${data.count === 1 ? 'it' : 'them'}. Continue?`);
+            if (!confirmed) return;
+            res = await fetch(`/api/season/rooms/${id}?force=true`, { method: 'DELETE' });
+          }
           if (!res.ok) { const data = await res.json(); alert(data.error || 'Could not delete room.'); return; }
           rooms = rooms.filter(r => String(r.id) !== id);
           renderRoomsList();
@@ -190,7 +198,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('setup-named-rooms-btn').addEventListener('click', () => {
     document.getElementById('room-count-section').style.display = 'none';
     document.getElementById('named-rooms-section').style.display = '';
+    document.getElementById('use-room-count-btn').classList.remove('d-none');
     document.getElementById('new-room-name-input').focus();
+  });
+
+  document.getElementById('use-room-count-btn').addEventListener('click', () => {
+    document.getElementById('named-rooms-section').style.display = 'none';
+    document.getElementById('room-count-section').style.display = '';
   });
 
   document.getElementById('add-room-btn').addEventListener('click', async () => {
@@ -307,6 +321,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         const conflict = allBlocks.some(o => o !== b && o.day === b.day && o.roomId === b.roomId &&
           o.startMin < b.endMin && o.endMin > b.startMin);
         if (conflict) { b.el.classList.add('room-conflict'); hasConflict = true; }
+      });
+
+      // Cross-production room conflicts: compare this production's blocks against
+      // org overlay blocks that share a named room.
+      const orgBlocks = Array.from(document.querySelectorAll('.org-overlay-block')).map(el => ({
+        el,
+        day:      el.dataset.day,
+        startMin: timeStringToMinutes(el.dataset.startTime),
+        endMin:   timeStringToMinutes(el.dataset.endTime),
+        roomId:   el.dataset.roomId || '',
+      }));
+      orgBlocks.forEach(b => b.el.classList.remove('room-conflict'));
+      allBlocks.forEach(b => {
+        if (!b.roomId) return;
+        const crossConflict = orgBlocks.some(o => o.roomId && o.roomId === b.roomId &&
+          o.day === b.day && o.startMin < b.endMin && o.endMin > b.startMin);
+        if (crossConflict) { b.el.classList.add('room-conflict'); hasConflict = true; }
+      });
+      orgBlocks.forEach(b => {
+        if (!b.roomId) return;
+        const crossConflict = allBlocks.some(o => o.roomId && o.roomId === b.roomId &&
+          o.day === b.day && o.startMin < b.endMin && o.endMin > b.startMin);
+        if (crossConflict) { b.el.classList.add('room-conflict'); hasConflict = true; }
       });
     }
 
@@ -445,6 +482,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.dataset.day       = block.day;
     el.dataset.startTime = block.start_time;
     el.dataset.endTime   = block.end_time;
+    el.dataset.roomId    = block.room_id || '';
     el.style.top         = `${topPx}px`;
     el.style.height     = `${heightPx}px`;
     el.style.left       = `calc(${dayIndex} * 100% / 7)`;
@@ -1022,7 +1060,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.preventDefault();
       try {
         const res = await fetch(`/api/master-blocks/exceptions/${occ.exception_id}`, { method: 'DELETE' });
-        if (res.ok) block.remove();
+        if (res.ok) {
+          block.remove();
+          applyWeekExceptionStyling();
+        }
       } catch (err) { /* leave block as-is on failure */ }
     });
     grid.appendChild(block);

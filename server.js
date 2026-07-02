@@ -3748,7 +3748,7 @@ app.get('/api/master-blocks/org', requireAuth('master'), async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT mb.id, mb.day, mb.start_time, mb.end_time,
+      `SELECT mb.id, mb.day, mb.start_time, mb.end_time, mb.room_id,
               p.name AS piece_name, p.color AS piece_color,
               s.name AS season_name, s.id AS season_id
        FROM master_blocks mb
@@ -3935,8 +3935,8 @@ app.delete('/api/season/rooms/:id', requireAuth('master'), async (req, res) => {
       pool.query('SELECT COUNT(*) FROM schedule_placeholders WHERE room_id = $1', [req.params.id]),
     ]);
     const total = parseInt(blocks.rows[0].count) + parseInt(exceptions.rows[0].count) + parseInt(placeholders.rows[0].count);
-    if (total > 0) {
-      return res.status(409).json({ error: `${total} schedule item${total === 1 ? '' : 's'} still use this room. Reassign or remove ${total === 1 ? 'it' : 'them'} first.` });
+    if (total > 0 && req.query.force !== 'true') {
+      return res.status(409).json({ error: `${total} schedule item${total === 1 ? '' : 's'} still use this room. Deleting it will unassign ${total === 1 ? 'it' : 'them'}.`, count: total });
     }
     await pool.query('DELETE FROM rooms WHERE id = $1', [req.params.id]);
     res.json({ message: 'Room deleted.' });

@@ -278,6 +278,11 @@ body {
   box-shadow: 0 0 0 2px rgba(220,53,69,0.18);
 }
 
+.org-overlay-block.room-conflict {
+  border: 2px solid #dc3545 !important;
+  box-shadow: 0 0 0 2px rgba(220,53,69,0.18);
+}
+
 /* Room-aware mode only (a season with at least one named room): a block with no
    room assigned yet, nudging the director to pick one without implying an error. */
 .master-block.room-needs-assignment, .placeholder-block.room-needs-assignment {
