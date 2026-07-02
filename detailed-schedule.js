@@ -106,8 +106,11 @@
       <div id="detailed-toolbar" style="padding:10px 12px;border-bottom:1px solid var(--border);background:#fafafa;">
         ${instrHtml}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;" id="detailed-category-buttons"></div>
-        <input type="text" id="detailed-label-input" class="form-control form-control-sm d-inline-block" style="max-width:260px;" placeholder="Optional label (e.g. after-school activity)">
-        <span id="detailed-coverage-status" style="margin-left:10px;font-size:12px;color:#888;"></span>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+          <input type="text" id="detailed-label-input" class="form-control form-control-sm d-inline-block" style="max-width:260px;" placeholder="Optional label (e.g. after-school activity)">
+          <span id="detailed-label-hint" style="font-size:12px;color:var(--gold);font-weight:600;display:none;">Label required to start painting</span>
+        </div>
+        <span id="detailed-coverage-status" style="margin-top:4px;display:inline-block;font-size:12px;color:#888;"></span>
       </div>
       <div class="day-header-row" id="day-header-row"></div>
       <div class="schedule-container">
@@ -135,12 +138,19 @@
           b.style.background = active ? c.color : '#fff';
           b.style.color = active ? '#fff' : c.color;
         });
-        const labelInp = document.getElementById('detailed-label-input');
+        const labelInp  = document.getElementById('detailed-label-input');
+        const labelHint = document.getElementById('detailed-label-hint');
         if (cat.id === 'available') {
           labelInp.placeholder = 'Optional label (e.g. after-school activity)';
+          labelInp.style.borderColor = '';
           labelInp.classList.remove('is-invalid');
+          labelHint.style.display = 'none';
         } else {
-          labelInp.placeholder = 'Label required (e.g. AP Bio, Babysitting)';
+          labelInp.placeholder = 'e.g. Intro to Biology, Babysitting, Rehearsal...';
+          labelInp.value = '';
+          labelInp.style.borderColor = 'var(--gold)';
+          labelHint.style.display = '';
+          labelInp.focus();
         }
       });
       catButtonsEl.appendChild(btn);
@@ -162,9 +172,24 @@
         const c = CATEGORY_BY_ID[b.dataset.categoryId];
         b.style.background = '#fff'; b.style.color = c.color;
       });
-      const labelInp = document.getElementById('detailed-label-input');
+      const labelInp  = document.getElementById('detailed-label-input');
+      const labelHint = document.getElementById('detailed-label-hint');
       labelInp.placeholder = 'Optional label (e.g. after-school activity)';
+      labelInp.style.borderColor = '';
       labelInp.classList.remove('is-invalid');
+      labelHint.style.display = 'none';
+    });
+
+    // Clear the label prompt once the user starts typing
+    document.getElementById('detailed-label-input').addEventListener('input', function () {
+      const labelHint = document.getElementById('detailed-label-hint');
+      if (this.value.trim()) {
+        this.style.borderColor = '';
+        labelHint.style.display = 'none';
+      } else if (selectedCategory && selectedCategory !== 'available' && selectedCategory !== '__erase__') {
+        this.style.borderColor = 'var(--gold)';
+        labelHint.style.display = '';
+      }
     });
     catButtonsEl.appendChild(eraseBtn);
 
