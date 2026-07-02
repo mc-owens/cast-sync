@@ -4444,7 +4444,14 @@ app.get('/api/season/production-notes', requireAuth('master'), async (req, res) 
     const result = await pool.query(
       `SELECT pn.id, pn.note_text, pn.category, pn.created_at,
               u.email AS author_email,
-              dp.first_name AS dancer_first_name, dp.last_name AS dancer_last_name,
+              COALESCE(
+                (SELECT array_agg(dp2.first_name || ' ' || dp2.last_name ORDER BY dp2.last_name)
+                 FROM unnest(pn.dancer_user_ids) AS uid
+                 JOIN dancer_profiles dp2 ON dp2.user_id = uid),
+                CASE WHEN dp.first_name IS NOT NULL
+                     THEN ARRAY[dp.first_name || ' ' || dp.last_name]
+                     ELSE NULL END
+              ) AS dancer_names,
               COALESCE(
                 json_agg(DISTINCT p.name) FILTER (WHERE p.id IS NOT NULL), '[]'
               ) AS piece_names
@@ -4541,14 +4548,15 @@ app.get('/api/season/faculty-directory', requireAuth('master'), async (req, res)
 app.post('/api/season/production-notes', requireAuth('master'), async (req, res) => {
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
-  const { note_text, category, dancer_user_id, piece_ids, notify_emails } = req.body;
+  const { note_text, category, dancer_user_ids, piece_ids, notify_emails } = req.body;
   if (!note_text || !note_text.trim()) return res.status(400).json({ error: 'Note text is required.' });
   const cat = NOTE_CATEGORIES.includes(category) ? category : 'general';
+  const dancerIds = Array.isArray(dancer_user_ids) ? dancer_user_ids.map(Number).filter(Boolean) : [];
   try {
     const result = await pool.query(
-      `INSERT INTO production_notes (season_id, author_user_id, note_text, category, dancer_user_id)
+      `INSERT INTO production_notes (season_id, author_user_id, note_text, category, dancer_user_ids)
        VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-      [seasonId, req.session.userId, note_text.trim(), cat, dancer_user_id || null]
+      [seasonId, req.session.userId, note_text.trim(), cat, dancerIds]
     );
     const noteId = result.rows[0].id;
 
@@ -5883,6 +5891,13 @@ async function runMigrations() {
     await pool.query(`ALTER TABLE submissions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;`);
     console.log('Migration step 32 (submissions.updated_at) complete.');
   } catch (err) { console.error('Migration step 32 error:', err.message); }
+
+  // Step 33: Support multiple tagged dancers per production note
+  try {
+    await pool.query(`ALTER TABLE production_notes ADD COLUMN IF NOT EXISTS dancer_user_ids INTEGER[] NOT NULL DEFAULT '{}';`);
+    await pool.query(`UPDATE production_notes SET dancer_user_ids = ARRAY[dancer_user_id] WHERE dancer_user_id IS NOT NULL AND dancer_user_ids = '{}';`);
+    console.log('Migration step 33 (production_notes.dancer_user_ids) complete.');
+  } catch (err) { console.error('Migration step 33 error:', err.message); }
 
   console.log('All migrations complete.');
 }

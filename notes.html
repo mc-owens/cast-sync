@@ -73,16 +73,13 @@
           </select>
         </div>
         <div class="col-sm-8">
-          <label class="form-label mb-1" style="font-size:12px;color:#666;">Related dancer (optional)</label>
+          <label class="form-label mb-1" style="font-size:12px;color:#666;">Related dancer(s) (optional)</label>
           <div class="search-wrapper" id="note-dancer-wrapper">
             <input type="text" id="note-dancer-search" class="form-control form-control-sm"
                    placeholder="Search by name or #…" autocomplete="off">
             <div id="note-dancer-dropdown" style="display:none;"></div>
           </div>
-          <div id="note-dancer-selected" class="mt-1 d-none">
-            <span class="badge text-bg-light border" id="note-dancer-chip"></span>
-            <button type="button" class="btn btn-link btn-sm p-0 ms-1" id="note-dancer-clear" style="font-size:12px;">Remove</button>
-          </div>
+          <div id="note-dancer-chips" class="d-flex flex-wrap gap-1 mt-1"></div>
         </div>
       </div>
 
@@ -120,12 +117,27 @@
              ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }
 
-    // ── Related dancer search (same pattern as the Cast Builder's dancer search) ──
-    let selectedDancer = null; // { user_id, first_name, last_name, audition_number }
+    // ── Related dancer search ──────────────────────────────────────────────────
+    let selectedDancers = []; // [{ user_id, first_name, last_name }]
     let dancerSearchDebounce = null;
 
     const dancerSearchInput = document.getElementById('note-dancer-search');
     const dancerDropdown    = document.getElementById('note-dancer-dropdown');
+    const dancerChipsEl     = document.getElementById('note-dancer-chips');
+
+    function renderDancerChips() {
+      dancerChipsEl.innerHTML = selectedDancers.map(d => `
+        <span class="badge text-bg-light border d-inline-flex align-items-center gap-1" style="font-size:12px;">
+          ${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)}
+          <button type="button" class="btn-close" style="font-size:9px;" data-remove-dancer="${d.user_id}" aria-label="Remove"></button>
+        </span>`).join('');
+      dancerChipsEl.querySelectorAll('[data-remove-dancer]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedDancers = selectedDancers.filter(d => String(d.user_id) !== btn.dataset.removeDancer);
+          renderDancerChips();
+        });
+      });
+    }
 
     dancerSearchInput.addEventListener('input', () => {
       clearTimeout(dancerSearchDebounce);
@@ -142,9 +154,11 @@
       try {
         const res     = await fetch(`/api/dancers/search?q=${encodeURIComponent(q)}`);
         const dancers = await res.json();
-        dancerDropdown.innerHTML = dancers.length === 0
+        const already = new Set(selectedDancers.map(d => String(d.user_id)));
+        const unselected = dancers.filter(d => !already.has(String(d.user_id)));
+        dancerDropdown.innerHTML = unselected.length === 0
           ? '<div class="dropdown-item-dancer text-muted">No results found.</div>'
-          : dancers.map(d => `
+          : unselected.map(d => `
               <div class="dropdown-item-dancer" data-user-id="${d.user_id}"
                    data-first-name="${escapeHtml(d.first_name)}" data-last-name="${escapeHtml(d.last_name)}">
                 ${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)}
@@ -157,18 +171,11 @@
     dancerDropdown.addEventListener('click', (e) => {
       const item = e.target.closest('.dropdown-item-dancer[data-user-id]');
       if (!item) return;
-      selectedDancer = { user_id: item.dataset.userId, first_name: item.dataset.firstName, last_name: item.dataset.lastName };
-      document.getElementById('note-dancer-chip').textContent = `${selectedDancer.first_name} ${selectedDancer.last_name}`;
-      document.getElementById('note-dancer-selected').classList.remove('d-none');
+      selectedDancers.push({ user_id: item.dataset.userId, first_name: item.dataset.firstName, last_name: item.dataset.lastName });
+      renderDancerChips();
       dancerSearchInput.value = '';
-      dancerSearchInput.classList.add('d-none');
       hideDancerDropdown();
-    });
-
-    document.getElementById('note-dancer-clear').addEventListener('click', () => {
-      selectedDancer = null;
-      document.getElementById('note-dancer-selected').classList.add('d-none');
-      dancerSearchInput.classList.remove('d-none');
+      dancerSearchInput.focus();
     });
 
     function hideDancerDropdown() {
@@ -177,9 +184,8 @@
     }
 
     function resetDancerSearch() {
-      selectedDancer = null;
-      document.getElementById('note-dancer-selected').classList.add('d-none');
-      dancerSearchInput.classList.remove('d-none');
+      selectedDancers = [];
+      renderDancerChips();
       dancerSearchInput.value = '';
     }
 
@@ -228,10 +234,10 @@
         return;
       }
       list.innerHTML = notes.map(n => {
-        const dancerName = n.dancer_first_name ? `${n.dancer_first_name} ${n.dancer_last_name}` : null;
-        const pieces     = (n.piece_names || []).filter(Boolean);
+        const dancers = (n.dancer_names || []).filter(Boolean);
+        const pieces  = (n.piece_names  || []).filter(Boolean);
         const tags = [
-          dancerName ? `<span class="note-tag">${escapeHtml(dancerName)}</span>` : '',
+          ...dancers.map(name => `<span class="note-tag">${escapeHtml(name)}</span>`),
           ...pieces.map(p => `<span class="note-tag">${escapeHtml(p)}</span>`),
         ].join('');
         const canDelete = n.author_email && n.author_email === currentUserEmail;
@@ -302,7 +308,7 @@
           body: JSON.stringify({
             note_text: noteText,
             category,
-            dancer_user_id: selectedDancer ? parseInt(selectedDancer.user_id) : null,
+            dancer_user_ids: selectedDancers.map(d => parseInt(d.user_id)),
             piece_ids,
             notify_emails,
           }),
