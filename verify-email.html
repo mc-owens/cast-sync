@@ -74,6 +74,8 @@
             setTimeout(() => {
               if (data.role === 'master' || data.isDirector) {
                 window.location.href = 'org-select.html?tour=1';
+              } else if (data.isStaff) {
+                window.location.href = 'staff-pieces.html';
               } else {
                 window.location.href = 'auditionForm.html';
               }

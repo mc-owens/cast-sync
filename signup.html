@@ -109,13 +109,17 @@
 
   <script>
     const params = new URLSearchParams(window.location.search);
-    const role   = params.get('role'); // 'director' or 'auditionee' or null
+    const role   = params.get('role'); // 'director', 'auditionee', 'staff', or null
 
     if (role === 'director') {
       document.getElementById('page-title').textContent = 'Create a Director Account';
       document.getElementById('page-sub').textContent   = 'You\'ll need a director access code to complete sign-up.';
       document.getElementById('code-section').classList.remove('d-none');
       document.getElementById('google-section').classList.add('d-none');
+    } else if (role === 'staff') {
+      document.getElementById('page-title').textContent = 'Create a Staff Account';
+      document.getElementById('page-sub').textContent   = 'Use the same email address your director will use to add you to a piece.';
+      document.getElementById('google-note').textContent = 'Google sign-up creates a staff account.';
     } else {
       document.getElementById('page-title').textContent = 'Create an Account';
       document.getElementById('page-sub').textContent   = 'Auditioning for a production? Sign up here.';
@@ -139,7 +143,7 @@
         const res  = await fetch('/api/auth/signup', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ email, password, masterCode }),
+          body:    JSON.stringify({ email, password, masterCode, isStaff: role === 'staff' }),
         });
         const data = await res.json();
 
@@ -177,7 +181,8 @@
           return;
         }
         if (data.role === 'master')     window.location.href = 'org-select.html?tour=1';
-        if (data.role === 'auditionee') window.location.href = 'auditionForm.html';
+        else if (data.isStaff)         window.location.href = 'staff-pieces.html';
+        else                           window.location.href = 'auditionForm.html';
 
       } catch (err) {
         errorEl.textContent = 'Could not connect to the server.';

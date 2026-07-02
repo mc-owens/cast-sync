@@ -492,18 +492,19 @@ const authLimiter = rateLimit({
 });
 
 app.post('/api/auth/signup', authLimiter, async (req, res) => {
-  const { email, password, masterCode } = req.body;
+  const { email, password, masterCode, isStaff: wantsStaff } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
   if (password.length < 6)  return res.status(400).json({ error: 'Password must be at least 6 characters.' });
-  const role = masterCode === process.env.MASTER_CODE ? 'master' : 'auditionee';
+  const role      = masterCode === process.env.MASTER_CODE ? 'master' : 'auditionee';
+  const staffFlag = role === 'auditionee' && !!wantsStaff;
   try {
     const hash  = await bcrypt.hash(password, 12);
     const token = crypto.randomBytes(32).toString('hex');
     // email_verified defaults TRUE in schema — explicitly set FALSE for new email signups
     const result = await pool.query(
-      `INSERT INTO users (email, password_hash, role, email_verified, verification_token)
-       VALUES ($1, $2, $3, FALSE, $4) RETURNING id, email, role`,
-      [email.toLowerCase().trim(), hash, role, token]
+      `INSERT INTO users (email, password_hash, role, is_staff, email_verified, verification_token)
+       VALUES ($1, $2, $3, $4, FALSE, $5) RETURNING id, email, role, is_staff`,
+      [email.toLowerCase().trim(), hash, role, staffFlag, token]
     );
     const user = result.rows[0];
 
@@ -518,10 +519,12 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
     if (!emailEnabled) {
       // No email configured (local dev) — auto-verify and log in
       await pool.query('UPDATE users SET email_verified = TRUE, verification_token = NULL WHERE id = $1', [user.id]);
-      req.session.userId = user.id;
-      req.session.role   = user.role;
-      req.session.email  = user.email;
-      return res.status(201).json({ id: user.id, email: user.email, role: user.role, trialActivated: role === 'master' });
+      req.session.userId  = user.id;
+      req.session.role    = user.role;
+      req.session.email   = user.email;
+      req.session.isStaff = user.is_staff;
+      req.session.mode    = user.is_staff ? 'staff' : (role === 'master' ? 'director' : 'auditionee');
+      return res.status(201).json({ id: user.id, email: user.email, role: user.role, isStaff: user.is_staff, trialActivated: role === 'master' });
     }
 
     // Send verification email
@@ -545,7 +548,7 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
       </div>`,
     }).catch(err => console.error('Verification email error:', err.message));
 
-    res.status(201).json({ needsVerification: true, email: user.email, trialActivated: role === 'master' });
+    res.status(201).json({ needsVerification: true, email: user.email, isStaff: staffFlag, trialActivated: role === 'master' });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'An account with that email already exists.' });
     console.error('Signup error:', err.message);
