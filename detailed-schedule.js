@@ -108,7 +108,6 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;" id="detailed-category-buttons"></div>
         <input type="text" id="detailed-label-input" class="form-control form-control-sm d-inline-block" style="max-width:260px;" placeholder="Optional label (e.g. after-school activity)">
         <span id="detailed-coverage-status" style="margin-left:10px;font-size:12px;color:#888;"></span>
-        <span id="detailed-hover-time" style="margin-left:10px;font-size:12px;color:#555;font-weight:600;"></span>
       </div>
       <div class="day-header-row" id="day-header-row"></div>
       <div class="schedule-container">
@@ -258,16 +257,22 @@
       updateCoverageStatus();
     }
 
-    // Sunday's slots are a full week's width away from the time-column on the left, so
-    // hovering them gives no easy way to tell what time you're looking at without
-    // counting rows. Show it as text instead of making people line things up visually.
-    const hoverTimeEl = document.getElementById('detailed-hover-time');
-    function showHoverTime(slotEl) {
+    // Floating tooltip that follows the cursor so the time is visible no matter
+    // how far down the page the grid is scrolled.
+    const floatTip = document.createElement('div');
+    floatTip.id = 'detailed-float-tip';
+    floatTip.style.cssText = 'position:fixed;background:rgba(17,17,17,0.8);color:#fff;font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;pointer-events:none;display:none;z-index:9999;white-space:nowrap;';
+    document.body.appendChild(floatTip);
+
+    function showHoverTime(slotEl, e) {
       const day = slotEl.parentElement.dataset.day;
       const idx = parseInt(slotEl.dataset.slotIndex);
       const start = fmt2(idx * INCREMENT + START_HOUR * 60);
       const end   = fmt2((idx + 1) * INCREMENT + START_HOUR * 60);
-      hoverTimeEl.textContent = `${day}, ${start} - ${end}`;
+      floatTip.textContent = `${day}, ${start} - ${end}`;
+      floatTip.style.display = '';
+      floatTip.style.left = `${e.clientX + 14}px`;
+      floatTip.style.top  = `${e.clientY - 28}px`;
     }
 
     let isPainting = false;
@@ -277,15 +282,15 @@
       if (!selectedCategory) { alert('Pick a category above first, then click or drag to paint your schedule.'); return; }
       isPainting = true;
       paintSlot(slot);
-      showHoverTime(slot);
+      showHoverTime(slot, e);
     });
     grid.addEventListener('mousemove', e => {
       const slot = e.target.closest('.time-slot');
       if (!slot) return;
-      showHoverTime(slot);
+      showHoverTime(slot, e);
       if (isPainting) paintSlot(slot);
     });
-    grid.addEventListener('mouseleave', () => { if (!isPainting) hoverTimeEl.textContent = ''; });
+    grid.addEventListener('mouseleave', () => { floatTip.style.display = 'none'; });
     mouseupHandler = () => { isPainting = false; };
     document.addEventListener('mouseup', mouseupHandler);
 
@@ -519,6 +524,7 @@
   };
 
   window.teardownDetailedAvailability = function () {
+    document.getElementById('detailed-float-tip')?.remove();
     const wrapper = document.querySelector('.schedule-wrapper');
     if (wrapper && originalWrapperHtml !== null) {
       wrapper.innerHTML = originalWrapperHtml;
