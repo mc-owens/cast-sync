@@ -1454,14 +1454,14 @@ app.post('/api/promo/redeem', requireAuth('master'), async (req, res) => {
   try {
     if (isAnnual) {
       await pool.query(
-        `UPDATE users SET plan_type = 'annual', plan_expires_at = NOW() + INTERVAL '1 year' WHERE id = $1`,
-        [req.session.userId]
+        `UPDATE users SET plan_type = 'annual', plan_expires_at = NOW() + INTERVAL '1 year', promo_code_used = $2 WHERE id = $1`,
+        [req.session.userId, upper]
       );
       res.json({ ok: true, message: 'Promo code applied! You have one full year of Pro access.' });
     } else {
       await pool.query(
-        `UPDATE users SET plan_type = 'free', plan_expires_at = NULL WHERE id = $1`,
-        [req.session.userId]
+        `UPDATE users SET plan_type = 'free', plan_expires_at = NULL, promo_code_used = $2 WHERE id = $1`,
+        [req.session.userId, upper]
       );
       res.json({ ok: true, message: 'Promo code applied! You have free unlimited access.' });
     }
@@ -5173,7 +5173,7 @@ app.get('/admin/masters', async (req, res) => {
   }
   try {
     const { rows } = await pool.query(`
-      SELECT u.id, u.email, u.created_at, u.plan_type, u.plan_expires_at,
+      SELECT u.id, u.email, u.created_at, u.plan_type, u.plan_expires_at, u.promo_code_used,
              COALESCE(string_agg(DISTINCT o.name, ', ' ORDER BY o.name), '—') AS orgs
       FROM users u
       LEFT JOIN org_members om ON om.user_id = u.id AND om.role = 'owner'
@@ -5181,7 +5181,7 @@ app.get('/admin/masters', async (req, res) => {
       WHERE u.role = 'master'
         AND u.email NOT LIKE '%@demo.castsync.app'
         AND (u.is_mock IS NULL OR u.is_mock IS FALSE)
-      GROUP BY u.id, u.email, u.created_at, u.plan_type, u.plan_expires_at
+      GROUP BY u.id, u.email, u.created_at, u.plan_type, u.plan_expires_at, u.promo_code_used
       ORDER BY u.created_at DESC NULLS LAST
     `);
 
@@ -5191,14 +5191,24 @@ app.get('/admin/masters', async (req, res) => {
       const expires = r.plan_expires_at ? new Date(r.plan_expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
       const plan    = r.plan_type || '—';
       const expired = r.plan_expires_at && new Date(r.plan_expires_at) < now;
-      const badge   = expired
+      const planBadge = expired
         ? `<span style="background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:4px;font-size:12px;">${plan} · expired</span>`
         : `<span style="background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:4px;font-size:12px;">${plan}</span>`;
+
+      let promoBadge = '—';
+      if (r.promo_code_used) {
+        const promoActive = r.plan_type === 'free' || (r.plan_type === 'annual' && !expired);
+        promoBadge = promoActive
+          ? `<span style="font-family:monospace;font-size:12px;background:#fef9c3;color:#713f12;padding:2px 7px;border-radius:4px;">${r.promo_code_used}</span> <span style="color:#16a34a;font-size:11px;font-weight:600;">active</span>`
+          : `<span style="font-family:monospace;font-size:12px;background:#f3f4f6;color:#6b7280;padding:2px 7px;border-radius:4px;">${r.promo_code_used}</span> <span style="color:#9ca3af;font-size:11px;">expired</span>`;
+      }
+
       return `<tr>
         <td>${r.email}</td>
         <td>${joined}</td>
-        <td>${badge}</td>
+        <td>${planBadge}</td>
         <td>${expires}</td>
+        <td>${promoBadge}</td>
         <td>${r.orgs}</td>
       </tr>`;
     }).join('');
@@ -5223,8 +5233,8 @@ app.get('/admin/masters', async (req, res) => {
   <h1>Director Accounts</h1>
   <div class="sub">${rows.length} total</div>
   <table>
-    <thead><tr><th>Email</th><th>Joined</th><th>Plan</th><th>Expires</th><th>Orgs</th></tr></thead>
-    <tbody>${tableRows || '<tr><td colspan="5" style="color:#9ca3af;text-align:center;padding:24px;">No director accounts yet.</td></tr>'}</tbody>
+    <thead><tr><th>Email</th><th>Joined</th><th>Plan</th><th>Expires</th><th>Promo Code</th><th>Orgs</th></tr></thead>
+    <tbody>${tableRows || '<tr><td colspan="6" style="color:#9ca3af;text-align:center;padding:24px;">No director accounts yet.</td></tr>'}</tbody>
   </table>
 </body>
 </html>`);
@@ -5901,6 +5911,12 @@ async function runMigrations() {
     await pool.query(`UPDATE production_notes SET dancer_user_ids = ARRAY[dancer_user_id] WHERE dancer_user_id IS NOT NULL AND dancer_user_ids = '{}';`);
     console.log('Migration step 33 (production_notes.dancer_user_ids) complete.');
   } catch (err) { console.error('Migration step 33 error:', err.message); }
+
+  // Step 34: Store which promo code a director redeemed (for admin visibility)
+  try {
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS promo_code_used VARCHAR(100);`);
+    console.log('Migration step 34 (users.promo_code_used) complete.');
+  } catch (err) { console.error('Migration step 34 error:', err.message); }
 
   console.log('All migrations complete.');
 }
