@@ -217,7 +217,7 @@
       header.innerHTML = `
         <div class="mb-2">
           <div class="d-flex align-items-center gap-2 mb-1" id="org-name-display-${org.id}">
-            <h6 class="mb-0 fw-bold">${org.name}</h6>
+            <h5 class="mb-0 fw-bold">${org.name}</h5>
             ${isOwner ? `<button class="icon-btn" title="Rename org" data-rename-org="${org.id}" data-org-name="${org.name}">✏️</button>` : ''}
           </div>
           <div id="org-rename-form-${org.id}" style="display:none;" class="rename-form px-0 pt-1 pb-0">
