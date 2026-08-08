@@ -1251,6 +1251,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   window.addEventListener('weekChanged', applySpecialEventBand);
+  window.addEventListener('specialEventsChanged', applySpecialEventBand);
 
   function renderOneTimeBlock(occ) {
     const dayName  = new Date(`${occ.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });

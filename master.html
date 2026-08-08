@@ -379,10 +379,12 @@
           <div id="sc-dates-msg" style="display:none;font-size:11px;color:#9ca3af;margin-top:2px;"></div>
         </div>
         <div id="special-events-section" class="no-print" style="display:none;margin-top:8px;margin-bottom:4px;">
-          <div style="margin-bottom:5px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
             <span style="font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;">Special Events</span>
+            <button id="se-add-btn" type="button" style="background:none;border:none;padding:0;font-size:11px;color:#9ca3af;cursor:pointer;">+ Add</button>
           </div>
           <div id="se-list"></div>
+          <div id="se-add-form" style="display:none;background:#f9fafb;border:1px solid #e5e7eb;border-radius:7px;padding:12px;margin-top:6px;"></div>
         </div>
         <div id="milestone-banner" class="alert alert-warning py-2 px-3 mb-2 d-none no-print" style="font-size:13px;"></div>
         <p class="text-muted no-print" style="font-size:12.5px;margin-bottom:4px;">
@@ -673,7 +675,7 @@
           const canEdit    = isFuture || isDefault;
           const canRemove  = isFuture && !isDefault;
           return `
-            <div data-sc-row="${seg.id}"${isActive ? ' style="background:#eef2ff;border-radius:5px;margin:2px -6px;padding:0 6px;"' : ''}>
+            <div data-sc-row="${seg.id}"${isActive ? ' style="background:#eef2ff;border-radius:5px;margin:0 -6px;padding:0 6px;"' : ''}>
               <div style="display:flex;align-items:center;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${isActive ? '#e0e7ff' : '#f3f4f6'};">
                 <div style="font-size:12px;${isActive ? 'font-weight:600;color:#111827;' : 'color:#6b7280;'}">${activeDot}Starting ${niceDate}${labelPart}</div>
                 <div style="display:flex;gap:10px;flex-shrink:0;margin-left:8px;">
@@ -777,8 +779,18 @@
     window.addEventListener('segmentsChanged', loadScheduleChanges);
     window.addEventListener('weekChanged', loadScheduleChanges);
 
-    const SE_SECTION_LABELS = { no_rehearsal: 'No Rehearsal', costume: 'Costume', tech: 'Tech', photo: 'Photo Shoot', field_trip: 'Field Trip', other: 'Event' };
-    const SE_SECTION_COLORS = { no_rehearsal: '#6b7280', costume: '#7c3aed', tech: '#0284c7', photo: '#0891b2', field_trip: '#059669', other: '#9ca3af' };
+    const SE_SECTION_LABELS = {
+      tech: 'Tech', dress: 'Dress', spacing: 'Spacing', photo_dress: 'Photo Dress',
+      performance: 'Performance', warm_up: 'Warm Up', costume_fitting: 'Costume Fitting',
+      company_meeting: 'Company Meeting', no_rehearsal: 'No Rehearsal',
+      notes_cleaning: 'Notes / Cleaning', load_in_strike: 'Load In / Strike', other: 'Event'
+    };
+    const SE_SECTION_COLORS = {
+      tech: '#0284c7', dress: '#7c3aed', spacing: '#059669', photo_dress: '#0891b2',
+      performance: '#c0392b', warm_up: '#d97706', costume_fitting: '#7c3aed',
+      company_meeting: '#374151', no_rehearsal: '#6b7280', notes_cleaning: '#6366f1',
+      load_in_strike: '#9ca3af', other: '#9ca3af'
+    };
 
     async function loadSpecialEventsSection() {
       const section = document.getElementById('special-events-section');
@@ -796,12 +808,12 @@
         const dates     = datesRes.ok ? await datesRes.json() : {};
         const perfDates = perfRes.ok  ? await perfRes.json()  : [];
 
-        // Build a combined list for the current week
+        if (!dates.start_date || !dates.end_date) { section.style.display = 'none'; return; }
+        section.style.display = '';
+
         const DAY_NAMES_SE = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
         function dayOffset(mon, dateStr) {
-          const d = new Date(`${dateStr}T00:00:00`);
-          const m = new Date(`${mon}T00:00:00`);
-          return Math.round((d - m) / 86400000);
+          return Math.round((new Date(`${dateStr}T00:00:00`) - new Date(`${mon}T00:00:00`)) / 86400000);
         }
 
         const items = [];
@@ -816,19 +828,97 @@
         events.forEach(ev => {
           const off = dayOffset(monday, ev.date);
           if (off < 0 || off > 6) return;
-          const label = SE_SECTION_LABELS[ev.event_type] || 'Event';
-          const color = SE_SECTION_COLORS[ev.event_type] || '#9ca3af';
-          items.push({ day: DAY_NAMES_SE[off], label, color, title: ev.title || '' });
+          items.push({ id: ev.id, day: DAY_NAMES_SE[off], label: SE_SECTION_LABELS[ev.event_type] || 'Event', color: SE_SECTION_COLORS[ev.event_type] || '#9ca3af', title: ev.title || '' });
         });
 
-        if (items.length === 0) { section.style.display = 'none'; return; }
-        section.style.display = '';
-        listEl.innerHTML = items.map(it => `
-          <div style="display:flex;align-items:center;gap:7px;padding:3px 0;border-bottom:1px solid #f3f4f6;">
-            <span style="font-size:11px;font-weight:600;color:${it.color};min-width:82px;">${it.label}</span>
-            <span style="font-size:12px;color:#374151;font-weight:500;">${it.day}</span>
-            ${it.title ? `<span style="font-size:11px;color:#9ca3af;">&middot; ${escapeHtml(it.title)}</span>` : ''}
-          </div>`).join('');
+        listEl.innerHTML = items.length === 0
+          ? `<div style="font-size:11px;color:#d1d5db;padding:2px 0 4px;">Nothing this week.</div>`
+          : items.map(it => `
+              <div style="display:flex;align-items:center;gap:7px;padding:3px 0;border-bottom:1px solid #f3f4f6;">
+                <span style="font-size:11px;font-weight:600;color:${it.color};min-width:96px;">${it.label}</span>
+                <span style="font-size:12px;color:#374151;font-weight:500;">${it.day}</span>
+                ${it.title ? `<span style="font-size:11px;color:#9ca3af;">&middot; ${escapeHtml(it.title)}</span>` : ''}
+              </div>`).join('');
+
+        // Wire add button once; re-wire if production dates change
+        const addBtn  = document.getElementById('se-add-btn');
+        const addForm = document.getElementById('se-add-form');
+        if (addBtn && !addBtn._wired) {
+          addBtn._wired = true;
+          addBtn.addEventListener('click', () => {
+            const typeOptions = Object.entries(SE_SECTION_LABELS)
+              .map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+            addForm.innerHTML = `
+              <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <div style="flex:1;">
+                  <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Date</label>
+                  <input type="date" id="se-new-date" value="${monday}" min="${dates.start_date}" max="${dates.end_date}" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;">
+                </div>
+                <div style="flex:1;">
+                  <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Type</label>
+                  <select id="se-new-type" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;">${typeOptions}</select>
+                </div>
+              </div>
+              <div style="margin-bottom:10px;">
+                <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Title</label>
+                <input type="text" id="se-new-title" placeholder="e.g. Act 1 Tech" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;">
+              </div>
+              <div style="display:flex;gap:8px;margin-bottom:10px;">
+                <div style="flex:1;">
+                  <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Start time <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
+                  <input type="time" id="se-new-start" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;">
+                </div>
+                <div style="flex:1;">
+                  <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">End time <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
+                  <input type="time" id="se-new-end" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;">
+                </div>
+              </div>
+              <div style="margin-bottom:10px;">
+                <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Location <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
+                <input type="text" id="se-new-location" placeholder="e.g. Main Stage" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;">
+              </div>
+              <div id="se-new-err" style="font-size:11px;color:#ef4444;margin-bottom:6px;display:none;"></div>
+              <div style="display:flex;gap:8px;">
+                <button type="button" id="se-new-save" style="background:#111827;color:#fff;border:none;border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer;">Add Event</button>
+                <button type="button" id="se-new-cancel" style="background:none;border:1px solid #d1d5db;border-radius:5px;padding:5px 10px;font-size:12px;cursor:pointer;">Cancel</button>
+              </div>`;
+            addForm.style.display = '';
+            addBtn.style.display  = 'none';
+            document.getElementById('se-new-cancel').addEventListener('click', () => {
+              addForm.style.display = 'none';
+              addBtn.style.display  = '';
+            });
+            document.getElementById('se-new-save').addEventListener('click', async () => {
+              const date     = document.getElementById('se-new-date').value;
+              const type     = document.getElementById('se-new-type').value;
+              const title    = document.getElementById('se-new-title').value.trim();
+              const start    = document.getElementById('se-new-start').value || null;
+              const end      = document.getElementById('se-new-end').value || null;
+              const location = document.getElementById('se-new-location').value.trim() || null;
+              const errEl    = document.getElementById('se-new-err');
+              if (!date) { errEl.textContent = 'Please choose a date.'; errEl.style.display = ''; return; }
+              if (!title) { errEl.textContent = 'Title is required.'; errEl.style.display = ''; return; }
+              errEl.style.display = 'none';
+              const saveBtn = document.getElementById('se-new-save');
+              saveBtn.disabled = true; saveBtn.textContent = 'Saving...';
+              try {
+                const res = await fetch('/api/season/special-events', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ event_type: type, title, date, start_time: start, end_time: end, location })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) { errEl.textContent = data.error || 'Could not save.'; errEl.style.display = ''; return; }
+                addForm.style.display = 'none';
+                addBtn.style.display  = '';
+                addBtn._wired = false;
+                await loadSpecialEventsSection();
+                window.dispatchEvent(new CustomEvent('specialEventsChanged'));
+              } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.style.display = ''; }
+              finally { saveBtn.disabled = false; saveBtn.textContent = 'Add Event'; }
+            });
+          });
+        }
       } catch (e) { section.style.display = 'none'; }
     }
     window.addEventListener('weekChanged', loadSpecialEventsSection);
