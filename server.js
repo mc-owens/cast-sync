@@ -1730,7 +1730,7 @@ app.post('/api/orgs/:orgId/seasons/free', requireAuth('master'), async (req, res
       'SELECT id FROM org_members WHERE org_id = $1 AND user_id = $2',
       [req.params.orgId, req.session.userId]
     );
-    if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'Not a member of this organization.' });
+    if (memberCheck.rows.length === 0) return res.status(403).json({ error: 'You can only create productions in organizations you own. Please create your own organization first, then add a production to it.' });
 
     const { name, form_source } = req.body;
     if (!name) return res.status(400).json({ error: 'Production name is required.' });
