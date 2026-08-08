@@ -874,8 +874,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const data = await res.json().catch(() => ({}));
         alert(data.error || 'Could not move this date.');
       } else {
-        blockEl.classList.add('block-cancelled-this-week'); // the usual slot doesn't happen this week
-        blockEl.title = 'Moved for this week only';
+        bootstrap.Modal.getInstance(deleteModalEl).hide();
+        pendingDeleteBlock = null;
+        applyWeekExceptionStyling();
+        return;
       }
     } catch (e) { alert('Could not connect to server.'); }
     bootstrap.Modal.getInstance(deleteModalEl).hide();
