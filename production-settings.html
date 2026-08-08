@@ -659,10 +659,32 @@
 
         async function loadScheduleChanges() {
           const listEl = document.getElementById('schedule-changes-list');
-          const today = new Date().toISOString().slice(0, 10);
+          const addBtn = document.getElementById('add-schedule-change-btn');
+          const today  = new Date().toISOString().slice(0, 10);
           try {
-            const r = await fetch('/api/season/segments');
-            const segments = r.ok ? await r.json() : [];
+            const [r, datesRes] = await Promise.all([fetch('/api/season/segments'), fetch('/api/season/production-dates')]);
+            const segments  = r.ok ? await r.json() : [];
+            const prodDates = datesRes.ok ? await datesRes.json() : {};
+            const prodStart = prodDates.start_date || null;
+            const prodEnd   = prodDates.end_date   || null;
+
+            if (!prodStart || !prodEnd) {
+              addBtn.style.display = 'none';
+              addBtn.dataset.prodStart = ''; addBtn.dataset.prodEnd = '';
+              const existing = document.getElementById('sc-dates-msg');
+              if (!existing) {
+                const msg = document.createElement('p');
+                msg.id = 'sc-dates-msg';
+                msg.style.cssText = 'font-size:12px;color:#9ca3af;margin-top:4px;';
+                msg.innerHTML = 'Set your production start and end dates before adding schedule changes. <a href="#start-date-input" style="color:#9ca3af;" onclick="document.getElementById(\'start-date-input\').focus();return false;">Set dates &uarr;</a>';
+                addBtn.parentNode.insertBefore(msg, addBtn.nextSibling);
+              }
+            } else {
+              addBtn.style.display = '';
+              addBtn.dataset.prodStart = prodStart;
+              addBtn.dataset.prodEnd   = prodEnd;
+              document.getElementById('sc-dates-msg')?.remove();
+            }
             if (segments.length === 0) {
               listEl.innerHTML = '<div class="text-muted" style="font-size:12px;">No schedule defined yet. Set a production start date in General to begin.</div>';
               return;
@@ -706,11 +728,13 @@
 
                 listEl.querySelectorAll('.sc-edit-form').forEach(f => f.classList.add('d-none'));
 
-                const minDate  = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+                const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+                const editMin  = (prodStart && prodStart > tomorrow) ? prodStart : tomorrow;
+                const editMax  = prodEnd || '';
                 const dateRow  = (!isDefault && isFuture) ? `
                   <div class="mb-2">
                     <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Starting date</label>
-                    <input type="date" id="sc-edit-date-${id}" value="${currentDate}" min="${minDate}" style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px;">
+                    <input type="date" id="sc-edit-date-${id}" value="${currentDate}" min="${editMin}" ${editMax ? `max="${editMax}"` : ''} style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px;">
                   </div>` : '';
 
                 formEl.innerHTML = `
@@ -772,11 +796,16 @@
         const addScForm = document.getElementById('schedule-change-add-form');
 
         addScBtn.addEventListener('click', () => {
-          const minDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+          const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+          const prodStart = addScBtn.dataset.prodStart || '';
+          const prodEnd   = addScBtn.dataset.prodEnd   || '';
+          // min is the later of tomorrow or the day after production start
+          const minDate = prodStart > tomorrow ? prodStart : tomorrow;
+          const maxDate = prodEnd || '';
           addScForm.innerHTML = `
             <div class="mb-3">
               <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Starting when?</label>
-              <input type="date" id="sc-add-date" min="${minDate}" style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px;">
+              <input type="date" id="sc-add-date" min="${minDate}" ${maxDate ? `max="${maxDate}"` : ''} style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px;">
             </div>
             <div class="mb-3">
               <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;">Build from</label>
@@ -811,9 +840,13 @@
             const copy    = document.querySelector('input[name="sc-add-copy"]:checked')?.value === 'copy';
             const label   = document.getElementById('sc-add-label').value.trim() || null;
             const errorEl = document.getElementById('sc-add-error');
-            const todayStr = new Date().toISOString().slice(0, 10);
+            const todayStr  = new Date().toISOString().slice(0, 10);
+            const addProdEnd = addScBtn.dataset.prodEnd || '';
             if (!date || date <= todayStr) {
               errorEl.textContent = 'Please choose a future date.'; errorEl.style.display = ''; return;
+            }
+            if (addProdEnd && date > addProdEnd) {
+              errorEl.textContent = 'Date cannot be after the production end date.'; errorEl.style.display = ''; return;
             }
             errorEl.style.display = 'none';
             const saveBtn = document.getElementById('sc-add-save-btn');

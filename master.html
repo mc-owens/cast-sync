@@ -372,6 +372,7 @@
              day column -- that approach broke down with several milestone days in one
              week and at narrower window widths. -->
         <div id="prod-timeline" class="no-print"></div>
+        <div id="schedule-period-indicator" class="no-print" style="display:none;margin-top:3px;margin-bottom:2px;"></div>
         <div id="milestone-banner" class="alert alert-warning py-2 px-3 mb-2 d-none no-print" style="font-size:13px;"></div>
         <p class="text-muted no-print" style="font-size:12.5px;margin-bottom:4px;">
           Showing your weekly rehearsal template. Changes here apply every week unless noted otherwise.
@@ -541,6 +542,8 @@
       render();
     }
 
+    function escapeHtml(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
     async function initProdTimeline() {
       try {
         const [datesRes, evRes, segRes] = await Promise.all([
@@ -604,6 +607,21 @@
               <div class="prod-tl-marker" style="left:${markerPct}%;"></div>
             </div>`;
           el.style.display = 'block';
+
+          // Compact schedule-period indicator below the timeline strip.
+          const indEl = document.getElementById('schedule-period-indicator');
+          if (indEl && segments.length > 0) {
+            const weekStr = window._currentWeekMonday || new Date().toISOString().slice(0, 10);
+            let activeSeg = segments[0], activeIdx = 0;
+            for (let i = 0; i < segments.length; i++) {
+              if (segments[i].start_date <= weekStr) { activeSeg = segments[i]; activeIdx = i; }
+              else break;
+            }
+            const periodLabel = activeSeg.label || (activeIdx === 0 ? 'Initial Schedule' : '');
+            const periodDate  = new Date(`${activeSeg.start_date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            indEl.innerHTML = `<span style="font-size:11px;color:#9ca3af;">${periodLabel ? escapeHtml(periodLabel) + ' &middot; ' : ''}Starting ${periodDate}</span><a href="production-settings.html#schedule-changes-card" style="font-size:11px;color:#9ca3af;margin-left:10px;text-decoration:none;">Manage changes &rarr;</a>`;
+            indEl.style.display = '';
+          }
         }
         renderTL();
         window.addEventListener('weekChanged', renderTL);
