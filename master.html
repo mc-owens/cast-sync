@@ -64,6 +64,24 @@
       background: #8b5cf6;
       border: 2px solid #fff; border-radius: 50%;
     }
+    .prod-tl-segment {
+      position: absolute; top: 50%;
+      transform: translate(-50%, -50%) rotate(45deg);
+      width: 7px; height: 7px;
+      background: #6366f1;
+      border: 2px solid #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,.18);
+    }
+    .day-column.has-segment-change { border-left: 2px solid #6366f1; }
+    .segment-change-label {
+      display: block;
+      font-size: 9px;
+      font-weight: 400;
+      color: #6366f1;
+      letter-spacing: 0.03em;
+      margin-top: 1px;
+      text-transform: uppercase;
+    }
 
     /* ── Rehearsal detail drawer ── */
     #block-drawer {
@@ -525,14 +543,16 @@
 
     async function initProdTimeline() {
       try {
-        const [datesRes, evRes] = await Promise.all([
+        const [datesRes, evRes, segRes] = await Promise.all([
           fetch('/api/season/production-dates'),
           fetch('/api/season/special-events'),
+          fetch('/api/season/segments'),
         ]);
         if (!datesRes.ok) return;
         const dates = await datesRes.json();
         if (!dates.start_date || !dates.end_date) return;
         const seEvents = evRes.ok ? await evRes.json() : [];
+        const segments = segRes.ok ? await segRes.json() : [];
 
         const startDate = dateFromYMD(dates.start_date);
         const endDate   = dateFromYMD(dates.end_date);
@@ -557,6 +577,14 @@
             : '';
         })() : '';
 
+        // Diamond markers for schedule change points (skip the first/default segment
+        // since it coincides with the production start date already shown as the left edge).
+        const segDots = segments.slice(1).map(seg => {
+          const d = dateFromYMD(seg.start_date);
+          if (d <= startDate || d > endDate) return '';
+          return `<div class="prod-tl-segment" style="left:${pct(d)}%;" title="${seg.label || 'Schedule change'}"></div>`;
+        }).join('');
+
         function renderTL() {
           const el = document.getElementById('prod-timeline');
           if (!el) return;
@@ -572,7 +600,7 @@
             </div>
             <div class="prod-tl-track">
               <div class="prod-tl-fill" style="width:${markerPct}%;"></div>
-              ${evDots}${audDot}
+              ${evDots}${audDot}${segDots}
               <div class="prod-tl-marker" style="left:${markerPct}%;"></div>
             </div>`;
           el.style.display = 'block';

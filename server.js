@@ -211,12 +211,22 @@ function dateFromYMD(dateStr) {
 async function generateOccurrences(seasonId, startDateStr, endDateStr) {
   const blocksResult = await pool.query(
     `SELECT mb.id AS master_block_id, mb.piece_id, mb.day, mb.start_time, mb.end_time, mb.room_id,
+            mb.segment_id,
             p.name AS piece_name, p.color AS piece_color
      FROM master_blocks mb JOIN pieces p ON p.id = mb.piece_id
      WHERE p.season_id = $1`,
     [seasonId]
   );
   const blockById = new Map(blocksResult.rows.map(b => [b.master_block_id, b]));
+
+  // Segments sorted ascending so we can walk them in order to find the active one per date.
+  const segmentsResult = await pool.query(
+    `SELECT id, to_char(start_date, 'YYYY-MM-DD') AS start_date
+     FROM schedule_segments WHERE season_id = $1 ORDER BY start_date ASC`,
+    [seasonId]
+  );
+  const segments = segmentsResult.rows;
+
   const exceptionsResult = await pool.query(
     `SELECT mbe.id, mbe.piece_id, mbe.master_block_id, to_char(mbe.original_date,'YYYY-MM-DD') AS original_date,
             mbe.type, to_char(mbe.new_date,'YYYY-MM-DD') AS new_date, mbe.new_start_time, mbe.new_end_time, mbe.note, mbe.room_id,
@@ -245,8 +255,20 @@ async function generateOccurrences(seasonId, startDateStr, endDateStr) {
   while (cursor <= end) {
     const dateStr   = ymd(cursor);
     const dayOfWeek = cursor.toLocaleDateString('en-US', { weekday: 'long' });
+
+    // Find the segment active on this date: last segment with start_date <= dateStr.
+    // When no segments exist (no start_date set), activeSegId stays null and all blocks pass.
+    let activeSegId = null;
+    if (segments.length > 0) {
+      for (const s of segments) {
+        if (s.start_date <= dateStr) activeSegId = s.id;
+        else break;
+      }
+    }
+
     for (const block of blocksResult.rows) {
       if (block.day !== dayOfWeek) continue;
+      if (segments.length > 0 && block.segment_id !== activeSegId) continue;
       const exc = exceptionByKey.get(`${block.master_block_id}|${dateStr}`);
       if (exc && (exc.type === 'cancelled' || exc.type === 'moved')) continue;
       occurrences.push({
@@ -3597,7 +3619,15 @@ app.get('/api/master-blocks/occurrences', requireAuth('master'), async (req, res
   }
   try {
     const occurrences = await generateOccurrences(seasonId, start, end);
-    res.json(occurrences);
+    // Include any segment boundaries within the range so the client can render
+    // mid-week "Schedule changes here" dividers without a second fetch.
+    const segChanges = await pool.query(
+      `SELECT to_char(start_date, 'YYYY-MM-DD') AS date, label
+       FROM schedule_segments WHERE season_id = $1 AND start_date BETWEEN $2 AND $3
+       ORDER BY start_date ASC`,
+      [seasonId, start, end]
+    );
+    res.json({ occurrences, segment_changes: segChanges.rows });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to generate occurrences.' });

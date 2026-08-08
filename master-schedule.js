@@ -910,6 +910,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (b.title === 'Cancelled for this week only') b.removeAttribute('title');
     });
     document.querySelectorAll('.one-time-block').forEach(b => b.remove());
+    // Clear segment-change dividers from any previous week.
+    document.querySelectorAll('.day-header.has-segment-change').forEach(el => el.classList.remove('has-segment-change'));
+    document.querySelectorAll('.day-column.has-segment-change').forEach(el => el.classList.remove('has-segment-change'));
+    document.querySelectorAll('.segment-change-label').forEach(el => el.remove());
+
     const monday = window._currentWeekMonday;
     if (!monday) return;
     const sunday = new Date(`${monday}T00:00:00`);
@@ -918,7 +923,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const res = await fetch(`/api/master-blocks/occurrences?start=${monday}&end=${sundayStr}`);
       if (!res.ok) return;
-      const occurrences = await res.json();
+      const data = await res.json();
+      const occurrences      = data.occurrences      || [];
+      const segmentChanges   = data.segment_changes   || [];
+
       const templateBlockIds = new Set(occurrences.filter(o => o.source === 'template').map(o => o.master_block_id));
       document.querySelectorAll('.master-block').forEach(blockEl => {
         if (!templateBlockIds.has(parseInt(blockEl.dataset.dbId))) {
@@ -932,6 +940,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       // recurring blocks use -- they're one-time, so a rare visual overlap is an acceptable
       // trade for not entangling this with repositionAllBlocks().
       occurrences.filter(o => o.source === 'moved' || o.source === 'added').forEach(renderOneTimeBlock);
+
+      // Render a subtle divider before any day that starts a new schedule segment mid-week.
+      // A segment starting on Monday (idx === 0) means the whole week uses the new segment
+      // already -- no divider needed. Segments outside this week are idx === -1, also skipped.
+      segmentChanges.forEach(sc => {
+        const idx = dayIndexInWeek(monday, sc.date);
+        if (idx <= 0) return;
+        const headerCell = headerRow.children[idx + 1]; // +1 skips the time-gutter spacer
+        const columnCell = grid.children[idx];
+        if (headerCell) {
+          headerCell.classList.add('has-segment-change');
+          const lbl = document.createElement('span');
+          lbl.className   = 'segment-change-label';
+          lbl.textContent = sc.label || 'Schedule changes';
+          headerCell.appendChild(lbl);
+        }
+        if (columnCell) columnCell.classList.add('has-segment-change');
+      });
     } catch (e) { /* leave styling as-is */ }
   }
   window.addEventListener('weekChanged', applyWeekExceptionStyling);
