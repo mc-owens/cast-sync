@@ -50,7 +50,7 @@
         <div id="prod-name-msg" class="mt-1" style="font-size:12px;"></div>
       </div>
 
-      <div class="mb-4">
+      <div class="mb-0">
         <label class="form-label" style="font-size:13px;font-weight:600;">Join Code</label>
         <div class="d-flex align-items-center gap-2">
           <span id="join-code-display" style="font-size:15px;font-weight:700;letter-spacing:1px;">Loading…</span>
@@ -58,7 +58,10 @@
         </div>
         <div style="font-size:11px;color:#aaa;margin-top:4px;">Share this with auditionees so they can submit to this production.</div>
       </div>
+    </div>
 
+    <div class="app-card mb-4">
+      <h6 class="label-gold mb-3">Production Dates</h6>
       <div class="row g-3">
         <div class="col-sm-6">
           <label class="form-label" style="font-size:13px;font-weight:600;">Production Start Date</label>
@@ -74,7 +77,7 @@
         </div>
       </div>
       <p class="text-muted mt-2 mb-0" style="font-size:12px;">
-        All dates are optional. Setting a start and end date turns on week-by-week navigation on the
+        Setting a start and end date turns on week-by-week navigation on the
         <a href="master.html">Master Schedule</a> page.
       </p>
       <span id="dates-saved-msg" class="text-success d-none" style="font-size:12px;">Saved.</span>
@@ -92,16 +95,6 @@
         <button class="btn btn-sm btn-outline-secondary" id="add-performance-date-btn">Add</button>
       </div>
       <div id="performance-date-error" class="text-danger mt-1 d-none" style="font-size:12px;"></div>
-    </div>
-
-    <div class="app-card mb-4" id="schedule-changes-card">
-      <h6 class="label-gold mb-2">Schedule Changes</h6>
-      <p class="text-muted mb-3" style="font-size:12px;">
-        The weekly rehearsal structure for this production. Each entry marks where the schedule changes.
-      </p>
-      <div id="schedule-changes-list" class="mb-2"></div>
-      <div id="schedule-change-add-form" class="border rounded p-3 d-none mt-2" style="background:#fafafa;"></div>
-      <button type="button" class="btn btn-sm btn-outline-secondary mt-2" id="add-schedule-change-btn">+ Add Schedule Change</button>
     </div>
 
     <div class="app-card mb-4" id="special-events-card">
@@ -655,226 +648,6 @@
           } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.classList.remove('d-none'); }
         });
 
-        // ── Schedule Changes ───────────────────────────────────────────────────
-
-        async function loadScheduleChanges() {
-          const listEl = document.getElementById('schedule-changes-list');
-          const addBtn = document.getElementById('add-schedule-change-btn');
-          const today  = new Date().toISOString().slice(0, 10);
-          try {
-            const [r, datesRes] = await Promise.all([fetch('/api/season/segments'), fetch('/api/season/production-dates')]);
-            const segments  = r.ok ? await r.json() : [];
-            const prodDates = datesRes.ok ? await datesRes.json() : {};
-            const prodStart = prodDates.start_date || null;
-            const prodEnd   = prodDates.end_date   || null;
-
-            if (!prodStart || !prodEnd) {
-              addBtn.style.display = 'none';
-              addBtn.dataset.prodStart = ''; addBtn.dataset.prodEnd = '';
-              const existing = document.getElementById('sc-dates-msg');
-              if (!existing) {
-                const msg = document.createElement('p');
-                msg.id = 'sc-dates-msg';
-                msg.style.cssText = 'font-size:12px;color:#9ca3af;margin-top:4px;';
-                msg.innerHTML = 'Set your production start and end dates before adding schedule changes. <a href="#start-date-input" style="color:#9ca3af;" onclick="document.getElementById(\'start-date-input\').focus();return false;">Set dates &uarr;</a>';
-                addBtn.parentNode.insertBefore(msg, addBtn.nextSibling);
-              }
-            } else {
-              addBtn.style.display = '';
-              addBtn.dataset.prodStart = prodStart;
-              addBtn.dataset.prodEnd   = prodEnd;
-              document.getElementById('sc-dates-msg')?.remove();
-            }
-            if (segments.length === 0) {
-              listEl.innerHTML = '<div class="text-muted" style="font-size:12px;">No schedule defined yet. Set a production start date in General to begin.</div>';
-              return;
-            }
-            listEl.innerHTML = segments.map((seg, i) => {
-              const isDefault = i === 0;
-              const isFuture  = seg.start_date > today;
-              const niceDate  = new Date(`${seg.start_date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-              const displayLabel = seg.label || (isDefault ? 'Initial Schedule' : '');
-              const labelPart = displayLabel
-                ? ` <span style="color:#9ca3af;margin:0 3px;">&middot;</span> <span style="color:#6b7280;">${escapeHtml(displayLabel)}</span>`
-                : '';
-              const activePill = (!isFuture && !isDefault)
-                ? ' <span style="font-size:10px;color:#9ca3af;margin-left:4px;">(active)</span>' : '';
-
-              const canEdit   = isFuture || isDefault;
-              const canRemove = isFuture && !isDefault;
-
-              return `
-                <div data-sc-row="${seg.id}">
-                  <div class="d-flex align-items-center justify-content-between py-2" style="border-bottom:1px solid #f3f4f6;">
-                    <div style="font-size:13px;">Starting ${niceDate}${labelPart}${activePill}</div>
-                    <div class="d-flex gap-3 flex-shrink-0 ms-3" style="min-width:0;">
-                      ${canEdit   ? `<button type="button" class="btn btn-link btn-sm p-0 text-secondary sc-edit-btn" data-sc-id="${seg.id}" data-sc-default="${isDefault}" data-sc-date="${seg.start_date}" data-sc-label="${escapeHtml(seg.label || '')}" style="font-size:12px;">Edit</button>` : ''}
-                      ${canRemove ? `<button type="button" class="btn btn-link btn-sm p-0 text-danger sc-remove-btn" data-sc-id="${seg.id}" style="font-size:12px;">Remove</button>` : ''}
-                    </div>
-                  </div>
-                  <div class="d-none sc-edit-form" id="sc-edit-form-${seg.id}" style="background:#fafafa;border-radius:6px;padding:12px;margin:4px 0 6px;"></div>
-                </div>`;
-            }).join('');
-
-            listEl.querySelectorAll('.sc-edit-btn').forEach(btn => {
-              btn.addEventListener('click', () => {
-                const id           = btn.dataset.scId;
-                const isDefault    = btn.dataset.scDefault === 'true';
-                const currentDate  = btn.dataset.scDate;
-                const currentLabel = btn.dataset.scLabel;
-                const todayStr     = new Date().toISOString().slice(0, 10);
-                const isFuture     = currentDate > todayStr;
-                const formEl       = document.getElementById(`sc-edit-form-${id}`);
-
-                listEl.querySelectorAll('.sc-edit-form').forEach(f => f.classList.add('d-none'));
-
-                const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-                const editMin  = (prodStart && prodStart > tomorrow) ? prodStart : tomorrow;
-                const editMax  = prodEnd || '';
-                const dateRow  = (!isDefault && isFuture) ? `
-                  <div class="mb-2">
-                    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Starting date</label>
-                    <input type="date" id="sc-edit-date-${id}" value="${currentDate}" min="${editMin}" ${editMax ? `max="${editMax}"` : ''} style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px;">
-                  </div>` : '';
-
-                formEl.innerHTML = `
-                  ${dateRow}
-                  <div class="mb-3">
-                    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Label <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
-                    <input type="text" id="sc-edit-label-${id}" value="${escapeHtml(currentLabel)}" placeholder="${isDefault ? 'e.g. Initial Schedule' : 'e.g. Jazz Focus'}" style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px;width:100%;">
-                  </div>
-                  <div id="sc-edit-error-${id}" style="font-size:12px;color:#ef4444;margin-bottom:6px;display:none;"></div>
-                  <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-sm btn-dark" id="sc-edit-save-${id}">Save</button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" id="sc-edit-cancel-${id}">Cancel</button>
-                  </div>`;
-                formEl.classList.remove('d-none');
-
-                document.getElementById(`sc-edit-cancel-${id}`).addEventListener('click', () => formEl.classList.add('d-none'));
-
-                document.getElementById(`sc-edit-save-${id}`).addEventListener('click', async () => {
-                  const newLabel    = document.getElementById(`sc-edit-label-${id}`).value.trim();
-                  const dateInput   = document.getElementById(`sc-edit-date-${id}`);
-                  const newDate     = dateInput ? dateInput.value : null;
-                  const errorEl     = document.getElementById(`sc-edit-error-${id}`);
-                  const todayCheck  = new Date().toISOString().slice(0, 10);
-                  if (newDate && newDate <= todayCheck) {
-                    errorEl.textContent = 'Date must be in the future.'; errorEl.style.display = ''; return;
-                  }
-                  const body = {};
-                  if (newLabel !== currentLabel) body.label = newLabel || null;
-                  if (newDate  && newDate !== currentDate) body.start_date = newDate;
-                  if (Object.keys(body).length === 0) { formEl.classList.add('d-none'); return; }
-                  try {
-                    const res = await fetch(`/api/season/segments/${id}`, {
-                      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-                    });
-                    if (!res.ok) { const d = await res.json().catch(()=>({})); errorEl.textContent = d.error || 'Could not save.'; errorEl.style.display = ''; return; }
-                    await loadScheduleChanges();
-                  } catch (e) { errorEl.textContent = 'Could not connect to server.'; errorEl.style.display = ''; }
-                });
-              });
-            });
-
-            listEl.querySelectorAll('.sc-remove-btn').forEach(btn => {
-              btn.addEventListener('click', async () => {
-                if (!confirm('Remove this schedule change? Any specific date adjustments (moved or cancelled rehearsals) made for this period will also be removed. This cannot be undone.')) return;
-                try {
-                  const res = await fetch(`/api/season/segments/${btn.dataset.scId}`, { method: 'DELETE' });
-                  const data = await res.json().catch(()=>({}));
-                  if (!res.ok) { alert(data.error || 'Could not remove.'); return; }
-                  await loadScheduleChanges();
-                } catch (e) { alert('Could not connect to server.'); }
-              });
-            });
-          } catch (e) {
-            listEl.innerHTML = '<div class="text-danger" style="font-size:12px;">Could not load schedule changes.</div>';
-          }
-        }
-
-        const addScBtn  = document.getElementById('add-schedule-change-btn');
-        const addScForm = document.getElementById('schedule-change-add-form');
-
-        addScBtn.addEventListener('click', () => {
-          const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-          const prodStart = addScBtn.dataset.prodStart || '';
-          const prodEnd   = addScBtn.dataset.prodEnd   || '';
-          // min is the later of tomorrow or the day after production start
-          const minDate = prodStart > tomorrow ? prodStart : tomorrow;
-          const maxDate = prodEnd || '';
-          addScForm.innerHTML = `
-            <div class="mb-3">
-              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Starting when?</label>
-              <input type="date" id="sc-add-date" min="${minDate}" ${maxDate ? `max="${maxDate}"` : ''} style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px;">
-            </div>
-            <div class="mb-3">
-              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;">Build from</label>
-              <div style="display:flex;flex-direction:column;gap:6px;">
-                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-                  <input type="radio" name="sc-add-copy" value="copy" checked> Copy current schedule
-                </label>
-                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-                  <input type="radio" name="sc-add-copy" value="blank"> Start with no rehearsals
-                </label>
-              </div>
-            </div>
-            <div class="mb-3">
-              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px;">Label <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
-              <input type="text" id="sc-add-label" placeholder="e.g. Jazz Focus" style="border:1px solid #d1d5db;border-radius:5px;padding:5px 8px;font-size:13px;width:100%;">
-            </div>
-            <div id="sc-add-error" style="font-size:12px;color:#ef4444;margin-bottom:6px;display:none;"></div>
-            <div class="d-flex gap-2">
-              <button type="button" class="btn btn-sm btn-dark" id="sc-add-save-btn">Add Schedule Change</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="sc-add-cancel-btn">Cancel</button>
-            </div>`;
-          addScForm.classList.remove('d-none');
-          addScBtn.style.display = 'none';
-
-          document.getElementById('sc-add-cancel-btn').addEventListener('click', () => {
-            addScForm.classList.add('d-none');
-            addScBtn.style.display = '';
-          });
-
-          document.getElementById('sc-add-save-btn').addEventListener('click', async () => {
-            const date    = document.getElementById('sc-add-date').value;
-            const copy    = document.querySelector('input[name="sc-add-copy"]:checked')?.value === 'copy';
-            const label   = document.getElementById('sc-add-label').value.trim() || null;
-            const errorEl = document.getElementById('sc-add-error');
-            const todayStr  = new Date().toISOString().slice(0, 10);
-            const addProdEnd = addScBtn.dataset.prodEnd || '';
-            if (!date || date <= todayStr) {
-              errorEl.textContent = 'Please choose a future date.'; errorEl.style.display = ''; return;
-            }
-            if (addProdEnd && date > addProdEnd) {
-              errorEl.textContent = 'Date cannot be after the production end date.'; errorEl.style.display = ''; return;
-            }
-            errorEl.style.display = 'none';
-            const saveBtn = document.getElementById('sc-add-save-btn');
-            saveBtn.disabled = true; saveBtn.textContent = 'Saving...';
-            try {
-              let res;
-              if (copy) {
-                res = await fetch('/api/season/segments/fork-edit', {
-                  method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ new_start_date: date, label, block_changes: [], blocks_to_remove: [], blocks_to_add: [] }),
-                });
-              } else {
-                res = await fetch('/api/season/segments', {
-                  method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ start_date: date, label }),
-                });
-              }
-              const data = await res.json().catch(()=>({}));
-              if (!res.ok) { errorEl.textContent = data.error || 'Could not add schedule change.'; errorEl.style.display = ''; return; }
-              addScForm.classList.add('d-none');
-              addScBtn.style.display = '';
-              await loadScheduleChanges();
-            } catch (e) { errorEl.textContent = 'Could not connect to server.'; errorEl.style.display = ''; }
-            finally { saveBtn.disabled = false; saveBtn.textContent = 'Add Schedule Change'; }
-          });
-        });
-
-        loadScheduleChanges();
 
         loadSpecialEvents();
 

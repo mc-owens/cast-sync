@@ -243,7 +243,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   function repositionAllBlocks() {
     // Combined sweep-line for master blocks + placeholder blocks — they share column space
     DAYS.forEach((day, di) => {
-      const masterEls = Array.from(document.querySelectorAll(`.master-block[data-day="${day}"]`));
+      const masterEls = Array.from(document.querySelectorAll(`.master-block[data-day="${day}"]`))
+        .filter(el => !el.classList.contains('block-cancelled-this-week'));
       const phEls     = Array.from(document.querySelectorAll(`.placeholder-block[data-day="${day}"]`));
       const allBlocks = [...masterEls, ...phEls].map(el => ({
         el,
@@ -1018,6 +1019,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           blockEl.title = 'Cancelled for this week only';
         }
       });
+      repositionAllBlocks(); // re-layout now that inactive-segment blocks are hidden
       // Moved/added occurrences have no place in the recurring template at all, so they're
       // rendered as their own read-only markers (dashed, distinct color) layered on top of
       // the regular grid rather than going through the lane/conflict system that the
