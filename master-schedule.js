@@ -1649,6 +1649,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (newEnd   !== drawerCurrentEndTime)   blockChange.end_time   = newEnd;
     if (String(newRoom || '') !== String(drawerCurrentRoomId || '')) blockChange.room_id = newRoom;
 
+    const blockChangesArr = Object.keys(blockChange).length > 0
+      ? [{ source_block_id: drawerCurrentDbId, ...blockChange }]
+      : [];
+
     const applyBtn = document.getElementById('drawer-apply-change-btn');
     if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = 'Applying...'; }
 
@@ -1657,8 +1661,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          new_start_date:  newDate,
-          block_changes:   { [drawerCurrentDbId]: blockChange },
+          new_start_date:   newDate,
+          block_changes:    blockChangesArr,
           blocks_to_remove: [],
           blocks_to_add:    [],
         }),

@@ -4380,6 +4380,26 @@ app.delete('/api/season/segments/:id', requireAuth('master'), async (req, res) =
   }
 });
 
+// POST /api/season/segments: create a blank schedule change point with no blocks.
+app.post('/api/season/segments', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { start_date, label } = req.body;
+  const today = new Date().toISOString().slice(0, 10);
+  if (!start_date || start_date <= today)
+    return res.status(400).json({ error: 'Start date must be in the future.' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO schedule_segments (season_id, start_date, label) VALUES ($1, $2, $3) RETURNING id`,
+      [seasonId, start_date, label || null]
+    );
+    res.json({ id: result.rows[0].id });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'A schedule change already exists on that date.' });
+    res.status(500).json({ error: 'Failed to create schedule change.' });
+  }
+});
+
 // POST /api/season/segments/fork-edit: create a new change point by branching from
 // the segment active the day before new_start_date, copying its recurring blocks,
 // then applying any edits or removals. This is how "Change Weekly Rehearsal" works
@@ -4387,7 +4407,7 @@ app.delete('/api/season/segments/:id', requireAuth('master'), async (req, res) =
 app.post('/api/season/segments/fork-edit', requireAuth('master'), async (req, res) => {
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
-  const { new_start_date, block_changes = [], blocks_to_remove = [], blocks_to_add = [] } = req.body;
+  const { new_start_date, label, block_changes = [], blocks_to_remove = [], blocks_to_add = [] } = req.body;
   const today = new Date().toISOString().slice(0, 10);
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(new_start_date || ''))
@@ -4413,8 +4433,8 @@ app.post('/api/season/segments/fork-edit', requireAuth('master'), async (req, re
     const sourceSegId = sourceResult.rows[0].id;
 
     const newSegResult = await client.query(
-      `INSERT INTO schedule_segments (season_id, start_date) VALUES ($1, $2) RETURNING id`,
-      [seasonId, new_start_date]
+      `INSERT INTO schedule_segments (season_id, start_date, label) VALUES ($1, $2, $3) RETURNING id`,
+      [seasonId, new_start_date, label || null]
     );
     const newSegId = newSegResult.rows[0].id;
 
