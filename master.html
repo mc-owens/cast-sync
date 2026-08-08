@@ -72,15 +72,12 @@
       border: 2px solid #fff;
       box-shadow: 0 1px 4px rgba(0,0,0,.18);
     }
-    .day-column.has-segment-change { border-left: 2px solid #6366f1; }
     .segment-change-label {
       display: block;
       font-size: 9px;
-      font-weight: 400;
-      color: #6366f1;
-      letter-spacing: 0.03em;
-      margin-top: 1px;
-      text-transform: uppercase;
+      color: #9ca3af;
+      font-style: italic;
+      margin-top: 2px;
     }
 
     /* ── Rehearsal detail drawer ── */
@@ -390,6 +387,7 @@
         </p>
 
         <p class="text-muted" style="font-size:13px;">Drag to create a rehearsal block. Click &times; to delete.</p>
+        <div id="segment-change-notice" class="no-print" style="display:none;font-size:12px;color:#9ca3af;margin-bottom:6px;"></div>
         <div class="schedule-wrapper">
           <div class="day-header-row" id="day-header-row"></div>
           <div class="se-band" id="se-band" style="display:none;">

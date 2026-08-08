@@ -1027,22 +1027,37 @@ document.addEventListener('DOMContentLoaded', async () => {
       // trade for not entangling this with repositionAllBlocks().
       occurrences.filter(o => o.source === 'moved' || o.source === 'added').forEach(renderOneTimeBlock);
 
-      // Render a subtle divider before any day that starts a new schedule segment mid-week.
-      // A segment starting on Monday (idx === 0) means the whole week uses the new segment
-      // already -- no divider needed. Segments outside this week are idx === -1, also skipped.
-      segmentChanges.forEach(sc => {
+      // For any schedule change that falls mid-week (not Monday), show a subtle notice
+      // above the grid and a small italic label under that day's header. No column borders.
+      const midWeekChanges = segmentChanges.filter(sc => {
         const idx = dayIndexInWeek(monday, sc.date);
-        if (idx <= 0) return;
+        return idx > 0; // 0 = Monday (whole week already on new schedule), -1 = outside week
+      });
+      const noticeEl = document.getElementById('segment-change-notice');
+      if (noticeEl) {
+        if (midWeekChanges.length > 0) {
+          const DAY_NAMES = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+          const parts = midWeekChanges.map(sc => {
+            const idx = dayIndexInWeek(monday, sc.date);
+            return DAY_NAMES[idx];
+          });
+          const joined = parts.length === 1 ? parts[0] : parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
+          noticeEl.textContent = `Schedule changes on ${joined}.`;
+          noticeEl.style.display = '';
+        } else {
+          noticeEl.textContent = '';
+          noticeEl.style.display = 'none';
+        }
+      }
+      midWeekChanges.forEach(sc => {
+        const idx = dayIndexInWeek(monday, sc.date);
         const headerCell = headerRow.children[idx + 1]; // +1 skips the time-gutter spacer
-        const columnCell = grid.children[idx];
         if (headerCell) {
-          headerCell.classList.add('has-segment-change');
           const lbl = document.createElement('span');
           lbl.className   = 'segment-change-label';
-          lbl.textContent = sc.label || 'Schedule changes';
+          lbl.textContent = 'New schedule';
           headerCell.appendChild(lbl);
         }
-        if (columnCell) columnCell.classList.add('has-segment-change');
       });
     } catch (e) { /* leave styling as-is */ }
   }
