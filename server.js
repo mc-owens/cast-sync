@@ -5918,6 +5918,78 @@ async function runMigrations() {
     console.log('Migration step 34 (users.promo_code_used) complete.');
   } catch (err) { console.error('Migration step 34 error:', err.message); }
 
+  // Step 35: Schedule segments -- change-points model for multi-phase rehearsal schedules.
+  // Each season with a start_date gets a default segment anchored at that date. Additional
+  // segments represent "the recurring structure changes as of this date." Date resolution
+  // for any calendar date: find the segment with the highest start_date <= that date.
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS schedule_segments (
+        id         SERIAL PRIMARY KEY,
+        season_id  INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        start_date DATE NOT NULL,
+        label      VARCHAR(200),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE (season_id, start_date)
+      );
+    `);
+    console.log('Migration step 35 (schedule_segments table) complete.');
+  } catch (err) { console.error('Migration step 35 error:', err.message); }
+
+  // Step 36: Attach master_blocks to a segment. ON DELETE RESTRICT is intentional:
+  // the application must explicitly clean up blocks before removing a segment,
+  // matching the same deliberate-deletion philosophy as the master_block_exceptions guard.
+  try {
+    await pool.query(`
+      ALTER TABLE master_blocks
+        ADD COLUMN IF NOT EXISTS segment_id INTEGER
+        REFERENCES schedule_segments(id) ON DELETE RESTRICT;
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_master_blocks_segment_id
+        ON master_blocks (segment_id);
+    `);
+    console.log('Migration step 36 (master_blocks.segment_id) complete.');
+  } catch (err) { console.error('Migration step 36 error:', err.message); }
+
+  // Step 37: Backfill -- for every season that already has a start_date, create its
+  // default segment and assign all existing master_blocks to it. Wrapped in a single
+  // transaction so a failed backfill does not leave a dangling default segment.
+  // Idempotent: ON CONFLICT skips already-created segments; the WHERE segment_id IS NULL
+  // filter skips blocks that were assigned in a previous run.
+  try {
+    const bfClient = await pool.connect();
+    try {
+      await bfClient.query('BEGIN');
+      await bfClient.query(`
+        INSERT INTO schedule_segments (season_id, start_date)
+        SELECT id, start_date
+        FROM seasons
+        WHERE start_date IS NOT NULL
+        ON CONFLICT (season_id, start_date) DO NOTHING
+      `);
+      await bfClient.query(`
+        UPDATE master_blocks mb
+        SET segment_id = seg.id
+        FROM pieces p
+        JOIN seasons s ON s.id = p.season_id
+        JOIN schedule_segments seg
+          ON  seg.season_id  = s.id
+          AND seg.start_date = s.start_date
+        WHERE mb.piece_id    = p.id
+          AND mb.segment_id IS NULL
+          AND s.start_date  IS NOT NULL
+      `);
+      await bfClient.query('COMMIT');
+    } catch (innerErr) {
+      await bfClient.query('ROLLBACK');
+      throw innerErr;
+    } finally {
+      bfClient.release();
+    }
+    console.log('Migration step 37 (segment backfill) complete.');
+  } catch (err) { console.error('Migration step 37 error:', err.message); }
+
   console.log('All migrations complete.');
 }
 
