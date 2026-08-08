@@ -3453,12 +3453,29 @@ app.get('/api/master-blocks', requireAuth('master'), async (req, res) => {
 
 app.post('/api/master-blocks', requireAuth('master'), async (req, res) => {
   const { piece_id, day, start_time, end_time, room_id } = req.body;
+  const { seasonId } = req.session;
   if (!piece_id || !day || !start_time || !end_time)
     return res.status(400).json({ error: 'All fields required.' });
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
+    // Assign new block to the currently active segment. If the production hasn't started
+    // yet, use the earliest upcoming segment instead. NULL if no segments exist.
+    const today = new Date().toISOString().slice(0, 10);
+    let segResult = await pool.query(
+      `SELECT id FROM schedule_segments WHERE season_id = $1 AND start_date <= $2
+       ORDER BY start_date DESC LIMIT 1`,
+      [seasonId, today]
+    );
+    if (segResult.rows.length === 0) {
+      segResult = await pool.query(
+        `SELECT id FROM schedule_segments WHERE season_id = $1 ORDER BY start_date ASC LIMIT 1`,
+        [seasonId]
+      );
+    }
+    const segmentId = segResult.rows.length > 0 ? segResult.rows[0].id : null;
     const result = await pool.query(
-      'INSERT INTO master_blocks (piece_id, day, start_time, end_time, room_id) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-      [piece_id, day, start_time, end_time, room_id || null]
+      'INSERT INTO master_blocks (piece_id, day, start_time, end_time, room_id, segment_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+      [piece_id, day, start_time, end_time, room_id || null, segmentId]
     );
     res.status(201).json({ id: result.rows[0].id });
   } catch (err) {
@@ -3480,6 +3497,24 @@ app.put('/api/master-blocks/:id', requireAuth('master'), async (req, res) => {
   if (room_id !== undefined)    { sets.push(`room_id = $${sets.length + 1}`);     values.push(room_id || null); }
   if (sets.length === 0) return res.status(400).json({ error: 'No fields to update.' });
   try {
+    // Reject direct mutation of blocks whose segment has already begun; the director
+    // should use "Change Weekly Rehearsal" to create a new change point instead.
+    const segCheck = await pool.query(
+      `SELECT to_char(ss.start_date, 'YYYY-MM-DD') AS start_date
+       FROM master_blocks mb
+       JOIN schedule_segments ss ON ss.id = mb.segment_id
+       WHERE mb.id = $1`,
+      [req.params.id]
+    );
+    if (segCheck.rows.length > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (segCheck.rows[0].start_date <= today) {
+        return res.status(409).json({
+          code: 'SEGMENT_ACTIVE',
+          error: 'This rehearsal is part of an active schedule. Use "Change Weekly Rehearsal" to apply changes from a future date.'
+        });
+      }
+    }
     await pool.query(`UPDATE master_blocks SET ${sets.join(', ')} WHERE id = $${values.length + 1}`, [...values, req.params.id]);
     res.json({ message: 'Block updated.' });
   } catch (err) {
@@ -3515,6 +3550,24 @@ app.delete('/api/master-blocks/:id', requireAuth('master'), async (req, res) => 
     const exceptionCount = parseInt(exceptionCheck.rows[0].count);
     if (exceptionCount > 0) {
       return res.status(409).json({ error: `This rehearsal has ${exceptionCount} recorded schedule change${exceptionCount === 1 ? '' : 's'}. Remove ${exceptionCount === 1 ? 'it' : 'those'} first.` });
+    }
+    // Same active-segment guard as PUT: blocks whose schedule period has begun cannot be
+    // directly removed — use "Change Weekly Rehearsal" to drop them from future dates.
+    const segCheck = await pool.query(
+      `SELECT to_char(ss.start_date, 'YYYY-MM-DD') AS start_date
+       FROM master_blocks mb
+       JOIN schedule_segments ss ON ss.id = mb.segment_id
+       WHERE mb.id = $1`,
+      [req.params.id]
+    );
+    if (segCheck.rows.length > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (segCheck.rows[0].start_date <= today) {
+        return res.status(409).json({
+          code: 'SEGMENT_ACTIVE',
+          error: 'This rehearsal is part of an active schedule. Use "Change Weekly Rehearsal" to remove it from future dates.'
+        });
+      }
     }
     await pool.query('DELETE FROM master_blocks WHERE id = $1', [req.params.id]);
     res.json({ message: 'Block deleted.' });
@@ -4029,6 +4082,9 @@ app.get('/api/season/production-dates', requireAuth('master'), async (req, res) 
 // PATCH /api/season/production-dates: director sets/clears any subset of start/end/audition
 // date. Performance dates moved to their own endpoints below (GET/POST/DELETE
 // /api/season/performance-dates) since a production can now have more than one.
+//
+// start_date changes carry extra logic: creating the default segment on first set,
+// moving it when the future date changes, and locking it once the production has begun.
 app.patch('/api/season/production-dates', requireAuth('master'), async (req, res) => {
   const { start_date, end_date, audition_date } = req.body;
   const { seasonId } = req.session;
@@ -4042,8 +4098,6 @@ app.patch('/api/season/production-dates', requireAuth('master'), async (req, res
     return res.status(400).json({ error: 'Production end date cannot be before the start date.' });
   }
 
-  // Same "only touch fields actually present" convention as PATCH /api/pieces/:id:
-  // omit a key to leave it alone, send '' to clear it.
   const sets = [];
   const values = [];
   for (const [col, v] of Object.entries({ start_date, end_date, audition_date })) {
@@ -4051,6 +4105,70 @@ app.patch('/api/season/production-dates', requireAuth('master'), async (req, res
   }
   if (sets.length === 0) return res.status(400).json({ error: 'No fields to update.' });
 
+  // start_date changes need segment coordination and a lock once the production begins.
+  if (start_date !== undefined) {
+    const today = new Date().toISOString().slice(0, 10);
+    const currentRow = await pool.query(
+      `SELECT to_char(start_date, 'YYYY-MM-DD') AS start_date FROM seasons WHERE id = $1`,
+      [seasonId]
+    );
+    const currentStart = currentRow.rows[0]?.start_date ?? null;
+
+    if (currentStart && currentStart <= today) {
+      return res.status(409).json({ error: 'The production has already begun. The start date cannot be changed.' });
+    }
+
+    const newStart = start_date || null;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE seasons SET ${sets.join(', ')} WHERE id = $${values.length + 1}`,
+        [...values, seasonId]
+      );
+      if (newStart) {
+        if (!currentStart) {
+          // First time start_date is set: create the default segment and backfill
+          // any existing blocks that are still segment-less.
+          await client.query(
+            `INSERT INTO schedule_segments (season_id, start_date)
+             VALUES ($1, $2)
+             ON CONFLICT (season_id, start_date) DO NOTHING`,
+            [seasonId, newStart]
+          );
+          await client.query(
+            `UPDATE master_blocks mb
+             SET segment_id = seg.id
+             FROM pieces p
+             JOIN schedule_segments seg ON seg.season_id = p.season_id AND seg.start_date = $1
+             WHERE mb.piece_id    = p.id
+               AND mb.segment_id IS NULL
+               AND p.season_id   = $2`,
+            [newStart, seasonId]
+          );
+        } else if (currentStart !== newStart) {
+          // Moving start_date while it's still in the future: slide the default
+          // segment (the one anchored at the old start_date) to the new date.
+          await client.query(
+            `UPDATE schedule_segments SET start_date = $1
+             WHERE season_id = $2 AND start_date = $3`,
+            [newStart, seasonId, currentStart]
+          );
+        }
+      }
+      await client.query('COMMIT');
+      res.json({ message: 'Production dates updated.' });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      if (err.code === '23505') return res.status(409).json({ error: 'A schedule change already exists on that date.' });
+      res.status(500).json({ error: 'Failed to update production dates.' });
+    } finally {
+      client.release();
+    }
+    return;
+  }
+
+  // end_date and audition_date only: simple path, no segment logic needed.
   try {
     await pool.query(`UPDATE seasons SET ${sets.join(', ')} WHERE id = $${values.length + 1}`, [...values, seasonId]);
     res.json({ message: 'Production dates updated.' });
@@ -4108,6 +4226,220 @@ app.delete('/api/season/performance-dates/:id', requireAuth('master'), async (re
     res.json({ message: 'Performance date removed.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to remove performance date.' });
+  }
+});
+
+// ── Schedule segments ─────────────────────────────────────────────────────────
+// Change-points model: each segment defines the recurring structure from its
+// start_date forward. The most recent segment with start_date <= a given date
+// is the one in effect for that date.
+
+// GET /api/season/segments: list all change points for the active production
+app.get('/api/season/segments', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const result = await pool.query(
+      `SELECT id, to_char(start_date, 'YYYY-MM-DD') AS start_date, label
+       FROM schedule_segments WHERE season_id = $1 ORDER BY start_date ASC`,
+      [seasonId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch schedule segments.' });
+  }
+});
+
+// PATCH /api/season/segments/:id: rename a segment or move its start_date.
+// Moving is only allowed while the segment is still in the future.
+app.patch('/api/season/segments/:id', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { label, start_date } = req.body;
+  try {
+    const segResult = await pool.query(
+      `SELECT id, to_char(start_date, 'YYYY-MM-DD') AS start_date
+       FROM schedule_segments WHERE id = $1 AND season_id = $2`,
+      [req.params.id, seasonId]
+    );
+    if (segResult.rows.length === 0) return res.status(404).json({ error: 'Segment not found.' });
+    const seg = segResult.rows[0];
+
+    if (start_date !== undefined && start_date !== seg.start_date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date || ''))
+        return res.status(400).json({ error: 'start_date must be a YYYY-MM-DD date.' });
+      const today = new Date().toISOString().slice(0, 10);
+      if (seg.start_date <= today)
+        return res.status(409).json({ error: 'Cannot move a schedule change that has already begun.' });
+    }
+
+    const sets = [];
+    const values = [];
+    if (label      !== undefined) { sets.push(`label = $${sets.length + 1}`);      values.push(label || null); }
+    if (start_date !== undefined) { sets.push(`start_date = $${sets.length + 1}`); values.push(start_date); }
+    if (sets.length === 0) return res.status(400).json({ error: 'No fields to update.' });
+
+    await pool.query(
+      `UPDATE schedule_segments SET ${sets.join(', ')} WHERE id = $${values.length + 1}`,
+      [...values, req.params.id]
+    );
+    res.json({ message: 'Segment updated.' });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'A schedule change already exists on that date.' });
+    res.status(500).json({ error: 'Failed to update segment.' });
+  }
+});
+
+// DELETE /api/season/segments/:id: remove a future schedule change point.
+// Rules: segment must not have started yet; it must not be the first/default segment
+// (the production anchor). Deletes exceptions and blocks atomically before removing
+// the segment itself (required by ON DELETE RESTRICT on master_blocks.segment_id).
+app.delete('/api/season/segments/:id', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const segResult = await pool.query(
+      `SELECT id, to_char(start_date, 'YYYY-MM-DD') AS start_date
+       FROM schedule_segments WHERE id = $1 AND season_id = $2`,
+      [req.params.id, seasonId]
+    );
+    if (segResult.rows.length === 0) return res.status(404).json({ error: 'Segment not found.' });
+    const seg = segResult.rows[0];
+
+    if (seg.start_date <= today)
+      return res.status(409).json({ error: 'Cannot delete a schedule change that has already begun. Past schedule structure is preserved.' });
+
+    // Protect the default segment: if nothing precedes this one it is the production anchor.
+    const precedingCount = await pool.query(
+      `SELECT COUNT(*) FROM schedule_segments WHERE season_id = $1 AND start_date < $2`,
+      [seasonId, seg.start_date]
+    );
+    if (parseInt(precedingCount.rows[0].count) === 0)
+      return res.status(409).json({ error: 'Cannot delete the default schedule. It is the foundation of the production.' });
+
+    // Count exceptions that will be removed so the response can surface them.
+    const excResult = await pool.query(
+      `SELECT COUNT(*) FROM master_block_exceptions mbe
+       JOIN master_blocks mb ON mb.id = mbe.master_block_id
+       WHERE mb.segment_id = $1`,
+      [req.params.id]
+    );
+    const excCount = parseInt(excResult.rows[0].count);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `DELETE FROM master_block_exceptions
+         WHERE master_block_id IN (SELECT id FROM master_blocks WHERE segment_id = $1)`,
+        [req.params.id]
+      );
+      await client.query('DELETE FROM master_blocks WHERE segment_id = $1', [req.params.id]);
+      await client.query('DELETE FROM schedule_segments WHERE id = $1', [req.params.id]);
+      await client.query('COMMIT');
+    } catch (innerErr) {
+      await client.query('ROLLBACK');
+      throw innerErr;
+    } finally {
+      client.release();
+    }
+    res.json({ message: 'Schedule change removed.', exceptions_removed: excCount });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to remove schedule change.' });
+  }
+});
+
+// POST /api/season/segments/fork-edit: create a new change point by branching from
+// the segment active the day before new_start_date, copying its recurring blocks,
+// then applying any edits or removals. This is how "Change Weekly Rehearsal" works
+// under the hood -- the old segment's history is never touched.
+app.post('/api/season/segments/fork-edit', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { new_start_date, block_changes = [], blocks_to_remove = [], blocks_to_add = [] } = req.body;
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(new_start_date || ''))
+    return res.status(400).json({ error: 'new_start_date must be a YYYY-MM-DD date.' });
+  if (new_start_date <= today)
+    return res.status(400).json({ error: 'new_start_date must be in the future.' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Source: the segment active the day before the new change point.
+    const sourceResult = await client.query(
+      `SELECT id FROM schedule_segments
+       WHERE season_id = $1 AND start_date < $2
+       ORDER BY start_date DESC LIMIT 1`,
+      [seasonId, new_start_date]
+    );
+    if (sourceResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'No existing schedule to branch from before that date.' });
+    }
+    const sourceSegId = sourceResult.rows[0].id;
+
+    const newSegResult = await client.query(
+      `INSERT INTO schedule_segments (season_id, start_date) VALUES ($1, $2) RETURNING id`,
+      [seasonId, new_start_date]
+    );
+    const newSegId = newSegResult.rows[0].id;
+
+    // Build lookup structures for the requested changes.
+    const removeSet  = new Set((blocks_to_remove || []).map(Number));
+    const changeMap  = new Map((block_changes  || []).map(ch => [Number(ch.source_block_id), ch]));
+
+    const sourceBlocks = await client.query(
+      `SELECT id, piece_id, day, start_time, end_time, room_id
+       FROM master_blocks WHERE segment_id = $1`,
+      [sourceSegId]
+    );
+    for (const blk of sourceBlocks.rows) {
+      if (removeSet.has(blk.id)) continue;
+      const ch = changeMap.get(blk.id) || {};
+      await client.query(
+        `INSERT INTO master_blocks (piece_id, day, start_time, end_time, room_id, segment_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          blk.piece_id,
+          ch.day        ?? blk.day,
+          ch.start_time ?? blk.start_time,
+          ch.end_time   ?? blk.end_time,
+          ch.room_id    !== undefined ? (ch.room_id || null) : blk.room_id,
+          newSegId,
+        ]
+      );
+    }
+
+    // Any brand-new blocks to add only in the new segment.
+    for (const nb of (blocks_to_add || [])) {
+      if (!nb.piece_id || !nb.day || !nb.start_time || !nb.end_time)
+        throw Object.assign(new Error('Each blocks_to_add entry requires piece_id, day, start_time, end_time.'), { status: 400 });
+      const pieceCheck = await client.query(
+        'SELECT 1 FROM pieces WHERE id = $1 AND season_id = $2',
+        [nb.piece_id, seasonId]
+      );
+      if (pieceCheck.rows.length === 0)
+        throw Object.assign(new Error(`piece_id ${nb.piece_id} does not belong to this production.`), { status: 400 });
+      await client.query(
+        `INSERT INTO master_blocks (piece_id, day, start_time, end_time, room_id, segment_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [nb.piece_id, nb.day, nb.start_time, nb.end_time, nb.room_id || null, newSegId]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ id: newSegId, start_date: new_start_date });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (err.code === '23505') return res.status(409).json({ error: 'A schedule change already exists on that date.' });
+    const status = err.status || 500;
+    res.status(status).json({ error: err.message || 'Failed to create schedule change.' });
+  } finally {
+    client.release();
   }
 });
 
