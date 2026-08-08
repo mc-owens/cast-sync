@@ -31,6 +31,61 @@
       .schedule-wrapper { page-break-inside: avoid; }
       .block, .se-chip { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
+
+    /* ── Production timeline strip ── */
+    #prod-timeline {
+      display: none;
+      padding: 8px 12px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .prod-tl-track {
+      position: relative;
+      height: 6px;
+      background: #e5e7eb;
+      border-radius: 3px;
+      margin: 5px 0 0;
+    }
+    .prod-tl-fill { height: 100%; background: #374151; border-radius: 3px; }
+    .prod-tl-marker {
+      position: absolute; top: 50%;
+      transform: translate(-50%, -50%);
+      width: 14px; height: 14px;
+      background: var(--gold, #c4943a);
+      border: 2px solid #fff; border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0,0,0,.18);
+    }
+    .prod-tl-event {
+      position: absolute; top: 50%;
+      transform: translate(-50%, -50%);
+      width: 8px; height: 8px;
+      background: #8b5cf6;
+      border: 2px solid #fff; border-radius: 50%;
+    }
+
+    /* ── Rehearsal detail drawer ── */
+    #block-drawer {
+      position: fixed; right: 0; top: 56px; bottom: 0;
+      width: 300px;
+      background: #fff;
+      border-left: 1px solid #e5e7eb;
+      box-shadow: -4px 0 24px rgba(0,0,0,.08);
+      transform: translateX(100%);
+      transition: transform .22s cubic-bezier(.4,0,.2,1);
+      z-index: 1040;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    #block-drawer.open { transform: translateX(0); }
+    .drawer-tab {
+      background: none; border: none;
+      border-bottom: 2px solid transparent;
+      padding: 8px 10px;
+      font-size: 12px; font-weight: 500;
+      color: #6b7280; cursor: pointer; white-space: nowrap;
+    }
+    .drawer-tab.active { color: #111; border-bottom-color: var(--gold, #c4943a); }
   </style>
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -298,6 +353,7 @@
         <!-- Explicit, named callout instead of relying on a marker squeezed into a narrow
              day column -- that approach broke down with several milestone days in one
              week and at narrower window widths. -->
+        <div id="prod-timeline" class="no-print"></div>
         <div id="milestone-banner" class="alert alert-warning py-2 px-3 mb-2 d-none no-print" style="font-size:13px;"></div>
         <p class="text-muted no-print" style="font-size:12.5px;margin-bottom:4px;">
           Showing your weekly rehearsal template. Changes here apply every week unless noted otherwise.
@@ -466,6 +522,65 @@
       addOneTimeBtnEl.removeAttribute('title');
       render();
     }
+
+    async function initProdTimeline() {
+      try {
+        const [datesRes, evRes] = await Promise.all([
+          fetch('/api/season/production-dates'),
+          fetch('/api/season/special-events'),
+        ]);
+        if (!datesRes.ok) return;
+        const dates = await datesRes.json();
+        if (!dates.start_date || !dates.end_date) return;
+        const seEvents = evRes.ok ? await evRes.json() : [];
+
+        const startDate = dateFromYMD(dates.start_date);
+        const endDate   = dateFromYMD(dates.end_date);
+        const totalMs   = Math.max(1, endDate - startDate);
+
+        function pct(d) { return Math.min(100, Math.max(0, ((d - startDate) / totalMs) * 100)); }
+
+        const startLabel = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const endLabel   = endDate.toLocaleDateString('en-US',   { month: 'short', day: 'numeric' });
+
+        const evDots = seEvents.map(ev => {
+          if (!ev.date) return '';
+          const d = dateFromYMD(ev.date);
+          if (d < startDate || d > endDate) return '';
+          return `<div class="prod-tl-event" style="left:${pct(d)}%;" title="${ev.title || 'Event'}"></div>`;
+        }).join('');
+
+        const audDot = dates.audition_date ? (() => {
+          const d = dateFromYMD(dates.audition_date);
+          return (d >= startDate && d <= endDate)
+            ? `<div class="prod-tl-event" style="left:${pct(d)}%;background:var(--gold,#c4943a);" title="Audition Day"></div>`
+            : '';
+        })() : '';
+
+        function renderTL() {
+          const el = document.getElementById('prod-timeline');
+          if (!el) return;
+          const nowDate   = window._currentWeekMonday ? dateFromYMD(window._currentWeekMonday) : new Date();
+          const markerPct = pct(nowDate);
+          const daysLeft  = Math.max(0, Math.round((endDate - nowDate) / 86400000));
+          const weekNum   = Math.max(1, Math.floor(Math.max(0, nowDate - startDate) / (86400000 * 7)) + 1);
+          el.innerHTML = `
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:#9ca3af;">
+              <span>${startLabel}</span>
+              <span style="color:#6b7280;font-weight:500;">Week ${weekNum} &middot; ${daysLeft} day${daysLeft === 1 ? '' : 's'} left</span>
+              <span>${endLabel}</span>
+            </div>
+            <div class="prod-tl-track">
+              <div class="prod-tl-fill" style="width:${markerPct}%;"></div>
+              ${evDots}${audDot}
+              <div class="prod-tl-marker" style="left:${markerPct}%;"></div>
+            </div>`;
+          el.style.display = '';
+        }
+        renderTL();
+        window.addEventListener('weekChanged', renderTL);
+      } catch (e) {}
+    }
   </script>
 
   <script>
@@ -499,6 +614,7 @@
         document.body.style.visibility = 'visible';
 
         initWeekNav();
+        initProdTimeline();
 
         // Trial banner
         try {
@@ -523,6 +639,31 @@
   </script>
 
   <script src="tour.js"></script>
+
+  <!-- Rehearsal detail drawer -->
+  <div id="block-drawer">
+    <div style="display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid #f3f4f6;">
+      <div id="drawer-piece-dot" style="width:13px;height:13px;border-radius:3px;flex-shrink:0;"></div>
+      <span id="drawer-piece-name" style="font-weight:700;font-size:15px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+      <button id="drawer-close-btn" style="background:none;border:none;font-size:22px;line-height:1;color:#9ca3af;cursor:pointer;padding:0;flex-shrink:0;">&times;</button>
+    </div>
+    <div style="padding:8px 16px 12px;border-bottom:1px solid #f3f4f6;">
+      <div id="drawer-day-time" style="font-size:14px;color:#111;margin-bottom:3px;font-weight:500;"></div>
+      <div style="font-size:12px;color:#9ca3af;">Repeats weekly</div>
+      <div id="drawer-room" style="font-size:12px;color:#6b7280;margin-top:3px;display:none;"></div>
+    </div>
+    <div style="display:flex;border-bottom:1px solid #f3f4f6;overflow-x:auto;">
+      <button class="drawer-tab active" data-drawer-tab="cast">Cast</button>
+      <button class="drawer-tab" data-drawer-tab="attendance">Attendance</button>
+      <button class="drawer-tab" data-drawer-tab="conflicts">Conflicts</button>
+      <button class="drawer-tab" data-drawer-tab="notes">Notes</button>
+    </div>
+    <div id="drawer-tab-content" style="flex:1;overflow-y:auto;padding:14px 16px;"></div>
+    <div style="padding:12px 16px;border-top:1px solid #f3f4f6;">
+      <button id="drawer-edit-weekly-btn" class="btn btn-dark w-100 mb-2" style="font-size:13px;padding:9px;">Edit Weekly Rehearsal</button>
+      <button id="drawer-adjust-btn" style="background:none;border:none;width:100%;padding:4px;font-size:12px;color:#9ca3af;cursor:pointer;text-align:center;">Adjust This Rehearsal &rarr;</button>
+    </div>
+  </div>
 
   </div>
 </body>

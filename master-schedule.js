@@ -30,6 +30,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   let offsetY       = 0;
   let activeBlockId = null;
 
+  // ── Rehearsal drawer state ────────────────────────────────────────────────────
+  let drawerPieceCasts       = [];
+  let drawerCastsLoaded      = false;
+  let drawerCurrentPieceId   = null;
+  let drawerCurrentDbId      = null;
+  let drawerCurrentDay       = null;
+
   // ── Grid initialization ───────────────────────────────────────────────────────
 
   function formatTime(h, m) {
@@ -536,6 +543,88 @@ document.addEventListener('DOMContentLoaded', async () => {
     return block;
   }
 
+  // ── Rehearsal drawer ─────────────────────────────────────────────────────────
+
+  async function loadDrawerCasts() {
+    if (drawerCastsLoaded) return;
+    drawerCastsLoaded = true;
+    try {
+      const res = await fetch('/api/piece-casts');
+      if (res.ok) drawerPieceCasts = await res.json();
+    } catch (e) {}
+  }
+
+  function closeBlockDrawer() {
+    document.getElementById('block-drawer')?.classList.remove('open');
+    drawerCurrentPieceId = null;
+    drawerCurrentDbId    = null;
+    drawerCurrentDay     = null;
+  }
+
+  function renderDrawerTab(tabName) {
+    document.querySelectorAll('[data-drawer-tab]').forEach(btn =>
+      btn.classList.toggle('active', btn.dataset.drawerTab === tabName)
+    );
+    const content = document.getElementById('drawer-tab-content');
+    if (!content) return;
+
+    if (tabName === 'cast') {
+      const cast = drawerPieceCasts.filter(c => String(c.piece_id) === String(drawerCurrentPieceId));
+      if (cast.length === 0) {
+        content.innerHTML = `<p style="font-size:13px;color:#6b7280;margin:0;">No cast assigned yet. <a href="casting.html" style="color:inherit;">Add dancers in Cast List.</a></p>`;
+      } else {
+        content.innerHTML = cast.map(c => `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f9fafb;">
+            <div style="width:30px;height:30px;border-radius:50%;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#374151;flex-shrink:0;">
+              ${(c.first_name||'?')[0]}${(c.last_name||'?')[0]}
+            </div>
+            <div style="min-width:0;">
+              <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.first_name} ${c.last_name}</div>
+              ${c.role_name ? `<div style="font-size:11px;color:#9ca3af;">${c.role_name}</div>` : ''}
+            </div>
+          </div>`).join('');
+      }
+    } else {
+      const labels = { attendance: 'Attendance', conflicts: 'Conflicts', notes: 'Notes' };
+      content.innerHTML = `<p style="font-size:13px;color:#9ca3af;margin:0;">${labels[tabName]} coming soon.</p>`;
+    }
+  }
+
+  async function openBlockDrawer(dbId, piece, dayName, startTime, endTime, roomId) {
+    await loadDrawerCasts();
+    drawerCurrentPieceId = piece.id;
+    drawerCurrentDbId    = dbId;
+    drawerCurrentDay     = dayName;
+
+    const dot  = document.getElementById('drawer-piece-dot');
+    const name = document.getElementById('drawer-piece-name');
+    const dt   = document.getElementById('drawer-day-time');
+    const room = document.getElementById('drawer-room');
+    if (dot)  dot.style.background = piece.color;
+    if (name) name.textContent = piece.name;
+    if (dt)   dt.textContent   = `${dayName} · ${startTime} – ${endTime}`;
+
+    if (room) {
+      const roomObj = roomId ? rooms.find(r => String(r.id) === String(roomId)) : null;
+      if (roomObj) { room.textContent = roomObj.name; room.style.display = ''; }
+      else           room.style.display = 'none';
+    }
+
+    const editBtn   = document.getElementById('drawer-edit-weekly-btn');
+    const adjustBtn = document.getElementById('drawer-adjust-btn');
+    if (editBtn) editBtn.onclick = () => {
+      closeBlockDrawer();
+      openDeleteBlockModal(dbId, dayName, document.querySelector(`.master-block[data-db-id="${dbId}"]`));
+    };
+    if (adjustBtn) adjustBtn.onclick = () => {
+      closeBlockDrawer();
+      openDeleteBlockModal(dbId, dayName, document.querySelector(`.master-block[data-db-id="${dbId}"]`));
+    };
+
+    renderDrawerTab('cast');
+    document.getElementById('block-drawer')?.classList.add('open');
+  }
+
   // startTimeStr / endTimeStr are optional — if omitted, computed from pixels
   function renderBlock(dbId, piece, topPx, heightPx, dayIndex, startTimeStr, endTimeStr, roomId) {
     const startSlotI = Math.round(topPx / slotHeight);
@@ -571,6 +660,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.stopPropagation();   // prevent grid's mousedown from firing drag mode
       e.preventDefault();    // prevent focus shift / text selection
       openDeleteBlockModal(dbId, DAYS[dayIndex], block);
+    });
+
+    block.addEventListener('click', (e) => {
+      if (e.target.closest('.delete-btn') || e.target.closest('.resize-handle')) return;
+      openBlockDrawer(dbId, piece, DAYS[dayIndex], displayStart, displayEnd, roomId);
     });
 
     grid.appendChild(block);
@@ -1402,5 +1496,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.org-overlay-block').forEach(b => {
       b.style.display = this.checked ? '' : 'none';
     });
+  });
+
+  // ── Drawer wiring ─────────────────────────────────────────────────────────────
+
+  document.getElementById('drawer-close-btn')?.addEventListener('click', closeBlockDrawer);
+
+  document.querySelectorAll('[data-drawer-tab]').forEach(btn => {
+    btn.addEventListener('click', () => renderDrawerTab(btn.dataset.drawerTab));
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeBlockDrawer();
   });
 });
