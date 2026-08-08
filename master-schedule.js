@@ -36,6 +36,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   let drawerCurrentPieceId   = null;
   let drawerCurrentDbId      = null;
   let drawerCurrentDay       = null;
+  let drawerCurrentStartTime = null;
+  let drawerCurrentEndTime   = null;
+  let drawerCurrentRoomId    = null;
 
   // ── Grid initialization ───────────────────────────────────────────────────────
 
@@ -545,6 +548,83 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Rehearsal drawer ─────────────────────────────────────────────────────────
 
+  // "7:00 PM" <-> "19:00" conversions for <input type="time">
+  function appTimeToInputTime(t) {
+    const [timePart, ampm] = t.split(' ');
+    let [h, m] = timePart.split(':').map(Number);
+    if (ampm === 'PM' && h !== 12) h += 12;
+    if (ampm === 'AM' && h === 12) h  = 0;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+  function inputTimeToAppTime(t) {
+    const [h, m] = t.split(':').map(Number);
+    return formatTime(h, m);
+  }
+  function nextMondayStr() {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    while (d.getDay() !== 1) d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function showNormalDrawerView() {
+    const tabBar     = document.getElementById('drawer-tab-bar');
+    const actionFoot = document.getElementById('drawer-action-footer');
+    const changeFoot = document.getElementById('drawer-change-footer');
+    if (tabBar)     tabBar.style.display     = '';
+    if (actionFoot) actionFoot.style.display = '';
+    if (changeFoot) changeFoot.style.display = 'none';
+    renderDrawerTab('cast');
+  }
+
+  function showChangeWeeklyForm() {
+    const tabBar     = document.getElementById('drawer-tab-bar');
+    const actionFoot = document.getElementById('drawer-action-footer');
+    const changeFoot = document.getElementById('drawer-change-footer');
+    const content    = document.getElementById('drawer-tab-content');
+    if (tabBar)     tabBar.style.display     = 'none';
+    if (actionFoot) actionFoot.style.display = 'none';
+    if (changeFoot) changeFoot.style.display = '';
+
+    const minDate  = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const defDate  = nextMondayStr();
+    const startVal = drawerCurrentStartTime ? appTimeToInputTime(drawerCurrentStartTime) : '';
+    const endVal   = drawerCurrentEndTime   ? appTimeToInputTime(drawerCurrentEndTime)   : '';
+    const roomHtml = rooms.length > 0
+      ? `<div style="margin-bottom:14px;">
+           <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Room</label>
+           <select id="drawer-change-room" style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+             <option value="">No room</option>
+             ${rooms.map(r => `<option value="${r.id}"${String(r.id) === String(drawerCurrentRoomId) ? ' selected' : ''}>${r.name}</option>`).join('')}
+           </select>
+         </div>`
+      : '';
+
+    if (content) content.innerHTML = `
+      <p style="font-size:12px;color:#6b7280;margin:0 0 16px;line-height:1.5;">
+        The existing schedule stays exactly as it was. CastSync will create a new version starting on the date you choose.
+      </p>
+      <div style="margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Starting when?</label>
+        <input type="date" id="drawer-change-start-date" value="${defDate}" min="${minDate}"
+          style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <div style="flex:1;">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Start time</label>
+          <input type="time" id="drawer-change-start-time" value="${startVal}"
+            style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">End time</label>
+          <input type="time" id="drawer-change-end-time" value="${endVal}"
+            style="width:100%;padding:7px 9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;" />
+        </div>
+      </div>
+      ${roomHtml}
+      <div id="drawer-change-error" style="font-size:12px;color:#ef4444;margin-top:4px;display:none;"></div>`;
+  }
+
   async function loadDrawerCasts() {
     if (drawerCastsLoaded) return;
     drawerCastsLoaded = true;
@@ -592,9 +672,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function openBlockDrawer(dbId, piece, dayName, startTime, endTime, roomId) {
     await loadDrawerCasts();
-    drawerCurrentPieceId = piece.id;
-    drawerCurrentDbId    = dbId;
-    drawerCurrentDay     = dayName;
+    drawerCurrentPieceId  = piece.id;
+    drawerCurrentDbId     = dbId;
+    drawerCurrentDay      = dayName;
+    drawerCurrentStartTime = startTime;
+    drawerCurrentEndTime   = endTime;
+    drawerCurrentRoomId    = roomId;
 
     const dot  = document.getElementById('drawer-piece-dot');
     const name = document.getElementById('drawer-piece-name');
@@ -610,18 +693,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       else           room.style.display = 'none';
     }
 
-    const editBtn   = document.getElementById('drawer-edit-weekly-btn');
-    const adjustBtn = document.getElementById('drawer-adjust-btn');
-    if (editBtn) editBtn.onclick = () => {
-      closeBlockDrawer();
-      openDeleteBlockModal(dbId, dayName, document.querySelector(`.master-block[data-db-id="${dbId}"]`));
-    };
-    if (adjustBtn) adjustBtn.onclick = () => {
-      closeBlockDrawer();
-      openDeleteBlockModal(dbId, dayName, document.querySelector(`.master-block[data-db-id="${dbId}"]`));
-    };
-
-    renderDrawerTab('cast');
+    showNormalDrawerView();
     document.getElementById('block-drawer')?.classList.add('open');
   }
 
@@ -1530,6 +1602,93 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.querySelectorAll('[data-drawer-tab]').forEach(btn => {
     btn.addEventListener('click', () => renderDrawerTab(btn.dataset.drawerTab));
+  });
+
+  document.getElementById('drawer-edit-weekly-btn')?.addEventListener('click', showChangeWeeklyForm);
+  document.getElementById('drawer-cancel-change-btn')?.addEventListener('click', showNormalDrawerView);
+
+  document.getElementById('drawer-adjust-btn')?.addEventListener('click', () => {
+    const dbId    = drawerCurrentDbId;
+    const dayName = drawerCurrentDay;
+    closeBlockDrawer();
+    openDeleteBlockModal(dbId, dayName, document.querySelector(`.master-block[data-db-id="${dbId}"]`));
+  });
+
+  document.getElementById('drawer-apply-change-btn')?.addEventListener('click', async () => {
+    const dateInput  = document.getElementById('drawer-change-start-date');
+    const startInput = document.getElementById('drawer-change-start-time');
+    const endInput   = document.getElementById('drawer-change-end-time');
+    const roomSelect = document.getElementById('drawer-change-room');
+    const errorEl    = document.getElementById('drawer-change-error');
+
+    const newDate   = dateInput?.value;
+    const today     = new Date().toISOString().slice(0, 10);
+
+    if (!newDate || newDate <= today) {
+      if (errorEl) { errorEl.textContent = 'Please choose a future date.'; errorEl.style.display = ''; }
+      return;
+    }
+    if (errorEl) errorEl.style.display = 'none';
+
+    const newStart = startInput?.value ? inputTimeToAppTime(startInput.value) : drawerCurrentStartTime;
+    const newEnd   = endInput?.value   ? inputTimeToAppTime(endInput.value)   : drawerCurrentEndTime;
+    const newRoom  = roomSelect ? (roomSelect.value || null) : drawerCurrentRoomId;
+
+    const blockChange = {};
+    if (newStart !== drawerCurrentStartTime) blockChange.start_time = newStart;
+    if (newEnd   !== drawerCurrentEndTime)   blockChange.end_time   = newEnd;
+    if (String(newRoom || '') !== String(drawerCurrentRoomId || '')) blockChange.room_id = newRoom;
+
+    const applyBtn = document.getElementById('drawer-apply-change-btn');
+    if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = 'Applying...'; }
+
+    try {
+      const res = await fetch('/api/season/segments/fork-edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          new_start_date:  newDate,
+          block_changes:   { [drawerCurrentDbId]: blockChange },
+          blocks_to_remove: [],
+          blocks_to_add:    [],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (errorEl) { errorEl.textContent = data.error || 'Something went wrong.'; errorEl.style.display = ''; }
+        return;
+      }
+
+      // Refresh blocks in the grid from the new segment
+      const existingIds = new Set(
+        [...document.querySelectorAll('.master-block')].map(el => String(el.dataset.dbId))
+      );
+      const blocksRes = await fetch('/api/master-blocks');
+      if (blocksRes.ok) {
+        const allBlocks = await blocksRes.json();
+        for (const b of allBlocks) {
+          if (existingIds.has(String(b.id))) continue;
+          const piece = pieces.find(p => p.id === b.piece_id);
+          if (!piece) continue;
+          const dayIdx = DAYS.indexOf(b.day_of_week);
+          if (dayIdx < 0) continue;
+          const [sh, sm] = b.start_time.split(':').map(Number);
+          const [eh, em] = b.end_time.split(':').map(Number);
+          const topPx    = ((sh * 60 + sm) - startHour * 60) / increment * slotHeight;
+          const heightPx = ((eh * 60 + em) - (sh * 60 + sm)) / increment * slotHeight;
+          renderBlock(b.id, piece, topPx, heightPx, dayIdx, formatTime(sh, sm), formatTime(eh, em), b.room_id);
+        }
+        repositionAllBlocks();
+      }
+
+      closeBlockDrawer();
+      window.dispatchEvent(new CustomEvent('weekChanged'));
+      window.dispatchEvent(new CustomEvent('segmentsChanged'));
+    } catch (err) {
+      if (errorEl) { errorEl.textContent = 'Network error. Please try again.'; errorEl.style.display = ''; }
+    } finally {
+      if (applyBtn) { applyBtn.disabled = false; applyBtn.textContent = 'Apply Change'; }
+    }
   });
 
   document.addEventListener('keydown', (e) => {
