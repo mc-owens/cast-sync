@@ -752,7 +752,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
-  let pendingDeleteBlock = null;
+  let pendingDeleteBlock     = null;
+  let deleteModalFromDrawer  = false;
   const deleteModalEl    = document.getElementById('deleteBlockModal');
   const deleteModalText  = document.getElementById('delete-block-modal-text');
   const deleteChoicesEl  = document.getElementById('delete-block-choices');
@@ -765,6 +766,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const moveNewEndInput   = document.getElementById('move-new-end-input');
   const confirmMoveBtn   = document.getElementById('confirm-move-btn');
   const moveBackBtn      = document.getElementById('move-back-btn');
+
+  deleteModalEl.addEventListener('hidden.bs.modal', () => {
+    if (deleteModalFromDrawer) {
+      if (!pendingDeleteBlock) closeBlockDrawer(); // action completed — dismiss drawer too
+      // else dismissed via Never mind — drawer stays open behind the modal naturally
+    }
+    deleteModalFromDrawer = false;
+    pendingDeleteBlock = null; // cleanup if dismissed without action
+  });
 
   function timeStringTo24Hour(str) {
     const mins = timeStringToMinutes(str);
@@ -1610,10 +1620,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('drawer-cancel-change-btn')?.addEventListener('click', showNormalDrawerView);
 
   document.getElementById('drawer-adjust-btn')?.addEventListener('click', () => {
-    const dbId    = drawerCurrentDbId;
-    const dayName = drawerCurrentDay;
-    closeBlockDrawer();
-    openDeleteBlockModal(dbId, dayName, document.querySelector(`.master-block[data-db-id="${dbId}"]`));
+    deleteModalFromDrawer = true;
+    openDeleteBlockModal(drawerCurrentDbId, drawerCurrentDay, document.querySelector(`.master-block[data-db-id="${drawerCurrentDbId}"]`));
   });
 
   document.getElementById('drawer-apply-change-btn')?.addEventListener('click', async () => {
