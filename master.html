@@ -43,16 +43,16 @@
     }
     .prod-tl-track {
       position: relative;
-      height: 6px;
+      height: 10px;
       background: #e5e7eb;
-      border-radius: 3px;
-      margin: 5px 0 0;
+      border-radius: 5px;
+      margin: 8px 0 0;
     }
-    .prod-tl-fill { height: 100%; background: #374151; border-radius: 3px; }
+    .prod-tl-fill { height: 100%; background: #374151; border-radius: 5px; }
     .prod-tl-marker {
       position: absolute; top: 50%;
       transform: translate(-50%, -50%);
-      width: 14px; height: 14px;
+      width: 16px; height: 16px;
       background: var(--gold, #c4943a);
       border: 2px solid #fff; border-radius: 50%;
       box-shadow: 0 1px 4px rgba(0,0,0,.18);
@@ -60,17 +60,18 @@
     .prod-tl-event {
       position: absolute; top: 50%;
       transform: translate(-50%, -50%);
-      width: 8px; height: 8px;
+      width: 9px; height: 9px;
       background: #8b5cf6;
       border: 2px solid #fff; border-radius: 50%;
     }
     .prod-tl-segment {
       position: absolute; top: 50%;
       transform: translate(-50%, -50%) rotate(45deg);
-      width: 7px; height: 7px;
+      width: 9px; height: 9px;
       background: #6366f1;
       border: 2px solid #fff;
       box-shadow: 0 1px 4px rgba(0,0,0,.18);
+      cursor: pointer;
     }
     .segment-change-label {
       display: block;
@@ -448,47 +449,67 @@
 
       <!-- Schedule -->
       <div style="flex:1;min-width:0;">
-        <h5 class="mb-2 no-print">Master Schedule</h5>
+        <h5 class="mb-2 no-print" style="font-weight:700;color:#111827;">Production Timeline</h5>
+
         <div id="room-conflict-banner" class="alert alert-danger py-2 px-3 mb-2" style="font-size:13px;display:none;">
           <strong>Room conflict:</strong> <span id="room-conflict-banner-text">Some pieces overlap more than your available rooms. Red blocks exceed capacity.</span>
         </div>
-
         <div id="week-nav-prompt" class="alert alert-light border py-2 px-3 mb-2 d-none no-print" style="font-size:13px;">
           Add <a href="production-settings.html">production dates</a> to enable week-by-week navigation.
           <button type="button" class="btn-close float-end" id="week-nav-prompt-dismiss" aria-label="Dismiss" style="font-size:10px;"></button>
         </div>
-        <div id="week-nav-strip" class="d-none no-print mb-2" style="display:flex;align-items:center;gap:14px;">
-          <button class="btn btn-sm btn-outline-secondary" id="week-prev-btn">&lt; Previous Week</button>
-          <span id="week-label" style="font-size:13px;font-weight:600;"></span>
-          <button class="btn btn-sm btn-outline-secondary" id="week-next-btn">Next Week &gt;</button>
-        </div>
-        <!-- Explicit, named callout instead of relying on a marker squeezed into a narrow
-             day column -- that approach broke down with several milestone days in one
-             week and at narrower window widths. -->
-        <div id="prod-timeline" class="no-print"></div>
-        <div id="schedule-changes-section" class="no-print" style="display:none;margin-top:8px;margin-bottom:4px;">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
-            <span style="font-size:13px;font-weight:700;color:#374151;border-left:3px solid #6366f1;padding-left:8px;">Schedule Changes</span>
-            <button id="sc-add-btn" type="button" style="background:none;border:none;padding:0;font-size:12px;color:#6366f1;cursor:pointer;font-weight:600;">+ Add</button>
-          </div>
-          <div id="sc-list"></div>
-        </div>
-        <div id="special-events-section" class="no-print" style="display:none;margin-top:8px;margin-bottom:4px;">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">
-            <span style="font-size:13px;font-weight:700;color:#374151;border-left:3px solid #6366f1;padding-left:8px;">Special Events</span>
-            <button id="se-add-btn" type="button" style="background:none;border:none;padding:0;font-size:12px;color:#6366f1;cursor:pointer;font-weight:600;">+ Add</button>
-          </div>
-          <div id="se-list"></div>
-        </div>
-        <div id="milestone-banner" class="alert alert-warning py-2 px-3 mb-2 d-none no-print" style="font-size:13px;"></div>
-        <p class="text-muted no-print" style="font-size:12.5px;margin-bottom:4px;">
-          Showing your weekly rehearsal template. Changes here apply every week unless noted otherwise.
-          <button type="button" class="btn btn-link p-0 ms-1" id="add-one-time-btn" disabled
-                  title="Set your production start and end dates in Production Settings first"
-                  style="font-size:12.5px;text-decoration:none;color:var(--gold);font-weight:600;">+ Add a one-time rehearsal</button>
-        </p>
 
-        <p class="text-muted" style="font-size:13px;">Drag to create a rehearsal block. Click &times; to delete.</p>
+        <!-- Production timeline strip -->
+        <div id="prod-timeline" class="no-print"></div>
+
+        <!-- Current Schedule card -->
+        <div id="current-schedule-card" class="no-print" style="display:none;margin-top:16px;">
+          <div style="display:flex;align-items:stretch;border:1px solid #e5e7eb;border-radius:8px;background:#fff;overflow:hidden;">
+            <div style="flex:1;padding:12px 16px;min-width:0;">
+              <div style="font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Current Schedule</div>
+              <div id="cs-name" style="font-size:14px;font-weight:700;color:#111827;"></div>
+              <div id="cs-dates" style="font-size:11px;color:#6b7280;margin-top:2px;"></div>
+            </div>
+            <div id="cs-next-col" style="flex:1;padding:12px 16px;border-left:1px solid #f3f4f6;min-width:0;">
+              <div style="font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Next Change</div>
+              <div id="cs-next-name" style="font-size:13px;font-weight:600;color:#374151;"></div>
+              <div id="cs-next-date" style="font-size:11px;color:#6b7280;margin-top:2px;"></div>
+            </div>
+            <div id="cs-event-col" style="flex:1;padding:12px 16px;border-left:1px solid #f3f4f6;min-width:0;">
+              <div style="font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Upcoming Event</div>
+              <div id="cs-event" style="font-size:12px;color:#374151;line-height:1.6;"></div>
+            </div>
+            <div style="flex-shrink:0;padding:12px 16px;border-left:1px solid #f3f4f6;display:flex;align-items:center;">
+              <button id="sc-manage-btn" type="button" style="background:none;border:none;padding:0;font-size:12px;color:#6366f1;cursor:pointer;font-weight:500;white-space:nowrap;">Manage Schedule Changes →</button>
+            </div>
+          </div>
+          <!-- Collapsible management panel -->
+          <div id="sc-management-panel" style="display:none;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;background:#f9fafb;padding:12px 16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <span style="font-size:12px;font-weight:600;color:#374151;">Schedule Changes</span>
+              <button id="sc-add-btn" type="button" style="background:none;border:none;padding:0;font-size:12px;color:#6366f1;cursor:pointer;font-weight:600;">+ Add</button>
+            </div>
+            <div id="sc-list"></div>
+          </div>
+        </div>
+
+        <!-- Week nav + Quick Actions (one row, directly above grid) -->
+        <div id="week-nav-strip" class="d-none no-print" style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button class="btn btn-sm btn-outline-secondary" id="week-prev-btn">&#8592; Previous</button>
+            <span id="week-label" style="font-size:13px;font-weight:600;"></span>
+            <button class="btn btn-sm btn-outline-secondary" id="week-next-btn">Next &#8594;</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:20px;">
+            <button type="button" id="add-one-time-btn" disabled
+                    title="Set your production start and end dates in Production Settings first"
+                    style="background:none;border:none;padding:0;font-size:12px;color:var(--gold);font-weight:700;cursor:pointer;">+ One-Time Rehearsal</button>
+            <button type="button" id="se-add-btn" style="background:none;border:none;padding:0;font-size:12px;color:#6b7280;cursor:pointer;">+ Special Event</button>
+            <button type="button" id="sc-add-qa-btn" style="background:none;border:none;padding:0;font-size:12px;color:#6b7280;cursor:pointer;">+ Schedule Change</button>
+          </div>
+        </div>
+
+        <div id="milestone-banner" class="alert alert-warning py-2 px-3 mb-2 d-none no-print" style="font-size:13px;"></div>
         <div id="segment-change-notice" class="no-print" style="display:none;font-size:12px;color:#9ca3af;margin-bottom:6px;"></div>
         <div class="schedule-wrapper">
           <div class="day-header-row" id="day-header-row"></div>
@@ -507,6 +528,7 @@
             <div class="grid" id="grid"></div>
           </div>
         </div>
+        <p class="text-muted no-print" style="font-size:11.5px;margin-top:6px;color:#d1d5db;">Drag to create a rehearsal block &middot; Click &times; to delete</p>
       </div>
 
     </div>
@@ -693,7 +715,9 @@
         const segDots = segments.slice(1).map(seg => {
           const d = dateFromYMD(seg.start_date);
           if (d <= startDate || d > endDate) return '';
-          return `<div class="prod-tl-segment" style="left:${pct(d)}%;" title="${seg.label || 'Schedule change'}"></div>`;
+          const niceD  = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const tipTxt = `${seg.label ? seg.label + ' · ' : ''}${niceD} · Starts here`;
+          return `<div class="prod-tl-segment" style="left:${pct(d)}%;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="${escapeHtml(tipTxt)}"></div>`;
         }).join('');
 
         function renderTL() {
@@ -715,7 +739,7 @@
               <div class="prod-tl-marker" style="left:${markerPct}%;"></div>
             </div>`;
           el.style.display = 'block';
-
+          el.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(t => bootstrap.Tooltip.getOrCreateInstance(t));
         }
         renderTL();
         window.addEventListener('weekChanged', renderTL);
@@ -723,44 +747,113 @@
     }
     window.addEventListener('segmentsChanged', initProdTimeline);
 
-    async function loadScheduleChanges() {
-      const section  = document.getElementById('schedule-changes-section');
-      const listEl   = document.getElementById('sc-list');
-      const addBtn   = document.getElementById('sc-add-btn');
-      if (!section || !listEl) return;
+    const SE_SECTION_LABELS = {
+      tech: 'Tech', dress: 'Dress', spacing: 'Spacing', photo_dress: 'Photo Dress',
+      performance: 'Performance', warm_up: 'Warm Up', costume_fitting: 'Costume Fitting',
+      company_meeting: 'Company Meeting', no_rehearsal: 'No Rehearsal',
+      notes_cleaning: 'Notes / Cleaning', load_in_strike: 'Load In / Strike', other: 'Event'
+    };
+
+    async function loadCurrentScheduleCard() {
+      const card  = document.getElementById('current-schedule-card');
       const today = new Date().toISOString().slice(0, 10);
+      if (!card) return;
       try {
-        const [segRes, datesRes] = await Promise.all([fetch('/api/season/segments'), fetch('/api/season/production-dates')]);
+        const [segRes, datesRes, seRes, perfRes] = await Promise.all([
+          fetch('/api/season/segments'),
+          fetch('/api/season/production-dates'),
+          fetch('/api/season/special-events'),
+          fetch('/api/season/performance-dates'),
+        ]);
         const segments  = segRes.ok   ? await segRes.json()   : [];
-        const prodDates = datesRes.ok ? await datesRes.json() : {};
-        const prodStart = prodDates.start_date || null;
-        const prodEnd   = prodDates.end_date   || null;
+        const dates     = datesRes.ok ? await datesRes.json() : {};
+        const seEvents  = seRes.ok    ? await seRes.json()    : [];
+        const perfDates = perfRes.ok  ? await perfRes.json()  : [];
 
-        if (!prodStart || !prodEnd || segments.length === 0) { section.style.display = 'none'; return; }
-        section.style.display = '';
+        const prodStart = dates.start_date || null;
+        const prodEnd   = dates.end_date   || null;
+        if (!prodStart || !prodEnd || segments.length === 0) { card.style.display = 'none'; return; }
+        card.style.display = '';
 
-        if (addBtn) {
-          addBtn.dataset.prodStart = prodStart;
-          addBtn.dataset.prodEnd   = prodEnd;
-        }
-
-        const weekStr = window._currentWeekMonday || today;
-        let activeIdx = 0;
+        const weekStr  = window._currentWeekMonday || today;
+        let activeIdx  = 0;
         for (let i = 0; i < segments.length; i++) {
           if (segments[i].start_date <= weekStr) activeIdx = i;
           else break;
         }
+        const activeSeg = segments[activeIdx];
+        const nextSeg   = segments[activeIdx + 1] || null;
 
+        // Current Schedule column
+        document.getElementById('cs-name').textContent = activeSeg.label || 'Initial Schedule';
+        const segStartLabel = new Date(`${activeSeg.start_date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const segEndLabel   = nextSeg
+          ? (() => { const d = new Date(`${nextSeg.start_date}T00:00:00`); d.setDate(d.getDate() - 1); return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); })()
+          : new Date(`${prodEnd}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        document.getElementById('cs-dates').textContent = `${segStartLabel} – ${segEndLabel}`;
+
+        // Next Change column
+        if (nextSeg) {
+          document.getElementById('cs-next-name').textContent = nextSeg.label || 'Schedule Change';
+          document.getElementById('cs-next-date').textContent = new Date(`${nextSeg.start_date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        } else {
+          document.getElementById('cs-next-name').textContent = 'None scheduled';
+          document.getElementById('cs-next-name').style.color = '#d1d5db';
+          document.getElementById('cs-next-date').textContent = '';
+        }
+
+        // Upcoming Event column
+        const monday  = window._currentWeekMonday;
+        const csEvent = document.getElementById('cs-event');
+        if (monday) {
+          function dayOff(mon, dateStr) {
+            return Math.round((new Date(`${dateStr}T00:00:00`) - new Date(`${mon}T00:00:00`)) / 86400000);
+          }
+          const DAY_SHORT = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+          const weekItems = [];
+          if (dates.audition_date) {
+            const off = dayOff(monday, dates.audition_date);
+            if (off >= 0 && off <= 6) weekItems.push(`Audition Day · ${DAY_SHORT[off]}`);
+          }
+          perfDates.forEach(p => {
+            const off = dayOff(monday, p.date);
+            if (off >= 0 && off <= 6) weekItems.push(`Performance · ${DAY_SHORT[off]}`);
+          });
+          seEvents.forEach(ev => {
+            const off = dayOff(monday, ev.date);
+            if (off < 0 || off > 6) return;
+            weekItems.push(`${SE_SECTION_LABELS[ev.event_type] || 'Event'} · ${DAY_SHORT[off]}`);
+          });
+          if (weekItems.length === 0) {
+            csEvent.textContent = 'None';
+            csEvent.style.color = '#d1d5db';
+          } else {
+            csEvent.innerHTML   = weekItems.map(t => `<div>${escapeHtml(t)}</div>`).join('');
+            csEvent.style.color = '#374151';
+          }
+        }
+
+        // Store prod dates for modal use
+        const scAddBtn   = document.getElementById('sc-add-btn');
+        const scAddQaBtn = document.getElementById('sc-add-qa-btn');
+        const seAddBtn   = document.getElementById('se-add-btn');
+        if (scAddBtn)   { scAddBtn.dataset.prodStart   = prodStart; scAddBtn.dataset.prodEnd   = prodEnd; }
+        if (scAddQaBtn) { scAddQaBtn.dataset.prodStart = prodStart; scAddQaBtn.dataset.prodEnd = prodEnd; }
+        if (seAddBtn)   { seAddBtn.dataset.prodStart   = prodStart; seAddBtn.dataset.prodEnd   = prodEnd; }
+
+        // Render management list (inside collapsible panel)
+        const listEl = document.getElementById('sc-list');
+        if (!listEl) return;
         listEl.innerHTML = segments.map((seg, i) => {
-          const isDefault  = i === 0;
-          const isFuture   = seg.start_date > today;
-          const isActive   = i === activeIdx;
-          const niceDate   = new Date(`${seg.start_date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          const label      = seg.label || (isDefault ? 'Initial Schedule' : '');
-          const labelPart  = label ? ` <span style="color:#9ca3af;margin:0 3px;">&middot;</span> <span style="color:#6b7280;">${escapeHtml(label)}</span>` : '';
-          const activeDot  = isActive ? `<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#374151;margin-right:5px;vertical-align:middle;"></span>` : `<span style="display:inline-block;width:5px;margin-right:5px;"></span>`;
-          const canEdit    = isFuture || isDefault;
-          const canRemove  = isFuture && !isDefault;
+          const isDefault = i === 0;
+          const isFuture  = seg.start_date > today;
+          const isActive  = i === activeIdx;
+          const niceDate  = new Date(`${seg.start_date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const label     = seg.label || (isDefault ? 'Initial Schedule' : '');
+          const labelPart = label ? ` <span style="color:#9ca3af;margin:0 3px;">&middot;</span> <span style="color:#6b7280;">${escapeHtml(label)}</span>` : '';
+          const activeDot = isActive ? `<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:#374151;margin-right:5px;vertical-align:middle;"></span>` : `<span style="display:inline-block;width:5px;margin-right:5px;"></span>`;
+          const canEdit   = isFuture || isDefault;
+          const canRemove = isFuture && !isDefault;
           return `
             <div data-sc-row="${seg.id}"${isActive ? ' style="background:#eef2ff;border-radius:5px;margin:0 -6px;padding:0 6px;"' : ''}>
               <div style="display:flex;align-items:center;justify-content:space-between;padding:3px 0;border-bottom:1px solid ${isActive ? '#e0e7ff' : '#f3f4f6'};">
@@ -779,104 +872,41 @@
             date: btn.dataset.scDate, label: btn.dataset.scLabel, prodStart, prodEnd
           }));
         });
-
         listEl.querySelectorAll('.sc-remove-btn').forEach(btn => {
           btn.addEventListener('click', async () => {
             if (!confirm('Remove this schedule change? Any specific date adjustments (moved or cancelled rehearsals) made for this period will also be removed. This cannot be undone.')) return;
             try {
-              const res = await fetch(`/api/season/segments/${btn.dataset.scId}`, { method: 'DELETE' });
-              const data = await res.json().catch(()=>({}));
+              const res  = await fetch(`/api/season/segments/${btn.dataset.scId}`, { method: 'DELETE' });
+              const data = await res.json().catch(() => ({}));
               if (!res.ok) { alert(data.error || 'Could not remove.'); return; }
-              await loadScheduleChanges();
+              await loadCurrentScheduleCard();
               window.dispatchEvent(new CustomEvent('segmentsChanged'));
             } catch (e) { alert('Could not connect to server.'); }
           });
         });
-      } catch (e) { section.style.display = 'none'; }
+      } catch (e) { card.style.display = 'none'; }
     }
 
     document.getElementById('sc-add-btn')?.addEventListener('click', () => {
       const btn = document.getElementById('sc-add-btn');
       openScModal('add', { prodStart: btn.dataset.prodStart, prodEnd: btn.dataset.prodEnd });
     });
+    document.getElementById('sc-add-qa-btn')?.addEventListener('click', () => {
+      const btn = document.getElementById('sc-add-btn');
+      openScModal('add', { prodStart: btn?.dataset.prodStart, prodEnd: btn?.dataset.prodEnd });
+    });
+    document.getElementById('se-add-btn')?.addEventListener('click', () => openSeModal());
+    document.getElementById('sc-manage-btn')?.addEventListener('click', () => {
+      const panel = document.getElementById('sc-management-panel');
+      const btn   = document.getElementById('sc-manage-btn');
+      const isOpen = panel.style.display !== 'none';
+      panel.style.display = isOpen ? 'none' : '';
+      btn.textContent     = isOpen ? 'Manage Schedule Changes →' : '← Hide';
+    });
 
-    window.addEventListener('segmentsChanged', loadScheduleChanges);
-    window.addEventListener('weekChanged', loadScheduleChanges);
-
-    const SE_SECTION_LABELS = {
-      tech: 'Tech', dress: 'Dress', spacing: 'Spacing', photo_dress: 'Photo Dress',
-      performance: 'Performance', warm_up: 'Warm Up', costume_fitting: 'Costume Fitting',
-      company_meeting: 'Company Meeting', no_rehearsal: 'No Rehearsal',
-      notes_cleaning: 'Notes / Cleaning', load_in_strike: 'Load In / Strike', other: 'Event'
-    };
-    const SE_SECTION_COLORS = {
-      tech: '#0284c7', dress: '#7c3aed', spacing: '#059669', photo_dress: '#0891b2',
-      performance: '#c0392b', warm_up: '#d97706', costume_fitting: '#7c3aed',
-      company_meeting: '#374151', no_rehearsal: '#6b7280', notes_cleaning: '#6366f1',
-      load_in_strike: '#9ca3af', other: '#9ca3af'
-    };
-
-    async function loadSpecialEventsSection() {
-      const section = document.getElementById('special-events-section');
-      const listEl  = document.getElementById('se-list');
-      if (!section || !listEl) return;
-      const monday = window._currentWeekMonday;
-      if (!monday) { section.style.display = 'none'; return; }
-      try {
-        const [seRes, datesRes, perfRes] = await Promise.all([
-          fetch('/api/season/special-events'),
-          fetch('/api/season/production-dates'),
-          fetch('/api/season/performance-dates'),
-        ]);
-        const events    = seRes.ok    ? await seRes.json()    : [];
-        const dates     = datesRes.ok ? await datesRes.json() : {};
-        const perfDates = perfRes.ok  ? await perfRes.json()  : [];
-
-        if (!dates.start_date || !dates.end_date) { section.style.display = 'none'; return; }
-        section.style.display = '';
-
-        const DAY_NAMES_SE = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-        function dayOffset(mon, dateStr) {
-          return Math.round((new Date(`${dateStr}T00:00:00`) - new Date(`${mon}T00:00:00`)) / 86400000);
-        }
-
-        const items = [];
-        if (dates.audition_date) {
-          const off = dayOffset(monday, dates.audition_date);
-          if (off >= 0 && off <= 6) items.push({ day: DAY_NAMES_SE[off], label: 'Audition Day', color: '#c4943a', title: '' });
-        }
-        perfDates.forEach(p => {
-          const off = dayOffset(monday, p.date);
-          if (off >= 0 && off <= 6) items.push({ day: DAY_NAMES_SE[off], label: 'Performance', color: '#c0392b', title: p.title || '' });
-        });
-        events.forEach(ev => {
-          const off = dayOffset(monday, ev.date);
-          if (off < 0 || off > 6) return;
-          items.push({ id: ev.id, day: DAY_NAMES_SE[off], label: SE_SECTION_LABELS[ev.event_type] || 'Event', color: SE_SECTION_COLORS[ev.event_type] || '#9ca3af', title: ev.title || '' });
-        });
-
-        listEl.innerHTML = items.length === 0
-          ? `<div style="font-size:11px;color:#d1d5db;padding:2px 0 4px;">Nothing this week.</div>`
-          : items.map(it => `
-              <div style="display:flex;align-items:center;gap:7px;padding:3px 0;border-bottom:1px solid #f3f4f6;">
-                <span style="font-size:11px;font-weight:600;color:${it.color};min-width:96px;">${it.label}</span>
-                <span style="font-size:12px;color:#374151;font-weight:500;">${it.day}</span>
-                ${it.title ? `<span style="font-size:11px;color:#9ca3af;">&middot; ${escapeHtml(it.title)}</span>` : ''}
-              </div>`).join('');
-
-        // Store prod dates so openSeModal can read them
-        const addBtn = document.getElementById('se-add-btn');
-        if (addBtn) {
-          addBtn.dataset.prodStart = dates.start_date;
-          addBtn.dataset.prodEnd   = dates.end_date;
-          if (!addBtn._wired) {
-            addBtn._wired = true;
-            addBtn.addEventListener('click', () => openSeModal());
-          }
-        }
-      } catch (e) { section.style.display = 'none'; }
-    }
-    window.addEventListener('weekChanged', loadSpecialEventsSection);
+    window.addEventListener('segmentsChanged', loadCurrentScheduleCard);
+    window.addEventListener('weekChanged', loadCurrentScheduleCard);
+    window.addEventListener('specialEventsChanged', loadCurrentScheduleCard);
 
     // --- Schedule Change modal controller ---
     function openScModal(mode, opts) {
@@ -940,7 +970,7 @@
           const data = await res.json().catch(() => ({}));
           if (!res.ok) { errEl.textContent = data.error || 'Could not add.'; errEl.style.display = ''; return; }
           bootstrap.Modal.getInstance(modalEl).hide();
-          await loadScheduleChanges();
+          await loadCurrentScheduleCard();
           window.dispatchEvent(new CustomEvent('segmentsChanged'));
         } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.style.display = ''; }
         finally { saveBtn.disabled = false; saveBtn.textContent = 'Add Schedule Change'; }
@@ -959,7 +989,7 @@
           const res = await fetch(`/api/season/segments/${id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
           if (!res.ok) { const d = await res.json().catch(()=>({})); errEl.textContent = d.error || 'Could not save.'; errEl.style.display = ''; return; }
           bootstrap.Modal.getInstance(modalEl).hide();
-          await loadScheduleChanges();
+          await loadCurrentScheduleCard();
           window.dispatchEvent(new CustomEvent('segmentsChanged'));
         } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.style.display = ''; }
         finally { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
@@ -1006,7 +1036,7 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { errEl.textContent = data.error || 'Could not save.'; errEl.style.display = ''; return; }
         bootstrap.Modal.getInstance(document.getElementById('seModal')).hide();
-        await loadSpecialEventsSection();
+        await loadCurrentScheduleCard();
         window.dispatchEvent(new CustomEvent('specialEventsChanged'));
       } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.style.display = ''; }
       finally { saveBtn.disabled = false; saveBtn.textContent = 'Add Event'; }
@@ -1045,8 +1075,7 @@
 
         initWeekNav();
         initProdTimeline();
-        loadScheduleChanges();
-        loadSpecialEventsSection();
+        loadCurrentScheduleCard();
 
         // Trial banner
         try {

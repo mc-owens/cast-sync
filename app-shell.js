@@ -15,7 +15,7 @@
       { label: 'Auditionees',   href: 'dancers.html' },
     ]},
     { section: 'Production', items: [
-      { label: 'Master Schedule',       href: 'master.html' },
+      { label: 'Production Timeline',    href: 'master.html' },
       { label: 'Availability Analysis', href: 'search.html' },
       { label: 'Piece Builder',         href: 'cast.html' },
       { label: 'Cast List',             href: 'casting.html' },
