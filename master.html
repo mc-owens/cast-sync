@@ -189,6 +189,103 @@
     </div>
   </div>
 
+  <!-- Schedule Change add/edit modal -->
+  <div class="modal fade" id="scModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:400px;">
+      <div class="modal-content" style="border:none;border-radius:14px;">
+        <div class="modal-header" style="border-bottom:none;padding-bottom:0;">
+          <h5 class="modal-title" id="sc-modal-title" style="font-size:17px;font-weight:700;">Add Schedule Change</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" style="padding-top:14px;">
+          <div id="sc-modal-date-row" style="margin-bottom:14px;">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;">Starting when?</label>
+            <input type="date" id="sc-modal-date" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:13px;width:100%;">
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;">Label <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
+            <input type="text" id="sc-modal-label" placeholder="e.g. Jazz Focus" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:13px;width:100%;">
+          </div>
+          <div id="sc-modal-copy-row">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:8px;">Build from</label>
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="sc-modal-copy" value="copy" checked> Copy current schedule</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="radio" name="sc-modal-copy" value="blank"> Start with no rehearsals</label>
+            </div>
+          </div>
+          <div id="sc-modal-err" style="font-size:12px;color:#ef4444;margin-top:10px;display:none;"></div>
+        </div>
+        <div class="modal-footer" style="border-top:none;padding-top:0;">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" id="sc-modal-save" class="btn btn-dark">Add Schedule Change</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Special Event quick-add modal -->
+  <div class="modal fade" id="seModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:420px;">
+      <div class="modal-content" style="border:none;border-radius:14px;">
+        <div class="modal-header" style="border-bottom:none;padding-bottom:0;">
+          <h5 class="modal-title" style="font-size:17px;font-weight:700;">Add Special Event</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" style="padding-top:14px;">
+          <div style="display:flex;gap:10px;margin-bottom:14px;">
+            <div style="flex:1.2;">
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;">Date</label>
+              <input type="date" id="se-modal-date" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:13px;width:100%;">
+            </div>
+            <div style="flex:1;">
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;">Type</label>
+              <select id="se-modal-type" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:13px;width:100%;">
+                <option value="tech">Tech</option>
+                <option value="dress">Dress</option>
+                <option value="spacing">Spacing</option>
+                <option value="photo_dress">Photo Dress</option>
+                <option value="performance">Performance</option>
+                <option value="warm_up">Warm Up</option>
+                <option value="costume_fitting">Costume Fitting</option>
+                <option value="company_meeting">Company Meeting</option>
+                <option value="no_rehearsal">No Rehearsal</option>
+                <option value="notes_cleaning">Notes / Cleaning</option>
+                <option value="load_in_strike">Load In / Strike</option>
+                <option value="other" selected>Other</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;">Title</label>
+            <input type="text" id="se-modal-title" placeholder="e.g. Act 1 Tech" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:13px;width:100%;">
+          </div>
+          <div style="display:flex;gap:10px;margin-bottom:14px;">
+            <div style="flex:1;">
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;">Start time <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
+              <input type="time" id="se-modal-start" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:13px;width:100%;">
+            </div>
+            <div style="flex:1;">
+              <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;">End time <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
+              <input type="time" id="se-modal-end" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:13px;width:100%;">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;">Location <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
+            <input type="text" id="se-modal-location" placeholder="e.g. Main Stage" style="border:1px solid #d1d5db;border-radius:6px;padding:6px 9px;font-size:13px;width:100%;">
+          </div>
+          <div id="se-modal-err" style="font-size:12px;color:#ef4444;margin-top:10px;display:none;"></div>
+        </div>
+        <div class="modal-footer" style="border-top:none;padding-top:0;flex-direction:column;align-items:flex-end;gap:8px;">
+          <div style="display:flex;gap:8px;">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" id="se-modal-save" class="btn btn-dark">Add Event</button>
+          </div>
+          <div style="font-size:11px;color:#9ca3af;">For AI import and bulk create, go to <a href="production-settings.html" style="color:#9ca3af;">Production Settings</a>.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Add a one-time rehearsal modal -->
   <div class="modal fade" id="addOneTimeModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -375,8 +472,6 @@
             <button id="sc-add-btn" type="button" style="background:none;border:none;padding:0;font-size:11px;color:#9ca3af;cursor:pointer;">+ Add</button>
           </div>
           <div id="sc-list"></div>
-          <div id="sc-add-form" style="display:none;background:#f9fafb;border:1px solid #e5e7eb;border-radius:7px;padding:12px;margin-top:6px;"></div>
-          <div id="sc-dates-msg" style="display:none;font-size:11px;color:#9ca3af;margin-top:2px;"></div>
         </div>
         <div id="special-events-section" class="no-print" style="display:none;margin-top:8px;margin-bottom:4px;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
@@ -384,7 +479,6 @@
             <button id="se-add-btn" type="button" style="background:none;border:none;padding:0;font-size:11px;color:#9ca3af;cursor:pointer;">+ Add</button>
           </div>
           <div id="se-list"></div>
-          <div id="se-add-form" style="display:none;background:#f9fafb;border:1px solid #e5e7eb;border-radius:7px;padding:12px;margin-top:6px;"></div>
         </div>
         <div id="milestone-banner" class="alert alert-warning py-2 px-3 mb-2 d-none no-print" style="font-size:13px;"></div>
         <p class="text-muted no-print" style="font-size:12.5px;margin-bottom:4px;">
@@ -633,7 +727,6 @@
       const section  = document.getElementById('schedule-changes-section');
       const listEl   = document.getElementById('sc-list');
       const addBtn   = document.getElementById('sc-add-btn');
-      const datesMsg = document.getElementById('sc-dates-msg');
       if (!section || !listEl) return;
       const today = new Date().toISOString().slice(0, 10);
       try {
@@ -646,15 +739,9 @@
         if (!prodStart || !prodEnd || segments.length === 0) { section.style.display = 'none'; return; }
         section.style.display = '';
 
-        if (!prodStart || !prodEnd) {
-          addBtn.style.display = 'none';
-          datesMsg.textContent = 'Set production start and end dates to manage schedule changes.';
-          datesMsg.style.display = '';
-        } else {
-          addBtn.style.display = '';
+        if (addBtn) {
           addBtn.dataset.prodStart = prodStart;
           addBtn.dataset.prodEnd   = prodEnd;
-          datesMsg.style.display = 'none';
         }
 
         const weekStr = window._currentWeekMonday || today;
@@ -683,41 +770,14 @@
                   ${canRemove ? `<button type="button" class="sc-remove-btn" data-sc-id="${seg.id}" style="background:none;border:none;padding:0;font-size:11px;color:#ef4444;cursor:pointer;">Remove</button>` : ''}
                 </div>
               </div>
-              <div class="sc-edit-form" id="sc-edit-${seg.id}" style="display:none;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:10px;margin:4px 0 6px;"></div>
             </div>`;
         }).join('');
 
         listEl.querySelectorAll('.sc-edit-btn').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const id = btn.dataset.scId, isDefault = btn.dataset.scDefault === 'true';
-            const currentDate = btn.dataset.scDate, currentLabel = btn.dataset.scLabel;
-            const isFuture = currentDate > today;
-            listEl.querySelectorAll('.sc-edit-form').forEach(f => { f.style.display = 'none'; f.innerHTML = ''; });
-            const formEl = document.getElementById(`sc-edit-${id}`);
-            const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-            const editMin  = (prodStart && prodStart > tomorrow) ? prodStart : tomorrow;
-            const dateRow  = (!isDefault && isFuture) ? `<div style="margin-bottom:10px;"><label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Starting date</label><input type="date" id="sc-ed-date-${id}" value="${currentDate}" min="${editMin}" ${prodEnd ? `max="${prodEnd}"` : ''} style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;"></div>` : '';
-            formEl.innerHTML = `${dateRow}<div style="margin-bottom:10px;"><label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Label <span style="font-weight:400;color:#9ca3af;">(optional)</span></label><input type="text" id="sc-ed-label-${id}" value="${escapeHtml(currentLabel)}" placeholder="${isDefault ? 'e.g. Initial Schedule' : 'e.g. Jazz Focus'}" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;"></div><div id="sc-ed-err-${id}" style="font-size:11px;color:#ef4444;margin-bottom:6px;display:none;"></div><div style="display:flex;gap:8px;"><button type="button" id="sc-ed-save-${id}" style="background:#111827;color:#fff;border:none;border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer;">Save</button><button type="button" id="sc-ed-cancel-${id}" style="background:none;border:1px solid #d1d5db;border-radius:5px;padding:5px 10px;font-size:12px;cursor:pointer;">Cancel</button></div>`;
-            formEl.style.display = '';
-            document.getElementById(`sc-ed-cancel-${id}`).addEventListener('click', () => { formEl.style.display = 'none'; formEl.innerHTML = ''; });
-            document.getElementById(`sc-ed-save-${id}`).addEventListener('click', async () => {
-              const newLabel = document.getElementById(`sc-ed-label-${id}`).value.trim();
-              const dateInp  = document.getElementById(`sc-ed-date-${id}`);
-              const newDate  = dateInp ? dateInp.value : null;
-              const errEl    = document.getElementById(`sc-ed-err-${id}`);
-              if (newDate && newDate <= today) { errEl.textContent = 'Date must be in the future.'; errEl.style.display = ''; return; }
-              const body = {};
-              if (newLabel !== currentLabel) body.label = newLabel || null;
-              if (newDate && newDate !== currentDate) body.start_date = newDate;
-              if (!Object.keys(body).length) { formEl.style.display = 'none'; return; }
-              try {
-                const res = await fetch(`/api/season/segments/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-                if (!res.ok) { const d = await res.json().catch(()=>({})); errEl.textContent = d.error || 'Could not save.'; errEl.style.display = ''; return; }
-                await loadScheduleChanges();
-                window.dispatchEvent(new CustomEvent('segmentsChanged'));
-              } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.style.display = ''; }
-            });
-          });
+          btn.addEventListener('click', () => openScModal('edit', {
+            id: btn.dataset.scId, isDefault: btn.dataset.scDefault === 'true',
+            date: btn.dataset.scDate, label: btn.dataset.scLabel, prodStart, prodEnd
+          }));
         });
 
         listEl.querySelectorAll('.sc-remove-btn').forEach(btn => {
@@ -736,44 +796,8 @@
     }
 
     document.getElementById('sc-add-btn')?.addEventListener('click', () => {
-      const addBtn   = document.getElementById('sc-add-btn');
-      const addForm  = document.getElementById('sc-add-form');
-      const prodStart = addBtn.dataset.prodStart || '';
-      const prodEnd   = addBtn.dataset.prodEnd   || '';
-      const tomorrow  = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-      const minDate   = prodStart > tomorrow ? prodStart : tomorrow;
-      addForm.innerHTML = `
-        <div style="margin-bottom:10px;"><label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Starting when?</label><input type="date" id="sc-new-date" min="${minDate}" ${prodEnd ? `max="${prodEnd}"` : ''} style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;"></div>
-        <div style="margin-bottom:10px;"><label style="font-size:11px;font-weight:600;display:block;margin-bottom:5px;">Build from</label><div style="display:flex;flex-direction:column;gap:5px;"><label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;"><input type="radio" name="sc-copy" value="copy" checked> Copy current schedule</label><label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;"><input type="radio" name="sc-copy" value="blank"> Start with no rehearsals</label></div></div>
-        <div style="margin-bottom:10px;"><label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Label <span style="font-weight:400;color:#9ca3af;">(optional)</span></label><input type="text" id="sc-new-label" placeholder="e.g. Jazz Focus" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;"></div>
-        <div id="sc-new-err" style="font-size:11px;color:#ef4444;margin-bottom:6px;display:none;"></div>
-        <div style="display:flex;gap:8px;"><button type="button" id="sc-new-save" style="background:#111827;color:#fff;border:none;border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer;">Add Schedule Change</button><button type="button" id="sc-new-cancel" style="background:none;border:1px solid #d1d5db;border-radius:5px;padding:5px 10px;font-size:12px;cursor:pointer;">Cancel</button></div>`;
-      addForm.style.display = '';
-      addBtn.style.display = 'none';
-      document.getElementById('sc-new-cancel').addEventListener('click', () => { addForm.style.display = 'none'; addBtn.style.display = ''; });
-      document.getElementById('sc-new-save').addEventListener('click', async () => {
-        const date   = document.getElementById('sc-new-date').value;
-        const copy   = document.querySelector('input[name="sc-copy"]:checked')?.value === 'copy';
-        const label  = document.getElementById('sc-new-label').value.trim() || null;
-        const errEl  = document.getElementById('sc-new-err');
-        const today  = new Date().toISOString().slice(0, 10);
-        if (!date || date <= today) { errEl.textContent = 'Please choose a future date.'; errEl.style.display = ''; return; }
-        if (prodEnd && date > prodEnd) { errEl.textContent = 'Date cannot be after the production end date.'; errEl.style.display = ''; return; }
-        errEl.style.display = 'none';
-        const saveBtn = document.getElementById('sc-new-save');
-        saveBtn.disabled = true; saveBtn.textContent = 'Saving...';
-        try {
-          const res = copy
-            ? await fetch('/api/season/segments/fork-edit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_start_date: date, label, block_changes: [], blocks_to_remove: [], blocks_to_add: [] }) })
-            : await fetch('/api/season/segments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ start_date: date, label }) });
-          const data = await res.json().catch(()=>({}));
-          if (!res.ok) { errEl.textContent = data.error || 'Could not add.'; errEl.style.display = ''; return; }
-          addForm.style.display = 'none'; addBtn.style.display = '';
-          await loadScheduleChanges();
-          window.dispatchEvent(new CustomEvent('segmentsChanged'));
-        } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.style.display = ''; }
-        finally { saveBtn.disabled = false; saveBtn.textContent = 'Add Schedule Change'; }
-      });
+      const btn = document.getElementById('sc-add-btn');
+      openScModal('add', { prodStart: btn.dataset.prodStart, prodEnd: btn.dataset.prodEnd });
     });
 
     window.addEventListener('segmentsChanged', loadScheduleChanges);
@@ -840,88 +864,153 @@
                 ${it.title ? `<span style="font-size:11px;color:#9ca3af;">&middot; ${escapeHtml(it.title)}</span>` : ''}
               </div>`).join('');
 
-        // Wire add button once; re-wire if production dates change
-        const addBtn  = document.getElementById('se-add-btn');
-        const addForm = document.getElementById('se-add-form');
-        if (addBtn && !addBtn._wired) {
-          addBtn._wired = true;
-          addBtn.addEventListener('click', () => {
-            const typeOptions = Object.entries(SE_SECTION_LABELS)
-              .map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
-            addForm.innerHTML = `
-              <div style="display:flex;gap:8px;margin-bottom:10px;">
-                <div style="flex:1;">
-                  <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Date</label>
-                  <input type="date" id="se-new-date" value="${monday}" min="${dates.start_date}" max="${dates.end_date}" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;">
-                </div>
-                <div style="flex:1;">
-                  <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Type</label>
-                  <select id="se-new-type" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;">${typeOptions}</select>
-                </div>
-              </div>
-              <div style="margin-bottom:10px;">
-                <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Title</label>
-                <input type="text" id="se-new-title" placeholder="e.g. Act 1 Tech" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;">
-              </div>
-              <div style="display:flex;gap:8px;margin-bottom:10px;">
-                <div style="flex:1;">
-                  <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Start time <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
-                  <input type="time" id="se-new-start" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;">
-                </div>
-                <div style="flex:1;">
-                  <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">End time <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
-                  <input type="time" id="se-new-end" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;">
-                </div>
-              </div>
-              <div style="margin-bottom:10px;">
-                <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px;">Location <span style="font-weight:400;color:#9ca3af;">(optional)</span></label>
-                <input type="text" id="se-new-location" placeholder="e.g. Main Stage" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 7px;font-size:12px;width:100%;">
-              </div>
-              <div id="se-new-err" style="font-size:11px;color:#ef4444;margin-bottom:6px;display:none;"></div>
-              <div style="display:flex;gap:8px;">
-                <button type="button" id="se-new-save" style="background:#111827;color:#fff;border:none;border-radius:5px;padding:5px 12px;font-size:12px;cursor:pointer;">Add Event</button>
-                <button type="button" id="se-new-cancel" style="background:none;border:1px solid #d1d5db;border-radius:5px;padding:5px 10px;font-size:12px;cursor:pointer;">Cancel</button>
-              </div>`;
-            addForm.style.display = '';
-            addBtn.style.display  = 'none';
-            document.getElementById('se-new-cancel').addEventListener('click', () => {
-              addForm.style.display = 'none';
-              addBtn.style.display  = '';
-            });
-            document.getElementById('se-new-save').addEventListener('click', async () => {
-              const date     = document.getElementById('se-new-date').value;
-              const type     = document.getElementById('se-new-type').value;
-              const title    = document.getElementById('se-new-title').value.trim();
-              const start    = document.getElementById('se-new-start').value || null;
-              const end      = document.getElementById('se-new-end').value || null;
-              const location = document.getElementById('se-new-location').value.trim() || null;
-              const errEl    = document.getElementById('se-new-err');
-              if (!date) { errEl.textContent = 'Please choose a date.'; errEl.style.display = ''; return; }
-              if (!title) { errEl.textContent = 'Title is required.'; errEl.style.display = ''; return; }
-              errEl.style.display = 'none';
-              const saveBtn = document.getElementById('se-new-save');
-              saveBtn.disabled = true; saveBtn.textContent = 'Saving...';
-              try {
-                const res = await fetch('/api/season/special-events', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ event_type: type, title, date, start_time: start, end_time: end, location })
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) { errEl.textContent = data.error || 'Could not save.'; errEl.style.display = ''; return; }
-                addForm.style.display = 'none';
-                addBtn.style.display  = '';
-                addBtn._wired = false;
-                await loadSpecialEventsSection();
-                window.dispatchEvent(new CustomEvent('specialEventsChanged'));
-              } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.style.display = ''; }
-              finally { saveBtn.disabled = false; saveBtn.textContent = 'Add Event'; }
-            });
-          });
+        // Store prod dates so openSeModal can read them
+        const addBtn = document.getElementById('se-add-btn');
+        if (addBtn) {
+          addBtn.dataset.prodStart = dates.start_date;
+          addBtn.dataset.prodEnd   = dates.end_date;
+          if (!addBtn._wired) {
+            addBtn._wired = true;
+            addBtn.addEventListener('click', () => openSeModal());
+          }
         }
       } catch (e) { section.style.display = 'none'; }
     }
     window.addEventListener('weekChanged', loadSpecialEventsSection);
+
+    // --- Schedule Change modal controller ---
+    function openScModal(mode, opts) {
+      const { id, isDefault, date, label, prodStart, prodEnd } = opts || {};
+      const today    = new Date().toISOString().slice(0, 10);
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+      const modalEl  = document.getElementById('scModal');
+      document.getElementById('sc-modal-err').style.display = 'none';
+      document.getElementById('sc-modal-label').value = label || '';
+
+      if (mode === 'add') {
+        document.getElementById('sc-modal-title').textContent = 'Add Schedule Change';
+        document.getElementById('sc-modal-save').textContent  = 'Add Schedule Change';
+        document.getElementById('sc-modal-copy-row').style.display = '';
+        document.getElementById('sc-modal-date-row').style.display = '';
+        const minDate = prodStart > tomorrow ? prodStart : tomorrow;
+        const dateInp = document.getElementById('sc-modal-date');
+        dateInp.value = ''; dateInp.min = minDate; dateInp.max = prodEnd || '';
+        document.querySelector('input[name="sc-modal-copy"][value="copy"]').checked = true;
+      } else {
+        document.getElementById('sc-modal-title').textContent = 'Edit Schedule Change';
+        document.getElementById('sc-modal-save').textContent  = 'Save';
+        document.getElementById('sc-modal-copy-row').style.display = 'none';
+        const isFuture  = date > today;
+        const showDate  = !isDefault && isFuture;
+        document.getElementById('sc-modal-date-row').style.display = showDate ? '' : 'none';
+        if (showDate) {
+          const editMin = prodStart > tomorrow ? prodStart : tomorrow;
+          const dateInp = document.getElementById('sc-modal-date');
+          dateInp.value = date; dateInp.min = editMin; dateInp.max = prodEnd || '';
+        }
+      }
+      modalEl.dataset.scMode         = mode;
+      modalEl.dataset.scId           = id           || '';
+      modalEl.dataset.scCurrentDate  = date         || '';
+      modalEl.dataset.scCurrentLabel = label        || '';
+      modalEl.dataset.prodStart      = prodStart    || '';
+      modalEl.dataset.prodEnd        = prodEnd      || '';
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+
+    document.getElementById('sc-modal-save')?.addEventListener('click', async () => {
+      const modalEl  = document.getElementById('scModal');
+      const mode     = modalEl.dataset.scMode;
+      const today    = new Date().toISOString().slice(0, 10);
+      const newLabel = document.getElementById('sc-modal-label').value.trim();
+      const dateRow  = document.getElementById('sc-modal-date-row');
+      const newDate  = dateRow.style.display !== 'none' ? document.getElementById('sc-modal-date').value : null;
+      const errEl    = document.getElementById('sc-modal-err');
+      const saveBtn  = document.getElementById('sc-modal-save');
+
+      if (mode === 'add') {
+        if (!newDate || newDate <= today) { errEl.textContent = 'Please choose a future date.'; errEl.style.display = ''; return; }
+        const copy = document.querySelector('input[name="sc-modal-copy"]:checked')?.value === 'copy';
+        errEl.style.display = 'none';
+        saveBtn.disabled = true; saveBtn.textContent = 'Saving...';
+        try {
+          const res = copy
+            ? await fetch('/api/season/segments/fork-edit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ new_start_date: newDate, label: newLabel || null, block_changes:[], blocks_to_remove:[], blocks_to_add:[] }) })
+            : await fetch('/api/season/segments',            { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ start_date: newDate, label: newLabel || null }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) { errEl.textContent = data.error || 'Could not add.'; errEl.style.display = ''; return; }
+          bootstrap.Modal.getInstance(modalEl).hide();
+          await loadScheduleChanges();
+          window.dispatchEvent(new CustomEvent('segmentsChanged'));
+        } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.style.display = ''; }
+        finally { saveBtn.disabled = false; saveBtn.textContent = 'Add Schedule Change'; }
+      } else {
+        const id           = modalEl.dataset.scId;
+        const currentDate  = modalEl.dataset.scCurrentDate;
+        const currentLabel = modalEl.dataset.scCurrentLabel;
+        if (newDate && newDate <= today) { errEl.textContent = 'Date must be in the future.'; errEl.style.display = ''; return; }
+        const body = {};
+        if (newLabel !== currentLabel) body.label = newLabel || null;
+        if (newDate && newDate !== currentDate) body.start_date = newDate;
+        if (!Object.keys(body).length) { bootstrap.Modal.getInstance(modalEl).hide(); return; }
+        errEl.style.display = 'none';
+        saveBtn.disabled = true; saveBtn.textContent = 'Saving...';
+        try {
+          const res = await fetch(`/api/season/segments/${id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+          if (!res.ok) { const d = await res.json().catch(()=>({})); errEl.textContent = d.error || 'Could not save.'; errEl.style.display = ''; return; }
+          bootstrap.Modal.getInstance(modalEl).hide();
+          await loadScheduleChanges();
+          window.dispatchEvent(new CustomEvent('segmentsChanged'));
+        } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.style.display = ''; }
+        finally { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
+      }
+    });
+
+    // --- Special Event modal controller ---
+    function openSeModal() {
+      const addBtn    = document.getElementById('se-add-btn');
+      const monday    = window._currentWeekMonday || new Date().toISOString().slice(0, 10);
+      const prodStart = addBtn?.dataset.prodStart || '';
+      const prodEnd   = addBtn?.dataset.prodEnd   || '';
+      const dateInp   = document.getElementById('se-modal-date');
+      dateInp.value   = monday; dateInp.min = prodStart; dateInp.max = prodEnd;
+      document.getElementById('se-modal-title').value    = '';
+      document.getElementById('se-modal-start').value    = '';
+      document.getElementById('se-modal-end').value      = '';
+      document.getElementById('se-modal-location').value = '';
+      document.getElementById('se-modal-type').value     = 'other';
+      document.getElementById('se-modal-err').style.display = 'none';
+      const saveBtn = document.getElementById('se-modal-save');
+      saveBtn.disabled = false; saveBtn.textContent = 'Add Event';
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('seModal')).show();
+    }
+
+    document.getElementById('se-modal-save')?.addEventListener('click', async () => {
+      const date     = document.getElementById('se-modal-date').value;
+      const type     = document.getElementById('se-modal-type').value;
+      const title    = document.getElementById('se-modal-title').value.trim();
+      const start    = document.getElementById('se-modal-start').value || null;
+      const end      = document.getElementById('se-modal-end').value   || null;
+      const location = document.getElementById('se-modal-location').value.trim() || null;
+      const errEl    = document.getElementById('se-modal-err');
+      const saveBtn  = document.getElementById('se-modal-save');
+      if (!date)  { errEl.textContent = 'Please choose a date.'; errEl.style.display = ''; return; }
+      if (!title) { errEl.textContent = 'Title is required.';    errEl.style.display = ''; return; }
+      errEl.style.display = 'none';
+      saveBtn.disabled = true; saveBtn.textContent = 'Saving...';
+      try {
+        const res = await fetch('/api/season/special-events', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ event_type: type, title, date, start_time: start, end_time: end, location })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { errEl.textContent = data.error || 'Could not save.'; errEl.style.display = ''; return; }
+        bootstrap.Modal.getInstance(document.getElementById('seModal')).hide();
+        await loadSpecialEventsSection();
+        window.dispatchEvent(new CustomEvent('specialEventsChanged'));
+      } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.style.display = ''; }
+      finally { saveBtn.disabled = false; saveBtn.textContent = 'Add Event'; }
+    });
   </script>
 
   <script>
