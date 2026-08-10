@@ -17,9 +17,29 @@
       border-radius: 6px;
       min-height: 200px;
     }
-    /* Read-only blocks: no pointer cursor on resize handles */
-    .readonly-block { cursor: default !important; }
+    .readonly-block { cursor: pointer !important; }
     .readonly-block .resize-handle { display: none; }
+    .avail-dancer-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .avail-dancer-name {
+      cursor: pointer;
+      text-decoration: underline;
+      color: #0d6efd;
+      font-size: 13px;
+    }
+    .avail-dancer-name.conflicted {
+      color: #9ca3af;
+    }
+    .avail-conflict-detail {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-top: 2px;
+    }
   </style>
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -33,7 +53,7 @@
 
   <div class="app-main">
 
-  <!-- Dancer profile modal (same as cast builder) -->
+  <!-- Dancer profile modal -->
   <div class="modal fade" id="dancerModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content">
@@ -74,7 +94,7 @@
     </div>
   </div>
 
-  <!-- Error toast (works on top of open modals) -->
+  <!-- Error toast -->
   <div class="toast-container position-fixed top-0 start-50 translate-middle-x p-3" style="z-index:9999;">
     <div id="error-toast" class="toast align-items-center text-bg-danger border-0" role="alert" aria-live="assertive" data-bs-delay="6000">
       <div class="d-flex">
@@ -83,42 +103,6 @@
       </div>
     </div>
   </div>
-
-  <!-- Availability modal -->
-  <div class="modal fade" id="availabilityModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="avail-modal-title">Dancer Availability</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <div class="d-flex align-items-center gap-2 mb-3">
-            <span style="font-size:12px;color:#6b7280;font-weight:600;">Sort:</span>
-            <button class="btn btn-sm btn-secondary" id="sort-abc" style="font-size:12px;">A–Z</button>
-            <button class="btn btn-sm btn-outline-secondary" id="sort-num" style="font-size:12px;"># Order</button>
-          </div>
-          <div class="mb-3">
-            <h6 class="text-success mb-1">Fully Available</h6>
-            <p class="text-muted" style="font-size:12px;">Dancer's availability completely covers this rehearsal time.</p>
-            <ul id="fully-available-list" class="mb-0"></ul>
-            <p id="no-full" class="text-muted fst-italic" style="font-size:13px;display:none;">None</p>
-          </div>
-          <hr>
-          <div>
-            <h6 class="text-warning mb-1">Partially Available</h6>
-            <p class="text-muted" style="font-size:12px;">Dancer is free for part of this rehearsal time.</p>
-            <ul id="partially-available-list" class="mb-0"></ul>
-            <p id="no-partial" class="text-muted fst-italic" style="font-size:13px;display:none;">None</p>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
 
   <!-- Trial banner -->
   <div id="trial-banner" style="display:none;background:#fefce8;border-bottom:1px solid #fde68a;">
@@ -132,39 +116,102 @@
   </div>
 
   <!-- Main content -->
-  <div class="container-fluid mt-4 px-4 overflow-x-auto">
-    <p class="text-muted mb-3" style="font-size:13px;">
-      Click any rehearsal block to see which dancers are available during that time.
-      This schedule is read-only. Edit it on the <a href="master.html">Master Schedule</a> page.
-      <span id="availability-mode-label" class="d-none">Availability format for this production: <strong id="availability-mode-label-text"></strong> (change on the <a href="form-builder.html?scope=season">Audition Form</a> page)</span>
-    </p>
+  <div class="container-fluid mt-4 px-4">
 
-    <div id="no-schedule-msg" class="alert alert-info d-none">
-      No master schedule has been created yet. Go to the
-      <a href="master.html" class="alert-link">Master Schedule</a> page to build one.
+    <!-- Piece selector -->
+    <div id="piece-selector-bar" class="d-flex align-items-center gap-3 mb-4 flex-wrap">
+      <label for="piece-select" style="font-size:14px;font-weight:600;color:#374151;white-space:nowrap;">Analyze availability for:</label>
+      <select id="piece-select" class="form-select" style="max-width:260px;font-size:14px;">
+        <option value="">Select a piece...</option>
+      </select>
+      <span id="analysis-loading" style="display:none;font-size:13px;color:#9ca3af;">Loading...</span>
     </div>
 
-    <div id="schedule-content" class="d-flex gap-4 align-items-flex-start" style="min-width:860px;">
+    <div id="no-pieces-msg" class="alert alert-info d-none">
+      No pieces have been added to the master schedule yet. Set up the schedule on the
+      <a href="master.html" class="alert-link">Production Timeline</a> page first.
+    </div>
 
-      <!-- Legend -->
-      <div class="legend-panel">
-        <h6 class="mb-3" style="font-weight:bold;">Pieces</h6>
-        <div id="pieces-legend"></div>
-      </div>
+    <!-- Analysis results (shown after a piece is selected) -->
+    <div id="analysis-content" style="display:none;">
 
-      <!-- Read-only grid -->
-      <div style="flex:1;min-width:0;">
-        <h5 class="mb-2">Master Schedule</h5>
-        <div class="schedule-wrapper">
-          <div class="day-header-row" id="day-header-row"></div>
-          <div class="schedule-container">
-            <div class="time-column" id="time-column"></div>
-            <div class="grid" id="grid"></div>
+      <!-- Requirements card -->
+      <div class="card mb-4" style="border:1px solid #e5e7eb;border-radius:8px;">
+        <div class="card-body py-3 px-4">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <div id="piece-color-swatch" style="width:12px;height:12px;border-radius:3px;flex-shrink:0;"></div>
+            <span id="piece-name-display" style="font-size:14px;font-weight:700;color:#111827;"></span>
+            <span style="color:#e5e7eb;font-size:16px;">|</span>
+            <span style="font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:.04em;font-weight:600;">Rehearsal Requirements</span>
           </div>
+          <div id="requirements-list"></div>
         </div>
       </div>
 
+      <!-- Sort controls -->
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <span style="font-size:12px;color:#6b7280;font-weight:600;">Sort:</span>
+        <button class="btn btn-sm btn-secondary" id="sort-abc" style="font-size:12px;">A–Z</button>
+        <button class="btn btn-sm btn-outline-secondary" id="sort-num" style="font-size:12px;"># Order</button>
+      </div>
+
+      <!-- Fully available -->
+      <div class="mb-4">
+        <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#059669;">
+          Fully available <span id="fully-count" style="font-weight:400;color:#6b7280;"></span>
+        </h6>
+        <ul id="fully-available-list" class="list-unstyled mb-0"></ul>
+        <p id="no-full" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
+      </div>
+
+      <!-- Partial conflict -->
+      <div class="mb-4">
+        <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#d97706;">
+          Partial conflict <span id="partial-count" style="font-weight:400;color:#6b7280;"></span>
+        </h6>
+        <ul id="partially-available-list" class="list-unstyled mb-0"></ul>
+        <p id="no-partial" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
+      </div>
+
+      <!-- Not available -->
+      <div class="mb-4">
+        <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#6b7280;">
+          Not available <span id="none-count" style="font-weight:400;color:#6b7280;"></span>
+        </h6>
+        <ul id="not-available-list" class="list-unstyled mb-0"></ul>
+        <p id="no-none" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
+      </div>
+
     </div>
+
+    <!-- Full schedule grid (secondary, collapsed by default) -->
+    <div class="mt-2" id="grid-wrapper">
+      <button type="button" id="toggle-grid-btn" class="btn btn-sm btn-link px-0" style="font-size:13px;color:#9ca3af;text-decoration:none;">
+        &#9656; Full schedule grid
+      </button>
+      <div id="grid-section" style="display:none;margin-top:12px;overflow-x:auto;">
+        <p class="text-muted mb-3" style="font-size:12px;">
+          Read-only view of all pieces. Click any block to analyze that piece.
+          Edit the schedule on the <a href="master.html">Production Timeline</a> page.
+        </p>
+        <div class="d-flex gap-4 align-items-flex-start" style="min-width:860px;">
+          <div class="legend-panel">
+            <h6 class="mb-3" style="font-weight:bold;">Pieces</h6>
+            <div id="pieces-legend"></div>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div class="schedule-wrapper">
+              <div class="day-header-row" id="day-header-row"></div>
+              <div class="schedule-container">
+                <div class="time-column" id="time-column"></div>
+                <div class="grid" id="grid"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <script src="search-schedule.js"></script>
@@ -194,9 +241,7 @@
           const modeRes = await fetch('/api/season/availability-mode');
           if (modeRes.ok) {
             const modeData = await modeRes.json();
-            document.getElementById('availability-mode-label-text').textContent =
-              modeData.availability_mode === 'detailed' ? 'Detailed Weekly Schedule' : 'Simple Grid';
-            document.getElementById('availability-mode-label').classList.remove('d-none');
+            window._availabilityMode = modeData.availability_mode || 'grid';
           }
         } catch (_) {}
         try {

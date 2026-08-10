@@ -5274,13 +5274,61 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
 
   try {
-    const blocksResult = await pool.query(
-      'SELECT day, start_time, end_time FROM master_blocks WHERE piece_id = $1',
-      [req.params.pieceId]
+    const pieceRow = await pool.query(
+      'SELECT id, name, color FROM pieces WHERE id = $1 AND season_id = $2',
+      [req.params.pieceId, seasonId]
     );
+    if (pieceRow.rows.length === 0) return res.status(404).json({ error: 'Piece not found.' });
+    const piece = pieceRow.rows[0];
+
+    const [segsResult, datesResult, blocksResult] = await Promise.all([
+      pool.query('SELECT id, start_date, label FROM schedule_segments WHERE season_id = $1 ORDER BY start_date', [seasonId]),
+      pool.query('SELECT to_char(end_date, \'YYYY-MM-DD\') AS end_date FROM seasons WHERE id = $1', [seasonId]),
+      pool.query('SELECT day, start_time, end_time, segment_id FROM master_blocks WHERE piece_id = $1 ORDER BY created_at', [req.params.pieceId]),
+    ]);
+    const allSegments = segsResult.rows;
+    const prodEnd     = datesResult.rows[0]?.end_date || null;
     const pieceBlocks = blocksResult.rows;
+
     if (pieceBlocks.length === 0)
-      return res.json({ piece_blocks: [], fully_available: [], partially_available: [] });
+      return res.json({ piece, requirements: [], fully_available: [], partially_available: [], not_available: [] });
+
+    function fmtDate(d) {
+      if (!d) return null;
+      return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    const segLabelMap = {};
+    allSegments.forEach((seg, i) => {
+      const nextSeg = allSegments[i + 1];
+      let endDate = nextSeg
+        ? (() => { const d = new Date(nextSeg.start_date + 'T00:00:00'); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })()
+        : prodEnd;
+      const s = fmtDate(seg.start_date), e = fmtDate(endDate);
+      segLabelMap[seg.id] = (s && e) ? `${s} – ${e}` : null;
+    });
+
+    const firstSegId  = allSegments[0]?.id ?? null;
+    const bySegment   = {};
+    pieceBlocks.forEach(b => {
+      const key = b.segment_id ?? firstSegId ?? 'none';
+      if (!bySegment[key]) bySegment[key] = [];
+      bySegment[key].push({ day: b.day, start_time: b.start_time, end_time: b.end_time });
+    });
+
+    const usedSegIds    = Object.keys(bySegment);
+    const hasMultiple   = usedSegIds.length > 1;
+    const segOrder      = allSegments.map(s => String(s.id));
+    const requirements  = usedSegIds
+      .sort((a, b) => {
+        const ai = segOrder.indexOf(String(a)), bi = segOrder.indexOf(String(b));
+        return (ai < 0 ? 999 : ai) - (bi < 0 ? 999 : bi);
+      })
+      .map(segId => ({
+        segment_id: segId,
+        date_label: hasMultiple ? (segLabelMap[segId] || null) : null,
+        blocks: bySegment[segId],
+      }));
 
     const dancersResult = await pool.query(
       `SELECT dp.id, u.id AS user_id, dp.first_name, dp.last_name, sub.availability,
@@ -5316,29 +5364,43 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
       [orgId, seasonId, req.params.pieceId]
     );
 
-    const fully = [], partially = [];
+    const fully = [], partially = [], none = [];
     dancersResult.rows.forEach(dancer => {
-      const avail = (dancer.availability || []).filter(isAvailableBlock);
-      let covered = 0;
+      const avail    = (dancer.availability || []).filter(isAvailableBlock);
+      const conflicts = [];
       pieceBlocks.forEach(block => {
         const bs = timeToMinutes(block.start_time), be = timeToMinutes(block.end_time);
-        if (avail.some(ab => ab.day === block.day && timeToMinutes(ab.startTime) <= bs && timeToMinutes(ab.endTime) >= be))
-          covered++;
+        const ok = avail.some(ab =>
+          ab.day === block.day &&
+          timeToMinutes(ab.startTime) <= bs &&
+          timeToMinutes(ab.endTime)   >= be
+        );
+        if (!ok) {
+          const segId = block.segment_id ?? firstSegId ?? 'none';
+          conflicts.push({
+            day: block.day,
+            start_time: block.start_time,
+            end_time: block.end_time,
+            date_label: hasMultiple ? (segLabelMap[segId] || null) : null,
+          });
+        }
       });
       const entry = {
-        id: dancer.user_id,
-        first_name: dancer.first_name,
-        last_name: dancer.last_name,
-        audition_number: dancer.audition_number || null,
-        cast_role: dancer.existing_cast_role || null,
-        cast_id: dancer.cast_id || null,
+        id:                  dancer.user_id,
+        first_name:          dancer.first_name,
+        last_name:           dancer.last_name,
+        audition_number:     dancer.audition_number || null,
+        cast_role:           dancer.existing_cast_role || null,
+        cast_id:             dancer.cast_id || null,
         conflict_piece_name: dancer.conflict_piece_name || null,
+        conflicts,
       };
-      if (covered === pieceBlocks.length) fully.push(entry);
-      else if (covered > 0)              partially.push(entry);
+      if (conflicts.length === 0)                      fully.push(entry);
+      else if (conflicts.length < pieceBlocks.length)  partially.push(entry);
+      else                                             none.push(entry);
     });
 
-    res.json({ piece_blocks: pieceBlocks, fully_available: fully, partially_available: partially });
+    res.json({ piece, requirements, fully_available: fully, partially_available: partially, not_available: none });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to check availability.' });
