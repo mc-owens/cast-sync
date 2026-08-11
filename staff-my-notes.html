@@ -73,9 +73,12 @@
           <div class="note-card" data-id="${n.id}">
             <div class="d-flex justify-content-between align-items-start mb-1">
               <span class="note-meta">${formatDate(n.created_at)}</span>
-              <button class="delete-btn btn btn-link text-danger p-0" style="font-size:13px;line-height:1;" data-id="${n.id}" aria-label="Delete note">Delete</button>
+              <span style="display:flex;gap:10px;align-items:center;">
+                <button class="edit-btn btn btn-link p-0" style="font-size:13px;line-height:1;color:#374151;" data-id="${n.id}">Edit</button>
+                <button class="delete-btn btn btn-link text-danger p-0" style="font-size:13px;line-height:1;" data-id="${n.id}">Delete</button>
+              </span>
             </div>
-            <div class="note-text">${escapeHtml(n.note_text)}</div>
+            <div class="note-text" data-raw="${escapeHtml(n.note_text)}">${escapeHtml(n.note_text)}</div>
           </div>`).join('');
       } catch (_) {
         document.getElementById('notes-loading').textContent = 'Could not load notes.';
@@ -83,14 +86,50 @@
     }
 
     document.getElementById('notes-list').addEventListener('click', async e => {
-      const btn = e.target.closest('.delete-btn');
-      if (!btn) return;
-      const id = btn.dataset.id;
-      if (!confirm('Delete this note?')) return;
-      try {
-        const res = await fetch(`/api/my-notes/${id}`, { method: 'DELETE' });
-        if (res.ok) loadNotes();
-      } catch (_) {}
+      if (e.target.closest('.delete-btn')) {
+        const btn = e.target.closest('.delete-btn');
+        const id = btn.dataset.id;
+        if (!confirm('Delete this note?')) return;
+        try {
+          const res = await fetch(`/api/my-notes/${id}`, { method: 'DELETE' });
+          if (res.ok) loadNotes();
+        } catch (_) {}
+        return;
+      }
+      if (e.target.closest('.edit-btn')) {
+        const btn = e.target.closest('.edit-btn');
+        const id = btn.dataset.id;
+        const card = btn.closest('.note-card');
+        const textEl = card.querySelector('.note-text');
+        if (textEl.querySelector('textarea')) return; // already editing
+        const original = textEl.dataset.raw;
+        textEl.innerHTML = `
+          <textarea class="form-control form-control-sm mb-2" rows="4" style="font-size:14px;">${escapeHtml(original)}</textarea>
+          <div style="display:flex;gap:8px;">
+            <button class="save-edit-btn btn btn-dark btn-sm">Save</button>
+            <button class="cancel-edit-btn btn btn-outline-secondary btn-sm">Cancel</button>
+            <span class="edit-err text-danger" style="font-size:12px;align-self:center;"></span>
+          </div>`;
+        textEl.querySelector('.cancel-edit-btn').addEventListener('click', () => {
+          textEl.innerHTML = escapeHtml(original);
+          textEl.dataset.raw = original;
+        });
+        textEl.querySelector('.save-edit-btn').addEventListener('click', async () => {
+          const newText = textEl.querySelector('textarea').value.trim();
+          const errEl = textEl.querySelector('.edit-err');
+          if (!newText) { errEl.textContent = 'Note cannot be empty.'; return; }
+          try {
+            const r = await fetch(`/api/my-notes/${id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ note_text: newText }),
+            });
+            if (!r.ok) { errEl.textContent = 'Could not save.'; return; }
+            textEl.innerHTML = escapeHtml(newText);
+            textEl.dataset.raw = newText;
+          } catch (_) { errEl.textContent = 'Could not connect.'; }
+        });
+        return;
+      }
     });
 
     document.getElementById('add-note-btn').addEventListener('click', async () => {

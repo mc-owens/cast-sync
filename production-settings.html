@@ -232,6 +232,18 @@
       <span id="my-schedule-saved-msg" class="text-success d-none" style="font-size:12px;">Saved.</span>
     </div>
 
+    <div class="app-card mb-4">
+      <h6 class="label-gold mb-3">Notifications</h6>
+      <div class="form-check form-switch mb-1">
+        <input class="form-check-input" type="checkbox" role="switch" id="notif-production-notes" checked>
+        <label class="form-check-label" for="notif-production-notes" style="font-size:14px;font-weight:600;">Production Notes</label>
+      </div>
+      <p class="text-muted mb-1" style="font-size:12px;">
+        Receive an email when anyone on the production posts a note. You are notified by default as a director.
+      </p>
+      <span id="notif-saved-msg" class="text-success d-none" style="font-size:12px;">Saved.</span>
+    </div>
+
   </div>
 
   </div>
@@ -263,6 +275,27 @@
         document.getElementById('page-subtitle').textContent = `${user.orgName} · ${user.seasonName}`;
         document.getElementById('prod-name-input').value = user.seasonName || '';
         document.body.style.visibility = 'visible';
+
+        // Load notification preference for production_notes
+        const notifToggle = document.getElementById('notif-production-notes');
+        try {
+          const settingsRes = await fetch('/api/auth/settings');
+          if (settingsRes.ok) {
+            const settings = await settingsRes.json();
+            notifToggle.checked = settings.notificationPrefs?.production_notes !== false;
+          }
+        } catch (_) {}
+        notifToggle.addEventListener('change', async () => {
+          try {
+            await fetch('/api/auth/notification-prefs', {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ production_notes: notifToggle.checked }),
+            });
+            const msg = document.getElementById('notif-saved-msg');
+            msg.classList.remove('d-none');
+            setTimeout(() => msg.classList.add('d-none'), 2000);
+          } catch (e) { alert('Could not save preference. Try again.'); notifToggle.checked = !notifToggle.checked; }
+        });
 
         try {
           const joinCodeRes = await fetch('/api/season/join-code');

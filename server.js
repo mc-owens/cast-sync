@@ -2677,37 +2677,61 @@ app.post('/api/staff/pieces/:pieceId/notes', requireAuth('staff'), async (req, r
     const noteId = result.rows[0].id;
     await pool.query('INSERT INTO production_note_pieces (note_id, piece_id) VALUES ($1,$2)', [noteId, req.params.pieceId]);
 
-    // Notify other production staff for pieces where the mentioned dancers are also cast
-    if (emailEnabled && dancerIds.length > 0) {
-      const staffRows = await pool.query(
-        `SELECT DISTINCT ps.user_id, u.email
-         FROM piece_casts pc
-         JOIN piece_staff ps ON ps.piece_id = pc.piece_id
-         JOIN users u ON u.id = ps.user_id
-         WHERE pc.user_id = ANY($1::integer[]) AND ps.user_id != $2`,
-        [dancerIds, req.session.userId]
-      );
-      const authorRow = await pool.query('SELECT email FROM users WHERE id = $1', [req.session.userId]);
-      const authorEmail = authorRow.rows[0]?.email || 'A production staff member';
+    if (emailEnabled) {
+      const [authorRow, orgRow] = await Promise.all([
+        pool.query('SELECT email FROM users WHERE id = $1', [req.session.userId]),
+        pool.query('SELECT org_id FROM seasons WHERE id = $1', [piece.season_id]),
+      ]);
+      const authorEmail   = authorRow.rows[0]?.email || 'A production staff member';
+      const orgId         = orgRow.rows[0]?.org_id;
       const categoryLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
-      const dancerNames = await pool.query(
-        `SELECT first_name || ' ' || last_name AS name FROM dancer_profiles WHERE user_id = ANY($1::integer[])`,
-        [dancerIds]
-      );
-      const nameList = dancerNames.rows.map(r => r.name).join(', ');
-      for (const { user_id, email } of staffRows.rows) {
-        if (!(await emailAllowed(user_id, 'production_notes'))) continue;
-        resend.emails.send({
-          from: FROM_EMAIL,
-          to: email,
-          subject: `Production Note: ${nameList} mentioned`,
-          html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
-            <h3 style="margin-bottom:4px;">Production Note</h3>
-            <p style="color:#555;font-size:13px;margin-top:0;">${categoryLabel} &middot; ${escapeHtml(piece.piece_name)}</p>
-            <p style="white-space:pre-wrap;border-left:3px solid #ddd;padding-left:12px;color:#333;">${note_text.trim()}</p>
-            <p style="color:#555;font-size:13px;">Posted by ${escapeHtml(authorEmail)}. Dancer${dancerIds.length !== 1 ? 's' : ''} mentioned: ${escapeHtml(nameList)}</p>
-          </div>`,
-        }).catch(err => console.error('Staff note notification error:', err.message));
+      const notifySubject = `Production Note: ${escapeHtml(piece.piece_name)}`;
+      const noteHtml = (extra) => `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
+        <h3 style="margin-bottom:4px;">Production Note</h3>
+        <p style="color:#555;font-size:13px;margin-top:0;">${categoryLabel} &middot; ${escapeHtml(piece.piece_name)}</p>
+        <p style="white-space:pre-wrap;border-left:3px solid #ddd;padding-left:12px;color:#333;">${note_text.trim()}</p>
+        <p style="color:#555;font-size:13px;">Posted by ${escapeHtml(authorEmail)}.${extra}</p>
+      </div>`;
+
+      // Notify other production staff when dancers are tagged
+      if (dancerIds.length > 0) {
+        const [staffRows, dancerNames] = await Promise.all([
+          pool.query(
+            `SELECT DISTINCT ps.user_id, u.email
+             FROM piece_casts pc
+             JOIN piece_staff ps ON ps.piece_id = pc.piece_id
+             JOIN users u ON u.id = ps.user_id
+             WHERE pc.user_id = ANY($1::integer[]) AND ps.user_id != $2`,
+            [dancerIds, req.session.userId]
+          ),
+          pool.query(
+            `SELECT first_name || ' ' || last_name AS name FROM dancer_profiles WHERE user_id = ANY($1::integer[])`,
+            [dancerIds]
+          ),
+        ]);
+        const nameList = dancerNames.rows.map(r => r.name).join(', ');
+        for (const { user_id, email } of staffRows.rows) {
+          if (!(await emailAllowed(user_id, 'production_notes'))) continue;
+          resend.emails.send({
+            from: FROM_EMAIL, to: email,
+            subject: `Production Note: ${nameList} mentioned`,
+            html: noteHtml(` Dancer${dancerIds.length !== 1 ? 's' : ''} mentioned: ${escapeHtml(nameList)}`),
+          }).catch(err => console.error('Staff note notification error:', err.message));
+        }
+      }
+
+      // Auto-notify directors and co-directors
+      if (orgId) {
+        const directorRecipients = await getDirectorEmails(orgId, piece.season_id);
+        for (const { user_id, email } of directorRecipients) {
+          if (user_id === req.session.userId) continue;
+          if (!(await emailAllowed(user_id, 'production_notes'))) continue;
+          resend.emails.send({
+            from: FROM_EMAIL, to: email,
+            subject: notifySubject,
+            html: noteHtml(''),
+          }).catch(err => console.error('Director note notification error:', err.message));
+        }
       }
     }
 
@@ -5234,6 +5258,22 @@ app.post('/api/my-notes', requireAuth(), async (req, res) => {
   }
 });
 
+app.patch('/api/my-notes/:id', requireAuth(), async (req, res) => {
+  const { note_text } = req.body;
+  if (!note_text || !note_text.trim()) return res.status(400).json({ error: 'Note text is required.' });
+  try {
+    const result = await pool.query(
+      'UPDATE private_notes SET note_text = $1 WHERE id = $2 AND user_id = $3 RETURNING id',
+      [note_text.trim(), req.params.id, req.session.userId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Note not found.' });
+    res.json({ updated: true });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to update note.' });
+  }
+});
+
 app.delete('/api/my-notes/:id', requireAuth(), async (req, res) => {
   try {
     const result = await pool.query(
@@ -5388,33 +5428,83 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
       ));
     }
 
-    if (emailEnabled && Array.isArray(notify_emails) && notify_emails.length > 0) {
+    if (emailEnabled) {
       const orgRow = await pool.query(
-        `SELECT o.name AS org_name FROM seasons s JOIN orgs o ON o.id = s.org_id WHERE s.id = $1`,
+        `SELECT o.id AS org_id, o.name AS org_name FROM seasons s JOIN orgs o ON o.id = s.org_id WHERE s.id = $1`,
         [seasonId]
       );
+      const orgId         = orgRow.rows[0]?.org_id;
       const orgName       = orgRow.rows[0]?.org_name || 'CastSync';
       const categoryLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+      const authorRow     = await pool.query('SELECT email FROM users WHERE id = $1', [req.session.userId]);
+      const authorEmail   = authorRow.rows[0]?.email || 'A director';
+
+      const noteHtml = (extra) => `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
+        <h3 style="margin-bottom:4px;">New Production Note</h3>
+        <p style="color:#555;font-size:13px;margin-top:0;">${categoryLabel} · ${escapeHtml(orgName)}</p>
+        <p style="white-space:pre-wrap;border-left:3px solid #ddd;padding-left:12px;color:#333;">${note_text.trim()}</p>
+        <p style="color:#555;font-size:13px;">Posted by ${escapeHtml(authorEmail)}.${extra}</p>
+      </div>`;
+
+      // Explicit faculty picker recipients (notify_emails from notes.html)
       // notify_emails comes from notes.html's faculty picker as bare email strings (not
       // every recipient necessarily has an account -- a choreographer's email might be
       // on the list with nothing in `users` to match), so preference-resolution is a
       // best-effort lookup keyed by email, not a guaranteed userId per recipient.
-      const recipientEmails = notify_emails.filter(Boolean);
-      const userRows = await pool.query('SELECT id, email FROM users WHERE email = ANY($1)', [recipientEmails]);
-      const userIdByEmail = new Map(userRows.rows.map(r => [r.email, r.id]));
-      for (const to of recipientEmails) {
-        if (!(await emailAllowed(userIdByEmail.get(to), 'production_notes'))) continue;
-        resend.emails.send({
-          from:    FROM_EMAIL,
-          to,
-          subject: `New Production Note (${categoryLabel}) for ${orgName}`,
-          html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
-            <h3 style="margin-bottom:4px;">New Production Note</h3>
-            <p style="color:#555;font-size:13px;margin-top:0;">${categoryLabel} · ${orgName}</p>
-            <p style="white-space:pre-wrap;border-left:3px solid #ddd;padding-left:12px;color:#333;">${note_text.trim()}</p>
-            <p style="color:#aaa;font-size:12px;">Internal faculty note from CastSync. Not visible to auditionees.</p>
-          </div>`,
-        }).catch(err => console.error('Production note email error:', err.message));
+      if (Array.isArray(notify_emails) && notify_emails.length > 0) {
+        const recipientEmails = notify_emails.filter(Boolean);
+        const userRows = await pool.query('SELECT id, email FROM users WHERE email = ANY($1)', [recipientEmails]);
+        const userIdByEmail = new Map(userRows.rows.map(r => [r.email, r.id]));
+        for (const to of recipientEmails) {
+          if (!(await emailAllowed(userIdByEmail.get(to), 'production_notes'))) continue;
+          resend.emails.send({
+            from: FROM_EMAIL, to,
+            subject: `New Production Note (${categoryLabel}) for ${orgName}`,
+            html: noteHtml(''),
+          }).catch(err => console.error('Production note email error:', err.message));
+        }
+      }
+
+      // Auto-notify directors and co-directors (excluding the author)
+      if (orgId) {
+        const directorRecipients = await getDirectorEmails(orgId, seasonId);
+        for (const { user_id, email } of directorRecipients) {
+          if (user_id === req.session.userId) continue;
+          if (Array.isArray(notify_emails) && notify_emails.includes(email)) continue; // already sent above
+          if (!(await emailAllowed(user_id, 'production_notes'))) continue;
+          resend.emails.send({
+            from: FROM_EMAIL, to: email,
+            subject: `New Production Note (${categoryLabel}) for ${orgName}`,
+            html: noteHtml(''),
+          }).catch(err => console.error('Director auto-notify error:', err.message));
+        }
+      }
+
+      // When dancers are tagged, notify production staff for pieces containing those dancers
+      if (dancerIds.length > 0) {
+        const [staffRows, dancerNames] = await Promise.all([
+          pool.query(
+            `SELECT DISTINCT ps.user_id, u.email
+             FROM piece_casts pc
+             JOIN piece_staff ps ON ps.piece_id = pc.piece_id
+             JOIN users u ON u.id = ps.user_id
+             WHERE pc.user_id = ANY($1::integer[]) AND ps.user_id != $2`,
+            [dancerIds, req.session.userId]
+          ),
+          pool.query(
+            `SELECT first_name || ' ' || last_name AS name FROM dancer_profiles WHERE user_id = ANY($1::integer[])`,
+            [dancerIds]
+          ),
+        ]);
+        const nameList = dancerNames.rows.map(r => r.name).join(', ');
+        for (const { user_id, email } of staffRows.rows) {
+          if (!(await emailAllowed(user_id, 'production_notes'))) continue;
+          resend.emails.send({
+            from: FROM_EMAIL, to: email,
+            subject: `Production Note: ${nameList} mentioned`,
+            html: noteHtml(` Dancer${dancerIds.length !== 1 ? 's' : ''} mentioned: ${escapeHtml(nameList)}`),
+          }).catch(err => console.error('Staff dancer-tag notify error:', err.message));
+        }
       }
     }
 
