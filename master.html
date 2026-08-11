@@ -507,8 +507,14 @@
             <button type="button" id="add-one-time-btn" disabled
                     title="Set your production start and end dates in Production Settings first"
                     style="background:none;border:none;padding:0;font-size:12px;color:var(--gold);font-weight:700;cursor:pointer;">+ One-Time Rehearsal</button>
-            <button type="button" id="se-add-btn" style="background:none;border:none;padding:0;font-size:12px;color:#6b7280;cursor:pointer;">+ Special Event</button>
-            <button type="button" id="sc-add-qa-btn" style="background:none;border:none;padding:0;font-size:12px;color:#6b7280;cursor:pointer;">+ Schedule Change</button>
+            <span style="display:inline-flex;align-items:center;gap:4px;">
+              <button type="button" id="se-add-btn" style="background:none;border:none;padding:0;font-size:12px;color:#6b7280;cursor:pointer;">+ Special Event</button>
+              <button type="button" tabindex="-1" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Use for performances, photo shoots, tech week, and any date that appears on the production timeline but is not a regular rehearsal." style="background:none;border:1px solid #d1d5db;border-radius:50%;width:14px;height:14px;padding:0;font-size:9px;color:#9ca3af;cursor:default;line-height:1;flex-shrink:0;">i</button>
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:4px;">
+              <button type="button" id="sc-add-qa-btn" style="background:none;border:none;padding:0;font-size:12px;color:#6b7280;cursor:pointer;">+ Schedule Change</button>
+              <button type="button" tabindex="-1" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Use when the weekly rehearsal pattern changes for a period of time, for example switching from Ballet to Jazz repertoire. This creates a new schedule segment." style="background:none;border:1px solid #d1d5db;border-radius:50%;width:14px;height:14px;padding:0;font-size:9px;color:#9ca3af;cursor:default;line-height:1;flex-shrink:0;">i</button>
+            </span>
           </div>
         </div>
 
@@ -589,6 +595,7 @@
     })();
   </script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(t => bootstrap.Tooltip.getOrCreateInstance(t));</script>
 
   <script>
     // Week navigator: purely a navigation/preview affordance over the unchanged weekly

@@ -376,7 +376,7 @@
   window.CastSyncTour = {
 
     startOnboarding() {
-      if (isDone()) return;
+      return; // tour disabled
       _steps = STEPS['org-select'];
       _page  = 'org-select';
       _cur   = 0;
@@ -385,7 +385,7 @@
     },
 
     maybeStartWorkspace(pageKey, orgId, seasonId) {
-      if (isDone()) return;
+      return; // tour disabled
 
       const state     = load();
       const pageSteps = STEPS[pageKey];

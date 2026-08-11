@@ -112,6 +112,10 @@
         <div class="modal-body">
           <div id="invite-error" class="alert alert-danger d-none"></div>
           <div id="invite-success" class="alert alert-success d-none"></div>
+          <div id="invite-current-members" class="mb-3" style="display:none;">
+            <p class="mb-1" style="font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.04em;">Current Co-Directors</p>
+            <div id="invite-members-list"></div>
+          </div>
           <p class="text-muted" style="font-size:13px;">This person will only have access to this specific production, not your other productions. They'll receive an email notification. If they don't have a CastSync account yet, one will be created and they'll be prompted to set a password.</p>
           <div class="mb-3">
             <label class="form-label">Their Email</label>
@@ -181,6 +185,7 @@
     let selectedSeasonId = null;
     let deleteTargetOrgId   = null;
     let deleteTargetProdId  = null;
+    let currentUserId    = null;
 
     // ── Build org cards ───────────────────────────────────────────────────────
 
@@ -278,7 +283,10 @@
           <button class="icon-btn" title="${archiveTitle}" data-archive-prod="${s.id}" data-org-id="${org.id}" data-archive-status="${archiveStatus}">${isArchived ? '📂' : '🗂'}</button>
           <button class="icon-btn" title="Rename" data-rename-prod="${s.id}" data-prod-name="${s.name}">✏️</button>
           <button class="icon-btn danger" title="Delete" data-delete-prod="${s.id}" data-org-id="${org.id}" data-prod-name="${s.name}">🗑</button>
-        </div>` : '';
+        </div>` : `
+        <div class="prod-actions">
+          <button class="btn btn-sm btn-outline-secondary" style="font-size:11px;" data-leave-prod="${s.id}" data-org-id="${org.id}" data-season-id="${s.id}" data-user-id="" title="Leave this production">Leave</button>
+        </div>`;
 
       row.innerHTML = `
         <div class="production-row border-top" data-select-org="${org.id}" data-select-season="${s.id}">
@@ -421,7 +429,7 @@
 
       // Invite co-director to production
       document.querySelectorAll('[data-invite-prod]').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           selectedSeasonId = btn.dataset.inviteProd;
           selectedOrgId    = btn.dataset.orgId;
@@ -429,7 +437,48 @@
           document.getElementById('invite-can-see-blocks').checked = false;
           document.getElementById('invite-error').classList.add('d-none');
           document.getElementById('invite-success').classList.add('d-none');
+          const membersSection = document.getElementById('invite-current-members');
+          const membersList    = document.getElementById('invite-members-list');
+          membersSection.style.display = 'none';
+          membersList.innerHTML = '';
+          try {
+            const mr = await fetch(`/api/orgs/${selectedOrgId}/seasons/${selectedSeasonId}/members`);
+            if (mr.ok) {
+              const members = await mr.json();
+              if (members.length > 0) {
+                membersSection.style.display = 'block';
+                membersList.innerHTML = members.map(m => `
+                  <div class="d-flex align-items-center justify-content-between py-1" data-member-id="${m.user_id}">
+                    <span style="font-size:13px;">${m.email}</span>
+                    <button class="btn btn-link btn-sm text-danger p-0" style="font-size:12px;" data-remove-member="${m.user_id}">Remove</button>
+                  </div>`).join('');
+                membersList.querySelectorAll('[data-remove-member]').forEach(rb => {
+                  rb.addEventListener('click', async () => {
+                    const uid = rb.dataset.removeMember;
+                    const dr = await fetch(`/api/orgs/${selectedOrgId}/seasons/${selectedSeasonId}/members/${uid}`, { method: 'DELETE' });
+                    if (dr.ok) rb.closest('[data-member-id]').remove();
+                    else alert('Could not remove co-director.');
+                  });
+                });
+              }
+            }
+          } catch (_) {}
           new bootstrap.Modal(document.getElementById('inviteModal')).show();
+        });
+      });
+
+      // Leave production (co-directors only) — fill in userId now that auth has resolved
+      document.querySelectorAll('[data-leave-prod]').forEach(btn => {
+        if (currentUserId) btn.dataset.userId = currentUserId;
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (!confirm('Leave this production? You will lose access immediately.')) return;
+          const orgId    = btn.dataset.orgId;
+          const seasonId = btn.dataset.seasonId;
+          const userId   = btn.dataset.userId || currentUserId;
+          const res = await fetch(`/api/orgs/${orgId}/seasons/${seasonId}/members/${userId}`, { method: 'DELETE' });
+          if (res.ok) document.getElementById(`prod-row-${seasonId}`).remove();
+          else alert('Could not leave production.');
         });
       });
     }
@@ -508,6 +557,7 @@
         const res  = await fetch('/api/auth/me');
         const user = await res.json();
         if (!res.ok || (!user.isDirector && user.role !== 'master')) { window.location.href = 'login.html'; return; }
+        currentUserId = user.id;
         document.getElementById('right-nav').className = 'app-nav-right';
         document.getElementById('right-nav').innerHTML =
           `<a href="account.html">Account</a>

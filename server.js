@@ -1272,6 +1272,45 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/invite', requireAuth('master'), asy
   }
 });
 
+// GET /api/orgs/:orgId/seasons/:seasonId/members — list co-directors for a production
+app.get('/api/orgs/:orgId/seasons/:seasonId/members', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.params;
+  try {
+    const isOwner = await pool.query(
+      `SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 AND role = 'owner'`,
+      [orgId, req.session.userId]
+    );
+    if (isOwner.rows.length === 0) return res.status(403).json({ error: 'Only the org owner can view members.' });
+    const result = await pool.query(
+      `SELECT sm.user_id, u.email, sm.can_see_other_blocks
+       FROM season_members sm JOIN users u ON u.id = sm.user_id
+       WHERE sm.season_id = $1 ORDER BY u.email`,
+      [seasonId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load members.' });
+  }
+});
+
+// DELETE /api/orgs/:orgId/seasons/:seasonId/members/:userId — owner removes a co-director, or co-director leaves
+app.delete('/api/orgs/:orgId/seasons/:seasonId/members/:userId', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId, userId } = req.params;
+  const requesterId = req.session.userId;
+  try {
+    const isSelf  = String(requesterId) === String(userId);
+    const isOwner = await pool.query(
+      `SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2 AND role = 'owner'`,
+      [orgId, requesterId]
+    );
+    if (!isSelf && isOwner.rows.length === 0) return res.status(403).json({ error: 'Not authorized.' });
+    await pool.query(`DELETE FROM season_members WHERE season_id = $1 AND user_id = $2`, [seasonId, userId]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to remove member.' });
+  }
+});
+
 // POST /api/session/org — director sets active org + season for their session
 app.post('/api/session/org', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.body;
