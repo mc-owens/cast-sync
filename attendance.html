@@ -63,7 +63,8 @@
       <button id="history-btn" class="btn btn-sm btn-outline-secondary" style="display:none;">&#128197; History</button>
     </div>
     <div id="pieces-today" class="text-muted mb-2" style="font-size:13px;"></div>
-    <div id="mismatch-warning" class="alert alert-warning py-2 px-3 mb-3 d-none" style="font-size:13px;"></div>
+    <div id="mismatch-warning" class="alert alert-warning py-2 px-3 mb-2 d-none" style="font-size:13px;"></div>
+    <div id="attendance-count" style="display:none;font-size:13px;font-weight:600;color:#374151;margin-bottom:10px;"></div>
 
     <div id="attendance-loading" class="text-muted" style="font-size:14px;">Loading…</div>
     <div id="attendance-list"></div>
@@ -181,6 +182,7 @@
       if (!row) return;
       if (e.target.classList.contains('present-toggle')) {
         row.querySelector('.present-label').textContent = e.target.checked ? 'Present' : 'Absent';
+        updateCount();
       }
       if (e.target.classList.contains('status-select')) {
         row.querySelector('.other-note').classList.toggle('d-none', e.target.value !== 'other');
@@ -194,6 +196,14 @@
       const row = e.target.closest('.attendance-row');
       if (row) saveRow(row);
     }, true);
+
+    function updateCount() {
+      const rows = document.querySelectorAll('#attendance-list .attendance-row');
+      if (rows.length === 0) { document.getElementById('attendance-count').style.display = 'none'; return; }
+      const present = [...rows].filter(r => r.querySelector('.present-toggle')?.checked).length;
+      document.getElementById('attendance-count').textContent = `${present}/${rows.length} present`;
+      document.getElementById('attendance-count').style.display = '';
+    }
 
     function renderPiecesToday(pieces, dayOfWeek, currentPieceId) {
       const el = document.getElementById('pieces-today');
@@ -215,7 +225,7 @@
         warningEl.classList.add('d-none');
       } else {
         const pieceName = pieceSelect.options[pieceSelect.selectedIndex]?.textContent || 'This piece';
-        warningEl.textContent = `${pieceName} doesn't usually rehearse on ${dayOfWeek}s. Logging an extra session is fine, just confirming you picked the right piece and date.`;
+        warningEl.innerHTML = `<strong>${escapeHtml(pieceName)}</strong> doesn't usually rehearse on ${escapeHtml(dayOfWeek)}s. Is this a one-time rehearsal? Proceed if yes, or select the correct date for your log.`;
         warningEl.classList.remove('d-none');
       }
     }
@@ -227,11 +237,16 @@
       document.getElementById('attendance-loading').style.display = '';
       document.getElementById('attendance-loading').textContent = 'Loading…';
       document.getElementById('attendance-list').innerHTML = '';
+      document.getElementById('attendance-count').style.display = 'none';
       try {
         const res = await fetch(`/api/season/attendance?date=${encodeURIComponent(date)}&piece_id=${encodeURIComponent(pieceId)}`);
         if (!res.ok) throw new Error();
         const data = await res.json();
         document.getElementById('attendance-loading').style.display = 'none';
+
+        // Bound date input to production dates
+        if (data.start_date) dateInput.min = data.start_date;
+        if (data.end_date)   dateInput.max = data.end_date;
 
         renderPiecesToday(data.pieces_today, data.day_of_week, pieceId);
 
@@ -241,6 +256,7 @@
           return;
         }
         data.dancers.forEach(d => list.appendChild(renderRow(d)));
+        updateCount();
       } catch (err) {
         document.getElementById('attendance-loading').textContent = 'Could not load attendance.';
       }

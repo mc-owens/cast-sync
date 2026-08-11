@@ -665,11 +665,81 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
           </div>`).join('');
       }
+    } else if (tabName === 'attendance') {
+      renderDrawerAttendance();
     } else {
-      const labels = { attendance: 'Attendance', conflicts: 'Conflicts', notes: 'Notes' };
-      content.innerHTML = `<p style="font-size:13px;color:#9ca3af;margin:0;">${labels[tabName]} coming soon.</p>`;
+      const labels = { conflicts: 'Conflicts', notes: 'Notes' };
+      content.innerHTML = `<p style="font-size:13px;color:#9ca3af;margin:0;">${labels[tabName] || ''} coming soon.</p>`;
     }
   }
+
+  async function renderDrawerAttendance() {
+    const content = document.getElementById('drawer-tab-content');
+    if (!content) return;
+    const pieceId = drawerCurrentPieceId;
+    const date = dateForDayInWeek(window._currentWeekMonday || new Date().toISOString().slice(0,10), drawerCurrentDay);
+
+    content.innerHTML = `<p style="font-size:13px;color:#9ca3af;">Loading...</p>`;
+    try {
+      const res = await fetch(`/api/season/attendance?date=${encodeURIComponent(date)}&piece_id=${encodeURIComponent(pieceId)}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+
+      const presentCount = data.dancers.filter(d => d.present).length;
+      const total = data.dancers.length;
+      const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+      let html = `<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">
+        <span style="font-size:12px;color:#6b7280;">${dateLabel}</span>
+        <span id="drawer-attend-count" style="font-size:13px;font-weight:600;color:#374151;">${total > 0 ? `${presentCount}/${total} present` : ''}</span>
+      </div>`;
+
+      if (data.dancers.length === 0) {
+        html += `<p style="font-size:13px;color:#9ca3af;margin:0;">No one cast in this piece yet.</p>`;
+        content.innerHTML = html;
+        return;
+      }
+
+      html += data.dancers.map(d => `
+        <div class="drawer-attend-row" data-user-id="${d.user_id}" style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f9fafb;">
+          <div style="flex:1;font-size:13px;">${d.first_name} ${d.last_name}</div>
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input drawer-present-toggle" type="checkbox" role="switch" ${d.present ? 'checked' : ''}>
+            <label class="form-check-label drawer-present-label" style="font-size:12px;width:50px;display:inline-block;">${d.present ? 'Present' : 'Absent'}</label>
+          </div>
+          <span class="drawer-attend-saved" style="font-size:11px;color:#16a34a;display:none;">Saved</span>
+        </div>`).join('');
+
+      content.innerHTML = html;
+
+      function refreshCount() {
+        const rows = content.querySelectorAll('.drawer-attend-row');
+        const p = [...rows].filter(r => r.querySelector('.drawer-present-toggle')?.checked).length;
+        const countEl = content.querySelector('#drawer-attend-count');
+        if (countEl) countEl.textContent = `${p}/${rows.length} present`;
+      }
+
+      content.addEventListener('change', async (e) => {
+        if (!e.target.classList.contains('drawer-present-toggle')) return;
+        const row = e.target.closest('.drawer-attend-row');
+        if (!row) return;
+        e.target.closest('.form-check').querySelector('.drawer-present-label').textContent = e.target.checked ? 'Present' : 'Absent';
+        refreshCount();
+        const savedEl = row.querySelector('.drawer-attend-saved');
+        try {
+          const r = await fetch('/api/season/attendance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date, piece_id: parseInt(pieceId), user_id: parseInt(row.dataset.userId), present: e.target.checked, status: 'none', status_note: null }),
+          });
+          if (r.ok && savedEl) { savedEl.style.display = ''; setTimeout(() => { savedEl.style.display = 'none'; }, 1500); }
+        } catch (_) {}
+      });
+    } catch (err) {
+      content.innerHTML = `<p style="font-size:13px;color:#dc2626;margin:0;">Could not load attendance.</p>`;
+    }
+  }
+
 
   async function openBlockDrawer(dbId, piece, dayName, startTime, endTime, roomId) {
     await loadDrawerCasts();

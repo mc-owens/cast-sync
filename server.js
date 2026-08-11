@@ -2531,20 +2531,43 @@ app.get('/api/staff/pieces/:pieceId/attendance', requireAuth('staff'), async (re
     const piece = await verifyStaffPiece(req.session.userId, req.params.pieceId);
     if (!piece) return res.status(403).json({ error: 'Not assigned to this piece.' });
 
-    const result = await pool.query(
-      `SELECT u.id AS user_id, dp.first_name, dp.last_name, pc.cast_role,
-              COALESCE(ar.present, TRUE) AS present,
-              COALESCE(ar.status, 'none') AS status,
-              ar.status_note
-       FROM piece_casts pc
-       JOIN users u ON u.id = pc.user_id
-       JOIN dancer_profiles dp ON dp.user_id = u.id
-       LEFT JOIN attendance_records ar ON ar.user_id = u.id AND ar.piece_id = $1 AND ar.rehearsal_date = $2
-       WHERE pc.piece_id = $1
-       ORDER BY dp.last_name, dp.first_name`,
-      [req.params.pieceId, date]
-    );
-    res.json({ date, piece_name: piece.piece_name, dancers: result.rows });
+    const dayOfWeek = new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
+
+    const [dancersRes, blockRes, seasonRes] = await Promise.all([
+      pool.query(
+        `SELECT u.id AS user_id, dp.first_name, dp.last_name, pc.cast_role,
+                COALESCE(ar.present, TRUE) AS present,
+                COALESCE(ar.status, 'none') AS status,
+                ar.status_note
+         FROM piece_casts pc
+         JOIN users u ON u.id = pc.user_id
+         JOIN dancer_profiles dp ON dp.user_id = u.id
+         LEFT JOIN attendance_records ar ON ar.user_id = u.id AND ar.piece_id = $1 AND ar.rehearsal_date = $2
+         WHERE pc.piece_id = $1
+         ORDER BY dp.last_name, dp.first_name`,
+        [req.params.pieceId, date]
+      ),
+      pool.query(
+        `SELECT 1 FROM master_blocks WHERE piece_id = $1 AND day = $2 LIMIT 1`,
+        [req.params.pieceId, dayOfWeek]
+      ),
+      pool.query(
+        `SELECT to_char(s.start_date,'YYYY-MM-DD') AS start_date, to_char(s.end_date,'YYYY-MM-DD') AS end_date
+         FROM seasons s JOIN pieces p ON p.season_id = s.id WHERE p.id = $1`,
+        [req.params.pieceId]
+      ),
+    ]);
+
+    const season = seasonRes.rows[0] || {};
+    res.json({
+      date,
+      day_of_week: dayOfWeek,
+      rehearses_this_day: blockRes.rows.length > 0,
+      piece_name: piece.piece_name,
+      start_date: season.start_date || null,
+      end_date: season.end_date || null,
+      dancers: dancersRes.rows,
+    });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to load attendance.' });
@@ -5336,13 +5359,20 @@ app.get('/api/season/attendance', requireAuth('master'), async (req, res) => {
     // overlapping/simultaneous rehearsals in other rooms are visible at a glance.
     // Day-of-week only, since recurring weekly blocks aren't tied to specific dates.
     const dayOfWeek = new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
-    const piecesToday = await pool.query(
-      `SELECT p.id, p.name, mb.start_time, mb.end_time FROM pieces p JOIN master_blocks mb ON mb.piece_id = p.id
-       WHERE p.season_id = $1 AND mb.day = $2 ORDER BY mb.start_time, p.name`,
-      [seasonId, dayOfWeek]
-    );
+    const [piecesToday, seasonDates] = await Promise.all([
+      pool.query(
+        `SELECT p.id, p.name, mb.start_time, mb.end_time FROM pieces p JOIN master_blocks mb ON mb.piece_id = p.id
+         WHERE p.season_id = $1 AND mb.day = $2 ORDER BY mb.start_time, p.name`,
+        [seasonId, dayOfWeek]
+      ),
+      pool.query(
+        `SELECT to_char(start_date,'YYYY-MM-DD') AS start_date, to_char(end_date,'YYYY-MM-DD') AS end_date FROM seasons WHERE id = $1`,
+        [seasonId]
+      ),
+    ]);
+    const sd = seasonDates.rows[0] || {};
 
-    res.json({ date, day_of_week: dayOfWeek, pieces_today: piecesToday.rows, dancers: result.rows });
+    res.json({ date, day_of_week: dayOfWeek, pieces_today: piecesToday.rows, dancers: result.rows, start_date: sd.start_date || null, end_date: sd.end_date || null });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to load attendance.' });
