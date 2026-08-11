@@ -945,9 +945,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const confirmAddOneTimeBtn = document.getElementById('confirm-add-one-time-btn');
 
   addOneTimeBtn.addEventListener('click', () => {
-    if (pieces.length === 0) { alert('Create a piece on the schedule first.'); return; }
-    oneTimePieceSelect.innerHTML = pieces.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-    // Default to the week currently being viewed, falling back to today.
+    oneTimePieceSelect.innerHTML =
+      pieces.map(p => `<option value="${p.id}">${p.name}</option>`).join('') +
+      `<option value="__new__">+ New piece...</option>`;
+    document.getElementById('otr-new-piece-row').style.display = 'none';
+    document.getElementById('otr-new-piece-name').value = '';
     oneTimeDateInput.value = window._currentWeekMonday || new Date().toISOString().slice(0, 10);
     oneTimeStartInput.value = '';
     oneTimeEndInput.value   = '';
@@ -957,12 +959,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     new bootstrap.Modal(addOneTimeModalEl).show();
   });
 
+  oneTimePieceSelect.addEventListener('change', () => {
+    document.getElementById('otr-new-piece-row').style.display =
+      oneTimePieceSelect.value === '__new__' ? 'block' : 'none';
+  });
+
   confirmAddOneTimeBtn.addEventListener('click', async () => {
-    const pieceId = oneTimePieceSelect.value;
-    const date     = oneTimeDateInput.value;
+    let pieceId = oneTimePieceSelect.value;
+    const date  = oneTimeDateInput.value;
     if (!date || !oneTimeStartInput.value || !oneTimeEndInput.value) {
       alert('Please fill in the date, start time, and end time.');
       return;
+    }
+    if (pieceId === '__new__') {
+      const newName = document.getElementById('otr-new-piece-name').value.trim();
+      if (!newName) { alert('Please enter a name for the new piece.'); return; }
+      try {
+        const color = COLORS[pieces.length % COLORS.length];
+        const pr = await fetch('/api/pieces', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName, color }),
+        });
+        if (!pr.ok) { alert('Could not create piece.'); return; }
+        const newPiece = await pr.json();
+        pieces.push(newPiece);
+        renderLegend();
+        pieceId = String(newPiece.id);
+      } catch (e) { alert('Could not connect to server.'); return; }
     }
     const [startH, startM] = oneTimeStartInput.value.split(':').map(Number);
     const [endH, endM]      = oneTimeEndInput.value.split(':').map(Number);
