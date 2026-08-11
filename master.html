@@ -495,9 +495,9 @@
 
         <!-- Week nav + Quick Actions (one row, directly above grid) -->
         <div id="week-nav-strip" class="d-none no-print" style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px;">
-          <div style="display:flex;align-items:center;gap:8px;">
+          <div style="display:grid;grid-template-columns:105px 250px 75px;column-gap:8px;align-items:center;">
             <button class="btn btn-sm btn-outline-secondary" id="week-prev-btn">&#8592; Previous</button>
-            <span id="week-label" style="font-size:13px;font-weight:600;min-width:172px;text-align:center;display:inline-block;"></span>
+            <span id="week-label" style="font-size:13px;font-weight:600;text-align:center;"></span>
             <button class="btn btn-sm btn-outline-secondary" id="week-next-btn">Next &#8594;</button>
           </div>
           <div style="display:flex;align-items:center;gap:20px;">
@@ -700,13 +700,13 @@
           if (!ev.date) return '';
           const d = dateFromYMD(ev.date);
           if (d < startDate || d > endDate) return '';
-          return `<div class="prod-tl-event" style="left:${pct(d)}%;" title="${ev.title || 'Event'}"></div>`;
+          return `<div class="prod-tl-event" style="left:${pct(d)}%;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="${ev.title || 'Event'}"></div>`;
         }).join('');
 
         const audDot = dates.audition_date ? (() => {
           const d = dateFromYMD(dates.audition_date);
           return (d >= startDate && d <= endDate)
-            ? `<div class="prod-tl-event" style="left:${pct(d)}%;background:var(--gold,#c4943a);" title="Audition Day"></div>`
+            ? `<div class="prod-tl-event" style="left:${pct(d)}%;background:var(--gold,#c4943a);" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Audition Day"></div>`
             : '';
         })() : '';
 
