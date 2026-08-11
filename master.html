@@ -515,6 +515,7 @@
               <button type="button" id="sc-add-qa-btn" style="background:none;border:none;padding:0;font-size:12px;color:#6b7280;cursor:pointer;">+ Schedule Change</button>
               <button type="button" tabindex="-1" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Use when the weekly rehearsal pattern changes for a period of time, for example switching from Ballet to Jazz repertoire. This creates a new schedule segment." style="background:none;border:1px solid #d1d5db;border-radius:50%;width:14px;height:14px;padding:0;font-size:9px;color:#9ca3af;cursor:default;line-height:1;flex-shrink:0;">i</button>
             </span>
+            <button type="button" id="ai-import-open-btn" style="background:none;border:none;padding:0;font-size:12px;color:#6b7280;cursor:pointer;">&#8679; Import Schedule</button>
           </div>
         </div>
 
@@ -1105,6 +1106,7 @@
         initWeekNav();
         initProdTimeline();
         loadCurrentScheduleCard();
+        initAiImport();
 
         // Trial banner
         try {
@@ -1126,6 +1128,267 @@
         CastSyncTour.maybeStartWorkspace('master', user.orgId, user.seasonId);
       } catch (err) { window.location.href = 'login.html'; }
     })();
+
+    // ── AI Import Schedule ────────────────────────────────────────────────────
+
+    function initAiImport() {
+      const modal = document.getElementById('aiImportModal');
+      if (!modal) return;
+
+      const bsModal = new bootstrap.Modal(modal);
+      let aiImportFile = null;
+      let aiImportData = null; // { schedule_changes, special_events, uncertain_items, pieces }
+
+      function aiImportShowStep(name) {
+        ['upload','loading','review'].forEach(s => {
+          document.getElementById(`ai-import-step-${s}`).style.display = s === name ? '' : 'none';
+        });
+      }
+
+      // Open button
+      document.getElementById('ai-import-open-btn')?.addEventListener('click', () => {
+        aiImportReset();
+        bsModal.show();
+      });
+
+      // Drop zone
+      const dropZone = document.getElementById('ai-import-drop-zone');
+      const fileInput = document.getElementById('ai-import-file-input');
+      dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = '#c4943a'; dropZone.style.background = 'rgba(196,148,58,.05)'; });
+      dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = '#d1d5db'; dropZone.style.background = '#fafafa'; });
+      dropZone.addEventListener('drop', e => {
+        e.preventDefault(); dropZone.style.borderColor = '#d1d5db'; dropZone.style.background = '#fafafa';
+        if (e.dataTransfer.files[0]) aiImportSetFile(e.dataTransfer.files[0]);
+      });
+      dropZone.addEventListener('click', e => { if (e.target.id !== 'ai-import-browse-link') fileInput.click(); });
+      dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+      document.getElementById('ai-import-browse-link').addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); fileInput.click(); });
+      fileInput.addEventListener('change', () => { if (fileInput.files[0]) aiImportSetFile(fileInput.files[0]); });
+      document.getElementById('ai-import-file-clear').addEventListener('click', aiImportClearFile);
+
+      function aiImportSetFile(f) {
+        aiImportFile = f;
+        document.getElementById('ai-import-file-name').textContent = f.name;
+        document.getElementById('ai-import-file-chip').style.display = '';
+        document.getElementById('ai-import-paste-text').value = '';
+      }
+
+      function aiImportClearFile() {
+        aiImportFile = null;
+        fileInput.value = '';
+        document.getElementById('ai-import-file-chip').style.display = 'none';
+      }
+
+      function aiImportReset() {
+        aiImportFile = null;
+        aiImportData = null;
+        fileInput.value = '';
+        document.getElementById('ai-import-file-chip').style.display = 'none';
+        document.getElementById('ai-import-paste-text').value = '';
+        document.getElementById('ai-import-upload-error').style.display = 'none';
+        document.getElementById('ai-import-replace-toggle').checked = false;
+        document.getElementById('ai-import-replace-warning').style.display = 'none';
+        aiImportShowStep('upload');
+      }
+
+      // Analyze button
+      document.getElementById('ai-import-analyze-btn').addEventListener('click', async () => {
+        const errEl = document.getElementById('ai-import-upload-error');
+        errEl.style.display = 'none';
+        const pasted = document.getElementById('ai-import-paste-text').value.trim();
+        if (!aiImportFile && !pasted) {
+          errEl.textContent = 'Please upload a file or paste text first.';
+          errEl.style.display = '';
+          return;
+        }
+        aiImportShowStep('loading');
+        try {
+          const fd = new FormData();
+          if (aiImportFile) fd.append('file', aiImportFile);
+          if (pasted) fd.append('text', pasted);
+          const res = await fetch('/api/schedule/ai-import/parse', { method: 'POST', body: fd });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Analysis failed. Please try again.');
+          aiImportData = data;
+          aiImportRenderReview();
+          aiImportShowStep('review');
+        } catch (err) {
+          aiImportShowStep('upload');
+          errEl.textContent = err.message;
+          errEl.style.display = '';
+        }
+      });
+
+      // Replace toggle
+      document.getElementById('ai-import-replace-toggle').addEventListener('change', function () {
+        document.getElementById('ai-import-replace-warning').style.display = this.checked ? '' : 'none';
+        const btn = document.getElementById('ai-import-confirm-btn');
+        btn.textContent = this.checked ? 'Replace Schedule' : 'Import';
+        btn.className = this.checked ? 'btn btn-danger px-4' : 'btn btn-dark px-4';
+        btn.style.fontWeight = '600';
+        btn.style.fontSize = '14px';
+      });
+
+      // Start Over
+      document.getElementById('ai-import-start-over-btn').addEventListener('click', aiImportReset);
+
+      // Confirm
+      document.getElementById('ai-import-confirm-btn').addEventListener('click', async () => {
+        if (!aiImportData) return;
+        const mode = document.getElementById('ai-import-replace-toggle').checked ? 'replace' : 'add';
+        const btn = document.getElementById('ai-import-confirm-btn');
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Importing...';
+
+        try {
+          const payload = {
+            mode,
+            schedule_changes: aiImportCollectChanges(),
+            special_events: aiImportData.special_events.filter(ev => ev._included !== false && ev.date && ev.title),
+          };
+          const res = await fetch('/api/schedule/ai-import/apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Import failed. Please try again.');
+
+          const parts = [];
+          if (data.segments_created) parts.push(`${data.segments_created} schedule change${data.segments_created !== 1 ? 's' : ''}`);
+          if (data.blocks_created) parts.push(`${data.blocks_created} recurring block${data.blocks_created !== 1 ? 's' : ''}`);
+          if (data.events_created) parts.push(`${data.events_created} special event${data.events_created !== 1 ? 's' : ''}`);
+
+          document.getElementById('ai-import-review-body').innerHTML = `
+            <div class="text-center py-4">
+              <div style="font-size:2.5rem;margin-bottom:10px;color:#16a34a;">&#10003;</div>
+              <div style="font-size:17px;font-weight:700;margin-bottom:6px;">Schedule imported successfully.</div>
+              <p class="text-muted" style="font-size:13px;">${parts.join(', ')} added to this production.</p>
+            </div>`;
+          document.querySelector('#ai-import-step-review .modal-footer').innerHTML = `
+            <button type="button" class="btn btn-dark" data-bs-dismiss="modal" id="ai-import-done-btn">Done</button>`;
+          document.getElementById('ai-import-done-btn').addEventListener('click', () => {
+            window.location.reload();
+          });
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = origText;
+          const errDiv = document.createElement('div');
+          errDiv.style.cssText = 'font-size:13px;color:#dc2626;margin-top:6px;';
+          errDiv.textContent = err.message;
+          document.getElementById('ai-import-confirm-btn').insertAdjacentElement('afterend', errDiv);
+          setTimeout(() => errDiv.remove(), 5000);
+        }
+      });
+
+      function aiImportCollectChanges() {
+        if (!aiImportData) return [];
+        return aiImportData.schedule_changes.map((change, ci) => ({
+          ...change,
+          recurring_blocks: change.recurring_blocks.map((blk, bi) => {
+            const sel = document.getElementById(`ai-blk-piece-${ci}-${bi}`);
+            return { ...blk, piece_id: sel ? (parseInt(sel.value) || null) : blk.piece_id };
+          }).filter(blk => blk.piece_id && blk.day && blk.start_time && blk.end_time),
+        }));
+      }
+
+      function aiImportRenderReview() {
+        if (!aiImportData) return;
+        const { schedule_changes, special_events, uncertain_items, pieces } = aiImportData;
+
+        const totalBlocks = schedule_changes.reduce((n, c) => n + c.recurring_blocks.length, 0);
+        const summaryParts = [];
+        if (schedule_changes.length) summaryParts.push(`${schedule_changes.length} schedule change${schedule_changes.length !== 1 ? 's' : ''} (${totalBlocks} recurring block${totalBlocks !== 1 ? 's' : ''})`);
+        if (special_events.length) summaryParts.push(`${special_events.length} special event${special_events.length !== 1 ? 's' : ''}`);
+        if (uncertain_items.length) summaryParts.push(`${uncertain_items.length} item${uncertain_items.length !== 1 ? 's' : ''} need attention`);
+
+        let html = `<div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;margin-bottom:16px;">
+          <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:2px;">Found in your document:</div>
+          <div style="font-size:13px;color:#6b7280;">${summaryParts.join(' &middot; ') || 'Nothing was extracted. Try pasting more text.'}</div>
+        </div>`;
+
+        if (schedule_changes.length) {
+          html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;margin-bottom:8px;">Schedule Changes</div>`;
+          schedule_changes.forEach((change, ci) => {
+            const startLabel = change.start_date ? new Date(change.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : change.start_date;
+            const statusDot = change.status === 'needs_review' ? '#d97706' : '#16a34a';
+            html += `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <div style="width:8px;height:8px;border-radius:50%;background:${statusDot};flex-shrink:0;"></div>
+                <span style="font-weight:600;font-size:14px;">${escapeHtml(change.label || 'Schedule Change')}</span>
+                <span style="font-size:12px;color:#6b7280;">starting ${startLabel}</span>
+              </div>`;
+            if (change.status_reason) {
+              html += `<div style="font-size:12px;color:#92400e;background:#fef3c7;border-radius:4px;padding:4px 8px;margin-bottom:8px;">${escapeHtml(change.status_reason)}</div>`;
+            }
+            if (change.recurring_blocks.length) {
+              html += `<div style="display:flex;flex-direction:column;gap:5px;">`;
+              change.recurring_blocks.forEach((blk, bi) => {
+                const needsPiecePick = blk.piece_match_status !== 'ready';
+                const pieceOpts = pieces.map(p => `<option value="${p.id}" ${p.id === blk.piece_id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+                const piecePicker = needsPiecePick
+                  ? `<select id="ai-blk-piece-${ci}-${bi}" class="form-select form-select-sm" style="font-size:11px;padding:1px 6px;height:auto;display:inline-block;width:auto;max-width:160px;">
+                      <option value="">-- pick piece --</option>${pieceOpts}
+                     </select>`
+                  : `<span style="font-size:12px;font-weight:500;color:#374151;">${escapeHtml(blk.piece_name || '')}</span>`;
+                const warn = blk.piece_match_notes ? `<span style="font-size:11px;color:#d97706;">(${escapeHtml(blk.piece_match_notes)})</span>` : '';
+                html += `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#6b7280;background:#f9fafb;border-radius:4px;padding:4px 8px;">
+                  <span style="font-weight:600;color:#374151;min-width:70px;">${escapeHtml(blk.day)}</span>
+                  <span>${blk.start_time} &ndash; ${blk.end_time}</span>
+                  <span style="margin-left:auto;display:flex;align-items:center;gap:4px;">${piecePicker}${warn}</span>
+                </div>`;
+              });
+              html += `</div>`;
+            } else {
+              html += `<div style="font-size:12px;color:#9ca3af;">No recurring blocks found for this period.</div>`;
+            }
+            html += `</div>`;
+          });
+        }
+
+        const EVENT_LABELS = { tech:'Tech Rehearsal', dress:'Dress Rehearsal', spacing:'Spacing Rehearsal', photo_dress:'Photo Dress', performance:'Performance', warm_up:'Warm Up', costume_fitting:'Costume Fitting', company_meeting:'Company Meeting', no_rehearsal:'No Rehearsal / Day Off', notes_cleaning:'Notes / Cleaning', load_in_strike:'Load-In / Strike', other:'Other' };
+        const EVENT_COLORS = { tech:'#2c3e50', dress:'#8e44ad', spacing:'#16a085', photo_dress:'#e91e63', performance:'#c0392b', warm_up:'#e67e22', costume_fitting:'#2980b9', company_meeting:'#0369a1', no_rehearsal:'#64748b', notes_cleaning:'#0d9488', load_in_strike:'#b45309', other:'#7f8c8d' };
+
+        if (special_events.length) {
+          html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;margin:16px 0 8px;">Special Events</div>`;
+          special_events.forEach(ev => {
+            const label = EVENT_LABELS[ev.event_type] || 'Other';
+            const color = EVENT_COLORS[ev.event_type] || '#7f8c8d';
+            const dateStr = ev.date ? new Date(ev.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+            const timeStr = [ev.start_time, ev.end_time].filter(Boolean).join(' – ');
+            const statusDot = ev.status === 'needs_review' ? '#d97706' : ev.status === 'missing' ? '#dc2626' : '#16a34a';
+            html += `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;margin-bottom:8px;display:flex;gap:10px;align-items:start;">
+              <div style="width:8px;height:8px;border-radius:50%;background:${statusDot};flex-shrink:0;margin-top:5px;"></div>
+              <div style="flex:1;min-width:0;">
+                <span class="badge me-1" style="background:${color};font-size:10px;">${label}</span>
+                <span style="font-weight:600;font-size:13px;">${escapeHtml(ev.title || 'Untitled')}</span>
+                <div style="font-size:12px;color:#6b7280;margin-top:2px;">${[dateStr, timeStr, ev.location].filter(Boolean).join(' &middot; ')}</div>
+                ${ev.status_reason ? `<div style="font-size:11px;color:#92400e;margin-top:3px;">${escapeHtml(ev.status_reason)}</div>` : ''}
+              </div>
+            </div>`;
+          });
+        }
+
+        if (uncertain_items.length) {
+          html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;margin:16px 0 8px;">Needs Attention</div>`;
+          uncertain_items.forEach(item => {
+            html += `<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;color:#92400e;">
+              ${escapeHtml(item.description)}
+              ${item.original_text ? `<div style="font-size:11px;color:#b45309;margin-top:3px;font-style:italic;">"${escapeHtml(item.original_text)}"</div>` : ''}
+            </div>`;
+          });
+        }
+
+        document.getElementById('ai-import-review-body').innerHTML = html;
+
+        const totalReady = schedule_changes.length + special_events.filter(e => e.status !== 'missing').length;
+        const btn = document.getElementById('ai-import-confirm-btn');
+        btn.disabled = totalReady === 0;
+        btn.style.fontWeight = '600';
+        btn.style.fontSize = '14px';
+      }
+    }
   </script>
 
   <script src="tour.js"></script>
@@ -1160,5 +1423,86 @@
   </div>
 
   </div>
+
+  <!-- AI Import Schedule Modal -->
+  <div class="modal fade" id="aiImportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content" style="border:none;border-radius:14px;">
+
+        <!-- Step 1: Upload -->
+        <div id="ai-import-step-upload">
+          <div class="modal-header" style="border-bottom:none;padding-bottom:0;">
+            <h5 class="modal-title" style="font-weight:700;">Import Schedule</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" style="padding-top:10px;">
+            <p class="text-muted mb-3" style="font-size:13px;">Upload a file or paste your schedule. CastSync will extract schedule changes, recurring blocks, and special events for you to review before anything is saved.</p>
+            <div id="ai-import-drop-zone" style="border:2px dashed #d1d5db;border-radius:10px;padding:32px 24px;text-align:center;cursor:pointer;background:#fafafa;transition:border-color .15s,background .15s;" tabindex="0" role="button">
+              <div style="font-size:28px;margin-bottom:10px;color:#d1d5db;">&#8613;</div>
+              <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Drop your schedule here</div>
+              <div style="font-size:13px;color:#6b7280;margin-bottom:10px;">or <a href="#" id="ai-import-browse-link" style="color:#c4943a;font-weight:600;">browse files</a></div>
+              <div style="font-size:11px;color:#9ca3af;">PDF, Word, Excel, images, or plain text</div>
+            </div>
+            <input type="file" id="ai-import-file-input" style="display:none" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.csv,.xlsx,.xls,.docx,.doc,.txt">
+            <div id="ai-import-file-chip" style="display:none;margin-top:10px;">
+              <span style="display:inline-flex;align-items:center;gap:8px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:6px 12px;font-size:13px;font-weight:500;">
+                <span id="ai-import-file-name"></span>
+                <button id="ai-import-file-clear" style="background:none;border:none;padding:0;color:#9ca3af;cursor:pointer;font-size:14px;line-height:1;">&times;</button>
+              </span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;color:#9ca3af;font-size:12px;margin:14px 0;">
+              <div style="flex:1;border-top:1px solid #e5e7eb;"></div>
+              <span>or paste text below</span>
+              <div style="flex:1;border-top:1px solid #e5e7eb;"></div>
+            </div>
+            <textarea id="ai-import-paste-text" class="form-control" rows="5" placeholder="Paste your schedule, email, or any text here..."></textarea>
+            <div id="ai-import-upload-error" style="display:none;font-size:13px;color:#dc2626;margin-top:10px;"></div>
+          </div>
+          <div class="modal-footer" style="border-top:none;">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" id="ai-import-analyze-btn" class="btn btn-dark px-4">Analyze Schedule</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Loading -->
+        <div id="ai-import-step-loading" style="display:none;">
+          <div class="modal-header" style="border-bottom:none;padding-bottom:0;">
+            <h5 class="modal-title" style="font-weight:700;">Import Schedule</h5>
+          </div>
+          <div class="modal-body text-center py-5">
+            <div class="spinner-border text-secondary mb-3" role="status" style="width:2rem;height:2rem;"></div>
+            <div style="font-size:15px;font-weight:600;margin-bottom:4px;">Reading your schedule...</div>
+            <div class="text-muted" style="font-size:13px;">This usually takes 5 to 15 seconds.</div>
+          </div>
+        </div>
+
+        <!-- Step 3: Review -->
+        <div id="ai-import-step-review" style="display:none;">
+          <div class="modal-header" style="border-bottom:1px solid #f3f4f6;padding-bottom:12px;">
+            <h5 class="modal-title" style="font-weight:700;">Review Extracted Schedule</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="ai-import-review-body" style="padding:16px;"></div>
+          <div class="modal-footer" style="flex-direction:column;align-items:stretch;gap:10px;border-top:1px solid #f3f4f6;padding:14px 16px;">
+            <div id="ai-import-replace-warning" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:10px 12px;font-size:12px;color:#991b1b;">
+              <strong>Warning:</strong> Replace mode will delete all existing schedule changes, recurring blocks, and special events for this production. This cannot be undone.
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+              <button type="button" id="ai-import-start-over-btn" class="btn btn-sm btn-outline-secondary">Start Over</button>
+              <div style="display:flex;align-items:center;gap:16px;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#6b7280;cursor:pointer;margin:0;">
+                  <input type="checkbox" id="ai-import-replace-toggle" style="cursor:pointer;">
+                  Replace existing schedule
+                </label>
+                <button type="button" id="ai-import-confirm-btn" class="btn btn-dark px-4" style="font-size:14px;font-weight:600;">Import</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

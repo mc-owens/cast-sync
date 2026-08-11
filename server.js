@@ -4759,6 +4759,257 @@ Piece matching: match document piece names to the production pieces above by ID.
   return JSON.parse(match[0]);
 }
 
+async function parseFullScheduleWithAI(content, { season, pieces, segments }) {
+  if (!anthropic) throw new Error('ANTHROPIC_API_KEY not configured.');
+
+  const fmt = d => d ? new Date(d + 'T00:00:00').toISOString().slice(0,10) : null;
+  const dateRange = (season.start_date && season.end_date)
+    ? `${fmt(season.start_date)} to ${fmt(season.end_date)}`
+    : 'not specified';
+
+  const system = `You are a scheduling assistant extracting a dance production schedule from a document.
+
+Production context:
+- Season: ${season.season_name || 'Unnamed'}
+- Season dates: ${dateRange}
+- Existing pieces in this production:
+${pieces.length ? pieces.map(p => `  - ID ${p.id}: "${p.name}"`).join('\n') : '  (no pieces defined yet)'}
+- Existing schedule changes already in the system:
+${segments.length ? segments.map(s => `  - ${fmt(s.start_date)}: ${s.label || 'Unnamed'}`).join('\n') : '  (none yet)'}
+
+Extract three categories from the document:
+
+1. SCHEDULE CHANGES: periods when the weekly rehearsal pattern changes. Each has a start date and a list of recurring weekly rehearsal blocks. Do NOT include one-time events as schedule changes.
+
+2. SPECIAL EVENTS: one-time events like performances, tech week, photo shoots, costume fittings, company meetings, days off, etc.
+
+3. UNCERTAIN ITEMS: anything you could not categorize, could not parse, or have low confidence about.
+
+Available day values: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
+Available event_type values: tech, dress, spacing, photo_dress, performance, warm_up, costume_fitting, company_meeting, no_rehearsal, notes_cleaning, load_in_strike, other
+
+Return ONLY valid JSON:
+{
+  "schedule_changes": [
+    {
+      "start_date": "YYYY-MM-DD",
+      "label": "short name for this rehearsal period",
+      "status": "ready",
+      "status_reason": null,
+      "original_text": "source text snippet",
+      "recurring_blocks": [
+        {
+          "piece_name": "piece name as written in the document",
+          "piece_id": <integer id from the pieces list above, or null>,
+          "piece_match_status": "ready",
+          "piece_match_notes": null,
+          "day": "Monday",
+          "start_time": "HH:MM",
+          "end_time": "HH:MM"
+        }
+      ]
+    }
+  ],
+  "special_events": [
+    {
+      "status": "ready",
+      "status_reason": null,
+      "original_text": "source text snippet",
+      "event_type": "performance",
+      "title": "event title",
+      "date": "YYYY-MM-DD",
+      "start_time": "HH:MM",
+      "end_time": "HH:MM",
+      "location": null,
+      "applies_to": "full_cast",
+      "piece_ids": [],
+      "piece_match_notes": null,
+      "notes": null,
+      "visible_to_dancers": true
+    }
+  ],
+  "uncertain_items": [
+    {
+      "description": "what is unclear or could not be categorized",
+      "original_text": "source text snippet"
+    }
+  ]
+}
+
+Status field rules:
+- "ready": confident extraction, date/time/day are clear
+- "needs_review": something was inferred or uncertain
+- "missing": date or required field cannot be determined
+
+Piece matching rules:
+- "ready": confident match; set piece_id to the matched integer ID
+- "needs_review": uncertain (similar names, abbreviations); set piece_id to best-guess ID and explain in piece_match_notes
+- "missing": no match; set piece_id to null
+- All times 24-hour HH:MM. All dates YYYY-MM-DD.`;
+
+  let msgContent;
+  if (content.type === 'text') {
+    msgContent = [{ type: 'text', text: content.data }];
+  } else if (content.type === 'image') {
+    msgContent = [{ type: 'image', source: { type: 'base64', media_type: content.mediaType, data: content.data } }];
+  } else {
+    msgContent = [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: content.data } }];
+  }
+
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 8192,
+    system,
+    messages: [{ role: 'user', content: msgContent }],
+  });
+
+  const raw = response.content[0]?.text || '';
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('AI did not return valid JSON.');
+  return JSON.parse(m[0]);
+}
+
+app.post('/api/schedule/ai-import/parse', requireAuth('master'), upload.single('file'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  if (!anthropic) return res.status(503).json({ error: 'Import feature not configured. Contact support.' });
+  try {
+    const [seasonRes, piecesRes, segmentsRes] = await Promise.all([
+      pool.query('SELECT name AS season_name, start_date, end_date FROM seasons WHERE id = $1', [seasonId]),
+      pool.query('SELECT id, name FROM pieces WHERE season_id = $1 ORDER BY name', [seasonId]),
+      pool.query(`SELECT id, to_char(start_date,'YYYY-MM-DD') AS start_date, label FROM schedule_segments WHERE season_id = $1 ORDER BY start_date`, [seasonId]),
+    ]);
+    const season = seasonRes.rows[0];
+    const pieces = piecesRes.rows;
+    const segments = segmentsRes.rows;
+
+    let content;
+    const pastedText = (req.body.text || '').trim();
+    if (req.file) {
+      content = await extractImportContent(req.file);
+    } else if (pastedText) {
+      content = { type: 'text', data: pastedText };
+    } else {
+      return res.status(400).json({ error: 'Please provide a file or paste text.' });
+    }
+
+    const parsed = await parseFullScheduleWithAI(content, { season, pieces, segments });
+    res.json({
+      schedule_changes: parsed.schedule_changes || [],
+      special_events: parsed.special_events || [],
+      uncertain_items: parsed.uncertain_items || [],
+      pieces,
+    });
+  } catch (err) {
+    console.error('AI import parse error:', err.message);
+    res.status(500).json({ error: 'Could not analyze schedule. Please try again.' });
+  }
+});
+
+const VALID_IMPORT_DAYS = new Set(['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']);
+
+app.post('/api/schedule/ai-import/apply', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+
+  const { mode = 'add', schedule_changes = [], special_events = [] } = req.body;
+  if (mode !== 'add' && mode !== 'replace')
+    return res.status(400).json({ error: 'mode must be "add" or "replace".' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    if (mode === 'replace') {
+      await client.query(
+        `DELETE FROM master_blocks WHERE segment_id IN (SELECT id FROM schedule_segments WHERE season_id = $1)`,
+        [seasonId]
+      );
+      await client.query('DELETE FROM schedule_segments WHERE season_id = $1', [seasonId]);
+      await client.query('DELETE FROM special_events WHERE season_id = $1', [seasonId]);
+    }
+
+    let segmentsCreated = 0;
+    let blocksCreated = 0;
+
+    for (const change of schedule_changes) {
+      const { start_date, label, recurring_blocks = [] } = change;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(start_date || '')) continue;
+
+      let segId;
+      if (mode === 'add') {
+        const existing = await client.query(
+          'SELECT id FROM schedule_segments WHERE season_id = $1 AND start_date = $2',
+          [seasonId, start_date]
+        );
+        if (existing.rows.length > 0) {
+          segId = existing.rows[0].id;
+        } else {
+          const r = await client.query(
+            'INSERT INTO schedule_segments (season_id, start_date, label) VALUES ($1,$2,$3) RETURNING id',
+            [seasonId, start_date, label || null]
+          );
+          segId = r.rows[0].id;
+          segmentsCreated++;
+        }
+      } else {
+        const r = await client.query(
+          'INSERT INTO schedule_segments (season_id, start_date, label) VALUES ($1,$2,$3) RETURNING id',
+          [seasonId, start_date, label || null]
+        );
+        segId = r.rows[0].id;
+        segmentsCreated++;
+      }
+
+      for (const block of recurring_blocks) {
+        const { piece_id, day, start_time, end_time } = block;
+        if (!piece_id || !VALID_IMPORT_DAYS.has(day) || !start_time || !end_time) continue;
+        const pieceCheck = await client.query(
+          'SELECT 1 FROM pieces WHERE id = $1 AND season_id = $2',
+          [piece_id, seasonId]
+        );
+        if (pieceCheck.rows.length === 0) continue;
+        await client.query(
+          'INSERT INTO master_blocks (piece_id, day, start_time, end_time, segment_id) VALUES ($1,$2,$3,$4,$5)',
+          [piece_id, day, start_time, end_time, segId]
+        );
+        blocksCreated++;
+      }
+    }
+
+    let eventsCreated = 0;
+    for (const ev of special_events) {
+      const { event_type, title, date, start_time, end_time, location, notes, applies_to, piece_ids, visible_to_dancers } = ev;
+      if (!title?.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(date || '')) continue;
+      await client.query(
+        `INSERT INTO special_events (season_id, event_type, title, date, start_time, end_time, location, notes, applies_to, piece_ids, visible_to_dancers)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [
+          seasonId,
+          VALID_EVENT_TYPES.has(event_type) ? event_type : 'other',
+          title.trim(), date,
+          start_time || null, end_time || null,
+          (location || '').trim() || null,
+          (notes || '').trim() || null,
+          VALID_EVENT_APPLIES.has(applies_to) ? applies_to : 'full_cast',
+          Array.isArray(piece_ids) ? piece_ids : [],
+          visible_to_dancers !== false,
+        ]
+      );
+      eventsCreated++;
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ segments_created: segmentsCreated, blocks_created: blocksCreated, events_created: eventsCreated });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('AI import apply error:', err.message);
+    res.status(500).json({ error: 'Failed to import schedule. Please try again.' });
+  } finally {
+    client.release();
+  }
+});
+
 app.post('/api/season/special-events/import', requireAuth('master'), upload.single('file'), async (req, res) => {
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
