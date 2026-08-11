@@ -3480,13 +3480,15 @@ app.post('/api/master-blocks', requireAuth('master'), async (req, res) => {
     return res.status(400).json({ error: 'All fields required.' });
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
-    // Assign new block to the currently active segment. If the production hasn't started
-    // yet, use the earliest upcoming segment instead. NULL if no segments exist.
-    const today = new Date().toISOString().slice(0, 10);
+    // Assign new block to the segment active on the week the director is viewing.
+    // The client passes current_date (the Monday of the viewed week) so that creating
+    // a block while navigated to a future week assigns it to the correct future segment,
+    // not today's segment. Fall back to today if the client doesn't send it.
+    const contextDate = req.body.current_date || new Date().toISOString().slice(0, 10);
     let segResult = await pool.query(
       `SELECT id FROM schedule_segments WHERE season_id = $1 AND start_date <= $2
        ORDER BY start_date DESC LIMIT 1`,
-      [seasonId, today]
+      [seasonId, contextDate]
     );
     if (segResult.rows.length === 0) {
       segResult = await pool.query(

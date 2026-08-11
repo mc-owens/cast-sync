@@ -990,16 +990,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // date" has no visible effect and looks like it silently failed. Only meaningful once
   // a week is actually being viewed (production dates configured).
   async function applyWeekExceptionStyling() {
-    document.querySelectorAll('.master-block').forEach(b => {
-      b.classList.remove('block-cancelled-this-week');
-      if (b.title === 'Cancelled for this week only') b.removeAttribute('title');
-    });
-    document.querySelectorAll('.one-time-block').forEach(b => b.remove());
-    // Clear segment-change dividers from any previous week.
-    document.querySelectorAll('.day-header.has-segment-change').forEach(el => el.classList.remove('has-segment-change'));
-    document.querySelectorAll('.day-column.has-segment-change').forEach(el => el.classList.remove('has-segment-change'));
-    document.querySelectorAll('.segment-change-label').forEach(el => el.remove());
-
     const monday = window._currentWeekMonday;
     if (!monday) return;
     const sunday = new Date(`${monday}T00:00:00`);
@@ -1009,8 +999,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetch(`/api/master-blocks/occurrences?start=${monday}&end=${sundayStr}`);
       if (!res.ok) return;
       const data = await res.json();
-      const occurrences      = data.occurrences      || [];
-      const segmentChanges   = data.segment_changes   || [];
+      const occurrences    = data.occurrences    || [];
+      const segmentChanges = data.segment_changes || [];
+
+      // Clear previous week's styling only after we have the new data, so blocks
+      // never flash visible during the async gap.
+      document.querySelectorAll('.master-block').forEach(b => {
+        b.classList.remove('block-cancelled-this-week');
+        if (b.title === 'Cancelled for this week only') b.removeAttribute('title');
+      });
+      document.querySelectorAll('.one-time-block').forEach(b => b.remove());
+      document.querySelectorAll('.day-header.has-segment-change').forEach(el => el.classList.remove('has-segment-change'));
+      document.querySelectorAll('.day-column.has-segment-change').forEach(el => el.classList.remove('has-segment-change'));
+      document.querySelectorAll('.segment-change-label').forEach(el => el.remove());
 
       const templateBlockIds = new Set(occurrences.filter(o => o.source === 'template').map(o => o.master_block_id));
       document.querySelectorAll('.master-block').forEach(blockEl => {
@@ -1577,7 +1578,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetch('/api/master-blocks', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ piece_id: piece.id, day: DAYS[dayIndex], start_time: startTime, end_time: endTime, room_id: roomId }),
+        body:    JSON.stringify({ piece_id: piece.id, day: DAYS[dayIndex], start_time: startTime, end_time: endTime, room_id: roomId, current_date: window._currentWeekMonday || new Date().toISOString().slice(0, 10) }),
       });
       if (!res.ok) { alert('Could not save block.'); return; }
       const saved = await res.json();

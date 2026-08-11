@@ -61,14 +61,14 @@
       position: absolute; top: 50%;
       transform: translate(-50%, -50%);
       width: 9px; height: 9px;
-      background: #8b5cf6;
+      background: #7c3aed;
       border: 2px solid #fff; border-radius: 50%;
     }
     .prod-tl-segment {
       position: absolute; top: 50%;
       transform: translate(-50%, -50%) rotate(45deg);
       width: 9px; height: 9px;
-      background: #6366f1;
+      background: #0ea5e9;
       border: 2px solid #fff;
       box-shadow: 0 1px 4px rgba(0,0,0,.18);
       cursor: pointer;
@@ -710,14 +710,17 @@
             : '';
         })() : '';
 
-        // Diamond markers for schedule change points (skip the first/default segment
-        // since it coincides with the production start date already shown as the left edge).
-        const segDots = segments.slice(1).map(seg => {
+        // Diamond markers for schedule change points, each colored distinctly so multiple
+        // changes are visually telling apart from each other and from special-event circles.
+        // The first segment (index 0) is the production start and has no marker.
+        const SEG_PALETTE = ['#0ea5e9','#10b981','#f59e0b','#ef4444','#ec4899','#8b5cf6'];
+        const segDots = segments.slice(1).map((seg, idx) => {
           const d = dateFromYMD(seg.start_date);
           if (d <= startDate || d > endDate) return '';
+          const color  = SEG_PALETTE[idx % SEG_PALETTE.length];
           const niceD  = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          const tipTxt = `${seg.label ? seg.label + ' · ' : ''}${niceD} · Starts here`;
-          return `<div class="prod-tl-segment" style="left:${pct(d)}%;" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="${escapeHtml(tipTxt)}"></div>`;
+          const tipTxt = `${seg.label ? seg.label + ' · ' : ''}${niceD} · Schedule change`;
+          return `<div class="prod-tl-segment" style="left:${pct(d)}%;background:${color};" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="${escapeHtml(tipTxt)}"></div>`;
         }).join('');
 
         function renderTL() {
