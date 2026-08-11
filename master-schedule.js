@@ -20,15 +20,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   let pieces        = [];
   let roomCount     = 1;
   let rooms         = []; // named rooms for this season; [] means anonymous-count mode still applies
-  let pendingBlock  = null;
-  let isSelecting   = false;
-  let startSlot     = 0;
-  let currentBlock  = null;
-  let currentDayCol = null;
-  let isResizing    = false;
-  let resizeDir     = null;
-  let offsetY       = 0;
-  let activeBlockId = null;
+  let pendingBlock        = null;
+  let isSelecting         = false;
+  let startSlot           = 0;
+  let currentBlock        = null;
+  let currentDayCol       = null;
+  let isResizing          = false;
+  let resizeDir           = null;
+  let offsetY             = 0;
+  let activeBlockId       = null;
+  let originalDayBeforeDrag = null;
+  let pendingDragMove     = null;
 
   // ── Rehearsal drawer state ────────────────────────────────────────────────────
   let drawerPieceCasts       = [];
@@ -709,6 +711,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
           <span class="drawer-attend-saved" style="font-size:11px;color:#16a34a;display:none;">Saved</span>
         </div>`).join('');
+
+      html += `<p style="font-size:11px;color:#9ca3af;margin-top:14px;margin-bottom:0;">For a more detailed view, go to <a href="attendance.html" style="color:#9ca3af;text-decoration:underline;">Attendance</a>, or see <a href="attendance.html" style="color:#9ca3af;text-decoration:underline;">attendance history</a>.</p>`;
 
       content.innerHTML = html;
 
@@ -1463,6 +1467,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentBlock  = e.target.closest('.master-block');
       if (currentBlock.classList.contains('block-day-off')) return;
       activeBlockId = currentBlock.dataset.dbId;
+      originalDayBeforeDrag = currentBlock.dataset.day;
       const dayWidth = grid.clientWidth / 7;
       const dayIdx   = DAYS.indexOf(currentBlock.dataset.day);
       currentBlock.style.width = `${dayWidth}px`;
@@ -1561,6 +1566,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if ((isResizing || currentBlock) && activeBlockId && currentBlock) {
       const blockToUpdate = currentBlock;
+      const wasResizing   = isResizing;
       isResizing   = false;
       currentBlock = null;
       const pos = getBlockPosition(blockToUpdate);
@@ -1577,6 +1583,15 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
           repositionAllBlocks();
         } catch (err) { console.error('Placeholder update failed:', err); }
+        activeBlockId = null;
+      } else if (!wasResizing) {
+        // Dragged a master block — ask whether to move just this occurrence or all
+        pendingDragMove = { blockEl: blockToUpdate, blockId: activeBlockId, originalDay: originalDayBeforeDrag, pos };
+        activeBlockId = null;
+        originalDayBeforeDrag = null;
+        const timeLabel = blockToUpdate.querySelector('span:nth-child(2)');
+        if (timeLabel) timeLabel.textContent = `${pos.start_time} – ${pos.end_time}`;
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('moveScopeModal')).show();
       } else {
         const timeLabel = blockToUpdate.querySelector('span:nth-child(2)');
         if (timeLabel) timeLabel.textContent = `${pos.start_time} – ${pos.end_time}`;
@@ -1588,8 +1603,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
           repositionAllBlocks();
         } catch (err) { console.error('Update failed:', err); }
+        activeBlockId = null;
       }
-      activeBlockId = null;
       return;
     }
 
@@ -1610,6 +1625,42 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('radio-new-piece').addEventListener('change',     () => showModalSection('new'));
   document.getElementById('radio-existing-piece').addEventListener('change', () => showModalSection('existing'));
   document.getElementById('radio-placeholder').addEventListener('change',   () => showModalSection('placeholder'));
+
+  // ── Move scope modal (drag: just this week vs. all occurrences) ──────────────
+
+  async function applyDragMove(mode) {
+    bootstrap.Modal.getInstance(document.getElementById('moveScopeModal'))?.hide();
+    if (!pendingDragMove) return;
+    const { blockEl, blockId, originalDay, pos } = pendingDragMove;
+    pendingDragMove = null;
+
+    if (mode === 'once') {
+      const monday = window._currentWeekMonday || new Date().toISOString().slice(0, 10);
+      const originalDate = dateForDayInWeek(monday, originalDay || pos.day);
+      const newDate      = dateForDayInWeek(monday, pos.day);
+      try {
+        const res = await fetch(`/api/master-blocks/${blockId}/exceptions`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ type: 'moved', original_date: originalDate, new_date: newDate, new_start_time: pos.start_time, new_end_time: pos.end_time }),
+        });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || 'Could not save.'); }
+        repositionAllBlocks();
+      } catch (err) { console.error('Move-once failed:', err); }
+    } else {
+      try {
+        await fetch(`/api/master-blocks/${blockId}`, {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(pos),
+        });
+        repositionAllBlocks();
+      } catch (err) { console.error('Move-always failed:', err); }
+    }
+  }
+
+  document.getElementById('move-scope-once-btn').addEventListener('click',   () => applyDragMove('once'));
+  document.getElementById('move-scope-always-btn').addEventListener('click', () => applyDragMove('always'));
 
   // ── Modal confirm ─────────────────────────────────────────────────────────────
 

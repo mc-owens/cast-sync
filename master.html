@@ -135,6 +135,25 @@
     </div>
   </div>
 
+  <!-- Move scope modal: just this week vs. update recurring schedule -->
+  <div class="modal fade" id="moveScopeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content">
+        <div class="modal-header py-2 px-3" style="border-bottom:1px solid #e5e7eb;">
+          <h6 class="modal-title mb-0" style="font-size:14px;font-weight:600;">Move this rehearsal?</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body px-3 py-3">
+          <p style="font-size:13px;color:#374151;margin-bottom:14px;">Is this a one-time change, or should the recurring schedule be updated?</p>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button id="move-scope-once-btn" class="btn btn-dark btn-sm text-start px-3">Just this week</button>
+            <button id="move-scope-always-btn" class="btn btn-outline-secondary btn-sm text-start px-3">Update the recurring schedule</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Delete rehearsal block confirmation modal -->
   <div class="modal fade" id="deleteBlockModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
