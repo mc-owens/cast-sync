@@ -5670,6 +5670,21 @@ app.get('/admin/masters', async (req, res) => {
       ORDER BY u.created_at DESC NULLS LAST
     `);
 
+    const { rows: facultyRows } = await pool.query(`
+      SELECT u.id, u.email, u.created_at,
+             COALESCE(string_agg(DISTINCT o.name || ' / ' || s.name, ', ' ORDER BY o.name || ' / ' || s.name), '—') AS productions
+      FROM users u
+      LEFT JOIN piece_staff ps ON ps.user_id = u.id
+      LEFT JOIN pieces p ON p.id = ps.piece_id
+      LEFT JOIN seasons s ON s.id = p.season_id
+      LEFT JOIN orgs o ON o.id = s.org_id
+      WHERE (u.role = 'staff' OR u.is_staff = true)
+        AND u.email NOT LIKE '%@demo.castsync.app'
+        AND (u.is_mock IS NULL OR u.is_mock IS FALSE)
+      GROUP BY u.id, u.email, u.created_at
+      ORDER BY u.created_at DESC NULLS LAST
+    `);
+
     const now = new Date();
     const tableRows = rows.map(r => {
       const joined  = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
@@ -5698,15 +5713,25 @@ app.get('/admin/masters', async (req, res) => {
       </tr>`;
     }).join('');
 
+    const facultyTableRows = facultyRows.map(r => {
+      const joined = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+      return `<tr><td>${r.email}</td><td>${joined}</td><td>${r.productions}</td></tr>`;
+    }).join('');
+
     res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>CastSync — Director Accounts</title>
+  <title>CastSync — Accounts</title>
   <style>
     body { font-family:-apple-system,sans-serif; background:#f9fafb; color:#111; margin:0; padding:40px; }
     h1 { font-size:1.4rem; margin-bottom:4px; }
-    .sub { color:#6b7280; font-size:14px; margin-bottom:32px; }
+    .sub { color:#6b7280; font-size:14px; margin-bottom:20px; }
+    .tabs { display:flex; gap:0; margin-bottom:24px; border-bottom:2px solid #e5e7eb; }
+    .tab { padding:8px 20px; font-size:14px; font-weight:600; cursor:pointer; border:none; background:none; color:#6b7280; border-bottom:2px solid transparent; margin-bottom:-2px; }
+    .tab.active { color:#111; border-bottom-color:#111; }
+    .panel { display:none; }
+    .panel.active { display:block; }
     table { border-collapse:collapse; width:100%; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.08); }
     th { background:#111; color:#fff; padding:10px 14px; text-align:left; font-size:12px; font-weight:600; letter-spacing:.4px; text-transform:uppercase; }
     td { padding:10px 14px; border-bottom:1px solid #e5e7eb; font-size:14px; color:#374151; }
@@ -5715,12 +5740,31 @@ app.get('/admin/masters', async (req, res) => {
   </style>
 </head>
 <body>
-  <h1>Director Accounts</h1>
-  <div class="sub">${rows.length} total</div>
-  <table>
-    <thead><tr><th>Email</th><th>Joined</th><th>Plan</th><th>Expires</th><th>Promo Code</th><th>Orgs</th></tr></thead>
-    <tbody>${tableRows || '<tr><td colspan="6" style="color:#9ca3af;text-align:center;padding:24px;">No director accounts yet.</td></tr>'}</tbody>
-  </table>
+  <h1>CastSync Accounts</h1>
+  <div class="tabs">
+    <button class="tab active" onclick="show('directors')">Directors (${rows.length})</button>
+    <button class="tab" onclick="show('faculty')">Faculty (${facultyRows.length})</button>
+  </div>
+  <div class="panel active" id="panel-directors">
+    <table>
+      <thead><tr><th>Email</th><th>Joined</th><th>Plan</th><th>Expires</th><th>Promo Code</th><th>Orgs</th></tr></thead>
+      <tbody>${tableRows || '<tr><td colspan="6" style="color:#9ca3af;text-align:center;padding:24px;">No director accounts yet.</td></tr>'}</tbody>
+    </table>
+  </div>
+  <div class="panel" id="panel-faculty">
+    <table>
+      <thead><tr><th>Email</th><th>Joined</th><th>Productions</th></tr></thead>
+      <tbody>${facultyTableRows || '<tr><td colspan="3" style="color:#9ca3af;text-align:center;padding:24px;">No faculty accounts yet.</td></tr>'}</tbody>
+    </table>
+  </div>
+  <script>
+    function show(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('panel-' + tab).classList.add('active');
+    }
+  </script>
 </body>
 </html>`);
   } catch (err) {
