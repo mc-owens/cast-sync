@@ -47,6 +47,10 @@
             <option value="casting">Casting</option>
           </select>
         </div>
+        <div class="mb-2">
+          <label class="form-label mb-1" style="font-size:12px;color:#666;">Tag dancers (optional)</label>
+          <div id="dancer-chips" style="display:flex;flex-wrap:wrap;gap:6px;min-height:22px;"></div>
+        </div>
         <button id="add-note-btn" class="btn btn-dark btn-sm mt-1">Add Note</button>
         <span id="note-error" class="text-danger ms-2 d-none" style="font-size:13px;"></span>
       </div>
@@ -100,15 +104,20 @@
         list.innerHTML = '<p class="text-muted" style="font-size:13px;">No notes yet.</p>';
         return;
       }
-      list.innerHTML = notes.map(n => `
-        <div class="note-card">
+      list.innerHTML = notes.map(n => {
+        const dancerLine = n.dancer_names && n.dancer_names.length > 0
+          ? `<div class="note-meta mt-1" style="color:#374151;">Tagged: ${n.dancer_names.map(escapeHtml).join(', ')}</div>`
+          : '';
+        return `<div class="note-card">
           <div class="d-flex justify-content-between align-items-start">
             <span class="badge text-bg-secondary">${CATEGORY_LABELS[n.category] || 'General'}</span>
             <span class="note-meta">${formatDate(n.created_at)}</span>
           </div>
           <div class="note-text">${escapeHtml(n.note_text)}</div>
+          ${dancerLine}
           <div class="note-meta">Posted by ${escapeHtml(n.author_email || 'Unknown')}</div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     }
 
     async function loadNotes() {
@@ -128,7 +137,50 @@
       }
     }
 
-    pieceSelect.addEventListener('change', loadNotes);
+    let taggedDancerIds = [];
+    let castMembers = [];
+
+    function renderChips() {
+      const container = document.getElementById('dancer-chips');
+      if (castMembers.length === 0) {
+        container.innerHTML = '<span style="font-size:12px;color:#999;">No cast yet.</span>';
+        return;
+      }
+      container.innerHTML = castMembers.map(d => {
+        const tagged = taggedDancerIds.includes(d.user_id);
+        return `<span class="dancer-chip" data-uid="${d.user_id}" style="cursor:pointer;padding:3px 10px;border-radius:20px;font-size:12px;border:1px solid ${tagged ? '#111827' : '#dee2e6'};background:${tagged ? '#111827' : '#fff'};color:${tagged ? '#fff' : '#374151'};">${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)}</span>`;
+      }).join('');
+    }
+
+    document.getElementById('dancer-chips').addEventListener('click', e => {
+      const chip = e.target.closest('.dancer-chip');
+      if (!chip) return;
+      const uid = parseInt(chip.dataset.uid);
+      if (taggedDancerIds.includes(uid)) {
+        taggedDancerIds = taggedDancerIds.filter(id => id !== uid);
+      } else {
+        taggedDancerIds.push(uid);
+      }
+      renderChips();
+    });
+
+    async function loadCast(pieceId) {
+      castMembers = [];
+      taggedDancerIds = [];
+      document.getElementById('dancer-chips').innerHTML = '';
+      if (!pieceId) return;
+      try {
+        const today = new Date();
+        const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+        const res = await fetch(`/api/staff/pieces/${pieceId}/attendance?date=${dateStr}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        castMembers = data.dancers || [];
+        renderChips();
+      } catch (_) {}
+    }
+
+    pieceSelect.addEventListener('change', () => { loadNotes(); loadCast(pieceSelect.value); });
 
     document.getElementById('add-note-btn').addEventListener('click', async () => {
       const noteText = document.getElementById('note-text').value.trim();
@@ -145,7 +197,7 @@
         const res = await fetch(`/api/staff/pieces/${pieceId}/notes`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ note_text: noteText, category }),
+          body: JSON.stringify({ note_text: noteText, category, dancer_user_ids: taggedDancerIds }),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -155,6 +207,8 @@
         }
         document.getElementById('note-text').value = '';
         document.getElementById('note-category').value = 'general';
+        taggedDancerIds = [];
+        renderChips();
         await loadNotes();
       } catch (err) {
         errEl.textContent = 'Could not connect to server.';
@@ -195,6 +249,7 @@
         const hasPieces = await loadPieces();
         if (hasPieces) {
           loadNotes();
+          loadCast(pieceSelect.value);
         } else {
           document.getElementById('notes-loading').textContent = "You haven't been assigned to any pieces yet.";
         }

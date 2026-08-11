@@ -2574,6 +2574,37 @@ app.get('/api/staff/pieces/:pieceId/attendance', requireAuth('staff'), async (re
   }
 });
 
+app.get('/api/staff/pieces/:pieceId/attendance/history', requireAuth('staff'), async (req, res) => {
+  try {
+    const piece = await verifyStaffPiece(req.session.userId, req.params.pieceId);
+    if (!piece) return res.status(403).json({ error: 'Not assigned to this piece.' });
+    const rows = await pool.query(
+      `SELECT to_char(ar.rehearsal_date,'YYYY-MM-DD') AS date,
+              dp.first_name, dp.last_name, ar.present, ar.status
+       FROM attendance_records ar
+       JOIN dancer_profiles dp ON dp.user_id = ar.user_id
+       WHERE ar.piece_id = $1
+       ORDER BY ar.rehearsal_date DESC, dp.last_name, dp.first_name`,
+      [req.params.pieceId]
+    );
+    const byDate = new Map();
+    for (const r of rows.rows) {
+      if (!byDate.has(r.date)) byDate.set(r.date, []);
+      byDate.get(r.date).push({ first_name: r.first_name, last_name: r.last_name, present: r.present, status: r.status });
+    }
+    const result = [...byDate.entries()].map(([date, dancers]) => ({
+      date,
+      present_count: dancers.filter(d => d.present).length,
+      total: dancers.length,
+      dancers,
+    }));
+    res.json(result);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load attendance history.' });
+  }
+});
+
 app.post('/api/staff/pieces/:pieceId/attendance', requireAuth('staff'), async (req, res) => {
   const { date, user_id, present, status, status_note } = req.body;
   if (!date || !user_id) return res.status(400).json({ error: 'date and user_id are required.' });
@@ -2608,7 +2639,13 @@ app.get('/api/staff/pieces/:pieceId/notes', requireAuth('staff'), async (req, re
     if (!piece) return res.status(403).json({ error: 'Not assigned to this piece.' });
 
     const result = await pool.query(
-      `SELECT pn.id, pn.note_text, pn.category, pn.created_at, u.email AS author_email
+      `SELECT pn.id, pn.note_text, pn.category, pn.created_at, u.email AS author_email,
+              COALESCE(
+                (SELECT array_agg(dp2.first_name || ' ' || dp2.last_name ORDER BY dp2.last_name)
+                 FROM unnest(pn.dancer_user_ids) AS uid
+                 JOIN dancer_profiles dp2 ON dp2.user_id = uid),
+                NULL
+              ) AS dancer_names
        FROM production_notes pn
        JOIN production_note_pieces pnp ON pnp.note_id = pn.id
        LEFT JOIN users u ON u.id = pn.author_user_id
@@ -2624,20 +2661,56 @@ app.get('/api/staff/pieces/:pieceId/notes', requireAuth('staff'), async (req, re
 });
 
 app.post('/api/staff/pieces/:pieceId/notes', requireAuth('staff'), async (req, res) => {
-  const { note_text, category } = req.body;
+  const { note_text, category, dancer_user_ids } = req.body;
   if (!note_text || !note_text.trim()) return res.status(400).json({ error: 'Note text is required.' });
   try {
     const piece = await verifyStaffPiece(req.session.userId, req.params.pieceId);
     if (!piece) return res.status(403).json({ error: 'Not assigned to this piece.' });
     const cat = NOTE_CATEGORIES.includes(category) ? category : 'general';
+    const dancerIds = Array.isArray(dancer_user_ids) ? dancer_user_ids.map(Number).filter(Boolean) : [];
 
     const result = await pool.query(
-      `INSERT INTO production_notes (season_id, author_user_id, note_text, category)
-       VALUES ($1,$2,$3,$4) RETURNING id`,
-      [piece.season_id, req.session.userId, note_text.trim(), cat]
+      `INSERT INTO production_notes (season_id, author_user_id, note_text, category, dancer_user_ids)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [piece.season_id, req.session.userId, note_text.trim(), cat, dancerIds]
     );
     const noteId = result.rows[0].id;
     await pool.query('INSERT INTO production_note_pieces (note_id, piece_id) VALUES ($1,$2)', [noteId, req.params.pieceId]);
+
+    // Notify other production staff for pieces where the mentioned dancers are also cast
+    if (emailEnabled && dancerIds.length > 0) {
+      const staffRows = await pool.query(
+        `SELECT DISTINCT ps.user_id, u.email
+         FROM piece_casts pc
+         JOIN piece_staff ps ON ps.piece_id = pc.piece_id
+         JOIN users u ON u.id = ps.user_id
+         WHERE pc.user_id = ANY($1::integer[]) AND ps.user_id != $2`,
+        [dancerIds, req.session.userId]
+      );
+      const authorRow = await pool.query('SELECT email FROM users WHERE id = $1', [req.session.userId]);
+      const authorEmail = authorRow.rows[0]?.email || 'A production staff member';
+      const categoryLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+      const dancerNames = await pool.query(
+        `SELECT first_name || ' ' || last_name AS name FROM dancer_profiles WHERE user_id = ANY($1::integer[])`,
+        [dancerIds]
+      );
+      const nameList = dancerNames.rows.map(r => r.name).join(', ');
+      for (const { user_id, email } of staffRows.rows) {
+        if (!(await emailAllowed(user_id, 'production_notes'))) continue;
+        resend.emails.send({
+          from: FROM_EMAIL,
+          to: email,
+          subject: `Production Note: ${nameList} mentioned`,
+          html: `<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#222;">
+            <h3 style="margin-bottom:4px;">Production Note</h3>
+            <p style="color:#555;font-size:13px;margin-top:0;">${categoryLabel} &middot; ${escapeHtml(piece.piece_name)}</p>
+            <p style="white-space:pre-wrap;border-left:3px solid #ddd;padding-left:12px;color:#333;">${note_text.trim()}</p>
+            <p style="color:#555;font-size:13px;">Posted by ${escapeHtml(authorEmail)}. Dancer${dancerIds.length !== 1 ? 's' : ''} mentioned: ${escapeHtml(nameList)}</p>
+          </div>`,
+        }).catch(err => console.error('Staff note notification error:', err.message));
+      }
+    }
+
     res.status(201).json({ id: noteId });
   } catch (err) {
     console.error(err.message);
@@ -5130,6 +5203,51 @@ app.patch('/api/season/form-schema', requireAuth('master'), async (req, res) => 
   }
 });
 
+// ── My Notes (private, per-user) ─────────────────────────────────────────────
+
+app.get('/api/my-notes', requireAuth(), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, note_text, to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at
+       FROM private_notes WHERE user_id = $1 ORDER BY created_at DESC`,
+      [req.session.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load notes.' });
+  }
+});
+
+app.post('/api/my-notes', requireAuth(), async (req, res) => {
+  const { note_text } = req.body;
+  if (!note_text || !note_text.trim()) return res.status(400).json({ error: 'Note text is required.' });
+  try {
+    const result = await pool.query(
+      `INSERT INTO private_notes (user_id, note_text) VALUES ($1,$2) RETURNING id, to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS created_at`,
+      [req.session.userId, note_text.trim()]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save note.' });
+  }
+});
+
+app.delete('/api/my-notes/:id', requireAuth(), async (req, res) => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM private_notes WHERE id = $1 AND user_id = $2 RETURNING id',
+      [req.params.id, req.session.userId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Note not found.' });
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to delete note.' });
+  }
+});
+
 // ── Production Notes ──────────────────────────────────────────────────────────
 // Internal faculty notes (absences, injuries, attendance, casting, general). Scoped
 // to the active season; never exposed to any auditionee-facing route.
@@ -5376,6 +5494,39 @@ app.get('/api/season/attendance', requireAuth('master'), async (req, res) => {
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to load attendance.' });
+  }
+});
+
+// GET /api/season/attendance/history?piece_id=123: all logged dates with full dancer records
+app.get('/api/season/attendance/history', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  const { piece_id } = req.query;
+  if (!seasonId || !piece_id) return res.status(400).json({ error: 'piece_id required.' });
+  try {
+    const rows = await pool.query(
+      `SELECT to_char(ar.rehearsal_date,'YYYY-MM-DD') AS date,
+              dp.first_name, dp.last_name, ar.present, ar.status
+       FROM attendance_records ar
+       JOIN dancer_profiles dp ON dp.user_id = ar.user_id
+       WHERE ar.piece_id = $1 AND ar.season_id = $2
+       ORDER BY ar.rehearsal_date DESC, dp.last_name, dp.first_name`,
+      [piece_id, seasonId]
+    );
+    const byDate = new Map();
+    for (const r of rows.rows) {
+      if (!byDate.has(r.date)) byDate.set(r.date, []);
+      byDate.get(r.date).push({ first_name: r.first_name, last_name: r.last_name, present: r.present, status: r.status });
+    }
+    const result = [...byDate.entries()].map(([date, dancers]) => ({
+      date,
+      present_count: dancers.filter(d => d.present).length,
+      total: dancers.length,
+      dancers,
+    }));
+    res.json(result);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load attendance history.' });
   }
 });
 
@@ -6799,6 +6950,19 @@ async function runMigrations() {
     }
     console.log('Migration step 37 (segment backfill) complete.');
   } catch (err) { console.error('Migration step 37 error:', err.message); }
+
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS private_notes (
+        id         SERIAL PRIMARY KEY,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        note_text  TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_private_notes_user_id ON private_notes (user_id);
+    `);
+    console.log('Migration step 38 (private_notes table) complete.');
+  } catch (err) { console.error('Migration step 38 error:', err.message); }
 
   console.log('All migrations complete.');
 }

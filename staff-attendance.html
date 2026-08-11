@@ -33,17 +33,35 @@
 
       <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
         <select id="piece-select" class="form-select form-select-sm" style="width:220px;"></select>
-        <button id="prev-day-btn" class="btn btn-sm btn-outline-secondary">&lsaquo;</button>
-        <input type="date" id="attendance-date" class="form-control form-control-sm" style="width:160px;">
-        <button id="next-day-btn" class="btn btn-sm btn-outline-secondary">&rsaquo;</button>
-        <button id="today-btn" class="btn btn-sm btn-outline-secondary">Today</button>
+        <div style="display:flex;gap:0;border:1px solid #dee2e6;border-radius:6px;overflow:hidden;">
+          <button id="tab-log-btn" class="btn btn-sm" style="border-radius:0;border:none;padding:4px 14px;font-size:13px;background:#111827;color:#fff;font-weight:600;">Log</button>
+          <button id="tab-logs-btn" class="btn btn-sm" style="border-radius:0;border:none;padding:4px 14px;font-size:13px;background:transparent;color:#374151;">Logs</button>
+        </div>
       </div>
 
-      <div id="mismatch-warning" class="alert alert-warning py-2 px-3 mb-2 d-none" style="font-size:13px;"></div>
-      <div id="attendance-count" style="display:none;font-size:13px;font-weight:600;color:#374151;margin-bottom:10px;"></div>
+      <!-- Log tab -->
+      <div id="log-tab">
+        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+          <button id="prev-day-btn" class="btn btn-sm btn-outline-secondary">&lsaquo;</button>
+          <input type="date" id="attendance-date" class="form-control form-control-sm" style="width:160px;">
+          <button id="next-day-btn" class="btn btn-sm btn-outline-secondary">&rsaquo;</button>
+          <button id="today-btn" class="btn btn-sm btn-outline-secondary">Today</button>
+        </div>
+        <div id="mismatch-warning" class="alert alert-warning py-2 px-3 mb-2 d-none" style="font-size:13px;"></div>
+        <div id="attendance-count" style="display:none;font-size:13px;font-weight:600;color:#374151;margin-bottom:10px;"></div>
+        <div id="attendance-loading" class="text-muted" style="font-size:14px;">Loading…</div>
+        <div id="attendance-list"></div>
+        <div id="log-save-wrap" style="display:none;margin-top:16px;">
+          <button id="log-save-btn" class="btn btn-dark btn-sm px-4">Log Attendance</button>
+          <span id="log-saved-msg" style="display:none;font-size:13px;color:#16a34a;margin-left:10px;">Saved.</span>
+        </div>
+      </div>
 
-      <div id="attendance-loading" class="text-muted" style="font-size:14px;">Loading…</div>
-      <div id="attendance-list"></div>
+      <!-- Logs tab -->
+      <div id="logs-tab" style="display:none;">
+        <div id="logs-loading" class="text-muted" style="font-size:14px;">Loading…</div>
+        <div id="logs-list"></div>
+      </div>
 
     </div>
   </div>
@@ -191,6 +209,7 @@
         }
         data.dancers.forEach(d => list.appendChild(renderRow(d)));
         updateCount();
+        document.getElementById('log-save-wrap').style.display = data.dancers.length > 0 ? '' : 'none';
       } catch (err) {
         document.getElementById('attendance-loading').textContent = 'Could not load attendance.';
       }
@@ -200,7 +219,84 @@
     document.getElementById('next-day-btn').addEventListener('click', () => { dateInput.value = shiftDate(dateInput.value, 1); loadAttendance(); });
     document.getElementById('today-btn').addEventListener('click', () => { dateInput.value = todayStr(); loadAttendance(); });
     dateInput.addEventListener('change', loadAttendance);
-    pieceSelect.addEventListener('change', loadAttendance);
+    pieceSelect.addEventListener('change', () => {
+      if (activeTab === 'log') loadAttendance();
+      else loadLogs();
+    });
+
+    let activeTab = 'log';
+    function showTab(tab) {
+      activeTab = tab;
+      document.getElementById('log-tab').style.display  = tab === 'log'  ? '' : 'none';
+      document.getElementById('logs-tab').style.display = tab === 'logs' ? '' : 'none';
+      document.getElementById('tab-log-btn').style.background  = tab === 'log'  ? '#111827' : 'transparent';
+      document.getElementById('tab-log-btn').style.color       = tab === 'log'  ? '#fff' : '#374151';
+      document.getElementById('tab-log-btn').style.fontWeight  = tab === 'log'  ? '600' : '400';
+      document.getElementById('tab-logs-btn').style.background = tab === 'logs' ? '#111827' : 'transparent';
+      document.getElementById('tab-logs-btn').style.color      = tab === 'logs' ? '#fff' : '#374151';
+      document.getElementById('tab-logs-btn').style.fontWeight = tab === 'logs' ? '600' : '400';
+      if (tab === 'logs') loadLogs();
+    }
+    document.getElementById('tab-log-btn').addEventListener('click',  () => showTab('log'));
+    document.getElementById('tab-logs-btn').addEventListener('click', () => showTab('logs'));
+
+    document.getElementById('log-save-btn').addEventListener('click', async () => {
+      const rows = document.querySelectorAll('#attendance-list .attendance-row');
+      if (rows.length === 0) return;
+      const btn = document.getElementById('log-save-btn');
+      btn.disabled = true; btn.textContent = 'Saving...';
+      let ok = true;
+      for (const row of rows) {
+        try {
+          const r = await fetch(`/api/staff/pieces/${pieceSelect.value}/attendance`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: dateInput.value, user_id: parseInt(row.dataset.userId), present: row.querySelector('.present-toggle').checked, status: row.querySelector('.status-select').value, status_note: row.querySelector('.other-note').value.trim() }),
+          });
+          if (!r.ok) ok = false;
+        } catch (_) { ok = false; }
+      }
+      btn.disabled = false; btn.textContent = 'Log Attendance';
+      const msg = document.getElementById('log-saved-msg');
+      msg.textContent = ok ? 'Saved.' : 'Some records could not be saved.';
+      msg.style.color = ok ? '#16a34a' : '#dc2626';
+      msg.style.display = '';
+      setTimeout(() => { msg.style.display = 'none'; }, 2500);
+    });
+
+    async function loadLogs() {
+      const pieceId = pieceSelect.value;
+      if (!pieceId) return;
+      const logsEl = document.getElementById('logs-list');
+      document.getElementById('logs-loading').style.display = '';
+      logsEl.innerHTML = '';
+      try {
+        const res = await fetch(`/api/staff/pieces/${pieceId}/attendance/history`);
+        if (!res.ok) throw new Error();
+        const logs = await res.json();
+        document.getElementById('logs-loading').style.display = 'none';
+        if (logs.length === 0) { logsEl.innerHTML = '<p class="text-muted" style="font-size:13px;">No attendance logged yet.</p>'; return; }
+        logsEl.innerHTML = logs.map(log => {
+          const dateLabel = new Date(log.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+          const rows = log.dancers.map(d =>
+            `<div style="display:flex;gap:10px;font-size:13px;padding:5px 0;border-bottom:1px solid #f9fafb;">
+               <span style="flex:1;">${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)}</span>
+               <span style="font-weight:${d.present ? '600' : '400'};color:${d.present ? '#16a34a' : '#dc2626'};">${d.present ? 'Present' : 'Absent'}</span>
+             </div>`
+          ).join('');
+          return `<div style="border:1px solid #e5e7eb;border-radius:8px;margin-bottom:10px;overflow:hidden;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f9fafb;cursor:pointer;" class="log-header">
+              <span style="font-weight:600;font-size:14px;">${dateLabel}</span>
+              <span style="font-size:13px;color:#6b7280;">${log.present_count}/${log.total} present</span>
+            </div>
+            <div class="log-rows" style="padding:0 14px;display:none;">${rows}</div>
+          </div>`;
+        }).join('');
+        logsEl.addEventListener('click', e => {
+          const h = e.target.closest('.log-header');
+          if (h) h.nextElementSibling.style.display = h.nextElementSibling.style.display === 'none' ? '' : 'none';
+        }, { once: false });
+      } catch (_) { document.getElementById('logs-loading').textContent = 'Could not load logs.'; }
+    }
   </script>
 
   <script>

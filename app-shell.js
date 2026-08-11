@@ -24,6 +24,7 @@
       { label: 'Attendance',       href: 'attendance.html' },
       { label: 'Absence Requests', href: 'absence-requests.html' },
       { label: 'Production Notes', href: 'notes.html' },
+      { label: 'My Notes',         href: 'my-notes.html' },
     ]},
     { section: 'Settings', items: [
       { label: 'Production Settings', href: 'production-settings.html' },
