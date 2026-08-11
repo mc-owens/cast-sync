@@ -5284,7 +5284,7 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
     const piece = pieceRow.rows[0];
 
     const [segsResult, datesResult, blocksResult] = await Promise.all([
-      pool.query('SELECT id, start_date, label FROM schedule_segments WHERE season_id = $1 ORDER BY start_date', [seasonId]),
+      pool.query('SELECT id, to_char(start_date, \'YYYY-MM-DD\') AS start_date, label FROM schedule_segments WHERE season_id = $1 ORDER BY start_date', [seasonId]),
       pool.query('SELECT to_char(end_date, \'YYYY-MM-DD\') AS end_date FROM seasons WHERE id = $1', [seasonId]),
       pool.query('SELECT day, start_time, end_time, segment_id FROM master_blocks WHERE piece_id = $1 ORDER BY created_at', [req.params.pieceId]),
     ]);
