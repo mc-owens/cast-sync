@@ -1578,7 +1578,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetch('/api/master-blocks', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ piece_id: piece.id, day: DAYS[dayIndex], start_time: startTime, end_time: endTime, room_id: roomId, current_date: window._currentWeekMonday || new Date().toISOString().slice(0, 10) }),
+        body:    JSON.stringify({ piece_id: piece.id, day: DAYS[dayIndex], start_time: startTime, end_time: endTime, room_id: roomId, current_date: (() => { if (!window._currentWeekMonday) return new Date().toISOString().slice(0, 10); const d = new Date(window._currentWeekMonday + 'T00:00:00'); d.setDate(d.getDate() + dayIndex); return d.toISOString().slice(0, 10); })() }),
       });
       if (!res.ok) { alert('Could not save block.'); return; }
       const saved = await res.json();
