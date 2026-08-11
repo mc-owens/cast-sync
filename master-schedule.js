@@ -30,7 +30,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   let offsetY             = 0;
   let activeBlockId       = null;
   let originalDayBeforeDrag = null;
-  let pendingDragMove     = null;
+  let pendingDragMove       = null;
+  let blockWasDragged       = false;
 
   // ── Rehearsal drawer state ────────────────────────────────────────────────────
   let drawerPieceCasts       = [];
@@ -1468,6 +1469,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (currentBlock.classList.contains('block-day-off')) return;
       activeBlockId = currentBlock.dataset.dbId;
       originalDayBeforeDrag = currentBlock.dataset.day;
+      blockWasDragged = false;
       const dayWidth = grid.clientWidth / 7;
       const dayIdx   = DAYS.indexOf(currentBlock.dataset.day);
       currentBlock.style.width = `${dayWidth}px`;
@@ -1545,6 +1547,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentBlock.style.top   = `${y}px`;
       currentBlock.style.left  = `${dayIndex * dayWidth}px`;
       currentBlock.dataset.day = DAYS[dayIndex];
+      if (currentBlock.classList.contains('master-block')) blockWasDragged = true;
     }
   });
 
@@ -1584,15 +1587,17 @@ document.addEventListener('DOMContentLoaded', async () => {
           repositionAllBlocks();
         } catch (err) { console.error('Placeholder update failed:', err); }
         activeBlockId = null;
-      } else if (!wasResizing) {
+      } else if (!wasResizing && blockWasDragged) {
         // Dragged a master block — ask whether to move just this occurrence or all
         pendingDragMove = { blockEl: blockToUpdate, blockId: activeBlockId, originalDay: originalDayBeforeDrag, pos };
         activeBlockId = null;
         originalDayBeforeDrag = null;
+        blockWasDragged = false;
         const timeLabel = blockToUpdate.querySelector('span:nth-child(2)');
         if (timeLabel) timeLabel.textContent = `${pos.start_time} – ${pos.end_time}`;
         bootstrap.Modal.getOrCreateInstance(document.getElementById('moveScopeModal')).show();
       } else {
+        blockWasDragged = false;
         const timeLabel = blockToUpdate.querySelector('span:nth-child(2)');
         if (timeLabel) timeLabel.textContent = `${pos.start_time} – ${pos.end_time}`;
         try {
