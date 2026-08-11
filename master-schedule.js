@@ -1272,10 +1272,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     block.style.zIndex   = '3';
     const piece = pieces.find(p => p.id === occ.piece_id);
     if (piece) { block.style.border = `2px dashed ${piece.color}`; block.style.background = hexToRgba(piece.color, 0.3); }
-    const label = occ.source === 'moved' ? 'Moved here' : 'One-time';
-    block.title = `${label}${occ.note ? `: ${occ.note}` : ''}`;
+    const label = occ.source === 'moved' ? 'Moved' : 'OTR';
+    const displayName = occ.note || (piece ? piece.name : 'Rehearsal');
+    block.title = `${displayName} (${label})`;
     block.innerHTML = `
-      <span style="font-size:11px;font-weight:bold;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${piece ? piece.name : 'Rehearsal'} (${label})</span>
+      <span style="font-size:11px;font-weight:bold;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${displayName} (${label})</span>
       <span style="font-size:10px;display:block;opacity:0.8;">${occ.start_time} – ${occ.end_time}</span>
       <button class="delete-btn" title="Remove">&times;</button>`;
     block.querySelector('.delete-btn').addEventListener('mousedown', async (e) => {
