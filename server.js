@@ -4980,9 +4980,15 @@ Piece matching rules:
   });
 
   const raw = response.content[0]?.text || '';
-  const m = raw.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error('AI did not return valid JSON.');
-  return JSON.parse(m[0]);
+  // Strip optional markdown fences before parsing
+  const stripped = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  const m = stripped.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error(`AI response could not be parsed as JSON. Raw: ${raw.slice(0, 200)}`);
+  try {
+    return JSON.parse(m[0]);
+  } catch (e) {
+    throw new Error(`JSON parse failed: ${e.message}. Raw snippet: ${m[0].slice(0, 200)}`);
+  }
 }
 
 app.post('/api/schedule/ai-import/parse', requireAuth('master'), upload.array('files', 3), async (req, res) => {
@@ -5027,8 +5033,8 @@ app.post('/api/schedule/ai-import/parse', requireAuth('master'), upload.array('f
       pieces,
     });
   } catch (err) {
-    console.error('AI import parse error:', err.message);
-    res.status(500).json({ error: 'Could not analyze schedule. Please try again.' });
+    console.error('AI import parse error:', err.message, err.stack);
+    res.status(500).json({ error: err.message || 'Could not analyze schedule. Please try again.' });
   }
 });
 
