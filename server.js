@@ -4879,7 +4879,7 @@ Piece matching: match document piece names to the production pieces above by ID.
   return JSON.parse(match[0]);
 }
 
-async function parseFullScheduleWithAI(content, { season, pieces, segments }) {
+async function parseFullScheduleWithAI(msgContent, { season, pieces, segments }) {
   if (!anthropic) throw new Error('ANTHROPIC_API_KEY not configured.');
 
   const fmt = d => d ? new Date(d + 'T00:00:00').toISOString().slice(0,10) : null;
@@ -4967,13 +4967,9 @@ Piece matching rules:
 - "missing": no match; set piece_id to null
 - All times 24-hour HH:MM. All dates YYYY-MM-DD.`;
 
-  let msgContent;
-  if (content.type === 'text') {
-    msgContent = [{ type: 'text', text: content.data }];
-  } else if (content.type === 'image') {
-    msgContent = [{ type: 'image', source: { type: 'base64', media_type: content.mediaType, data: content.data } }];
-  } else {
-    msgContent = [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: content.data } }];
+  // Claude requires at least one text block in the user turn alongside images/documents
+  if (!msgContent.some(b => b.type === 'text')) {
+    msgContent.push({ type: 'text', text: 'Extract the schedule information from the document(s) above.' });
   }
 
   const response = await anthropic.messages.create({
@@ -4989,7 +4985,7 @@ Piece matching rules:
   return JSON.parse(m[0]);
 }
 
-app.post('/api/schedule/ai-import/parse', requireAuth('master'), upload.single('file'), async (req, res) => {
+app.post('/api/schedule/ai-import/parse', requireAuth('master'), upload.array('files', 3), async (req, res) => {
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   if (!anthropic) return res.status(503).json({ error: 'Import feature not configured. Contact support.' });
@@ -5003,17 +4999,27 @@ app.post('/api/schedule/ai-import/parse', requireAuth('master'), upload.single('
     const pieces = piecesRes.rows;
     const segments = segmentsRes.rows;
 
-    let content;
     const pastedText = (req.body.text || '').trim();
-    if (req.file) {
-      content = await extractImportContent(req.file);
-    } else if (pastedText) {
-      content = { type: 'text', data: pastedText };
-    } else {
+    const files = req.files || [];
+    if (files.length === 0 && !pastedText) {
       return res.status(400).json({ error: 'Please provide a file or paste text.' });
     }
 
-    const parsed = await parseFullScheduleWithAI(content, { season, pieces, segments });
+    // Build Claude content blocks from all uploaded files
+    const msgContent = [];
+    for (const file of files) {
+      const c = await extractImportContent(file);
+      if (c.type === 'text') {
+        msgContent.push({ type: 'text', text: c.data });
+      } else if (c.type === 'image') {
+        msgContent.push({ type: 'image', source: { type: 'base64', media_type: c.mediaType, data: c.data } });
+      } else {
+        msgContent.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: c.data } });
+      }
+    }
+    if (pastedText) msgContent.push({ type: 'text', text: pastedText });
+
+    const parsed = await parseFullScheduleWithAI(msgContent, { season, pieces, segments });
     res.json({
       schedule_changes: parsed.schedule_changes || [],
       special_events: parsed.special_events || [],
