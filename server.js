@@ -4913,7 +4913,7 @@ Extract three categories from the document:
 Available day values: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
 Available event_type values: tech, dress, spacing, photo_dress, performance, warm_up, costume_fitting, company_meeting, no_rehearsal, notes_cleaning, load_in_strike, other
 
-Return ONLY valid JSON:
+Return ONLY valid JSON (omit original_text from schedule_changes and special_events to keep the response compact):
 {
   "schedule_changes": [
     {
@@ -4921,7 +4921,6 @@ Return ONLY valid JSON:
       "label": "short name for this rehearsal period",
       "status": "ready",
       "status_reason": null,
-      "original_text": "source text snippet",
       "recurring_blocks": [
         {
           "piece_name": "piece name as written in the document",
@@ -4939,7 +4938,6 @@ Return ONLY valid JSON:
     {
       "status": "ready",
       "status_reason": null,
-      "original_text": "source text snippet",
       "event_type": "performance",
       "title": "event title",
       "date": "YYYY-MM-DD",
@@ -4956,7 +4954,7 @@ Return ONLY valid JSON:
   "uncertain_items": [
     {
       "description": "what is unclear or could not be categorized",
-      "original_text": "source text snippet"
+      "original_text": "brief quote from source, max 100 chars"
     }
   ]
 }
