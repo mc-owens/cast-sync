@@ -4868,7 +4868,7 @@ Piece matching: match document piece names to the production pieces above by ID.
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 8192,
+    max_tokens: 16000,
     system,
     messages: [{ role: 'user', content: msgContent }],
   });
@@ -4979,7 +4979,7 @@ Piece matching rules:
 
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 8192,
+    max_tokens: 16000,
     system,
     messages: [{ role: 'user', content: msgContent }],
   });
