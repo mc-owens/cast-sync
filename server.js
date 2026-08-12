@@ -4897,77 +4897,32 @@ async function parseFullScheduleWithAI(msgContent, { season, pieces, segments })
 Production context:
 - Season: ${season.season_name || 'Unnamed'}
 - Season dates: ${dateRange}
-- Existing pieces in this production:
-${pieces.length ? pieces.map(p => `  - ID ${p.id}: "${p.name}"`).join('\n') : '  (no pieces defined yet)'}
-- Existing schedule changes already in the system:
-${segments.length ? segments.map(s => `  - ${fmt(s.start_date)}: ${s.label || 'Unnamed'}`).join('\n') : '  (none yet)'}
+- Existing pieces:
+${pieces.length ? pieces.map(p => `  ${p.id}:${p.name}`).join('\n') : '  (none)'}
+- Schedule periods already in system:
+${segments.length ? segments.map(s => `  ${fmt(s.start_date)}:${s.label || 'Unnamed'}`).join('\n') : '  (none)'}
 
-Extract three categories from the document:
+Extract from the document:
+1. SCHEDULE CHANGES - periods when the weekly rehearsal pattern changes (not one-time events)
+2. SPECIAL EVENTS - one-time events: performances, tech week, photo shoots, costume fittings, company meetings, days off, etc.
+3. UNCERTAIN ITEMS - anything you cannot parse or categorize
 
-1. SCHEDULE CHANGES: periods when the weekly rehearsal pattern changes. Each has a start date and a list of recurring weekly rehearsal blocks. Do NOT include one-time events as schedule changes.
+Output ONLY pipe-delimited lines, one record per line, nothing else.
 
-2. SPECIAL EVENTS: one-time events like performances, tech week, photo shoots, costume fittings, company meetings, days off, etc.
+Format:
+CHANGE|YYYY-MM-DD|label max 40 chars|ready or needs_review or missing|status reason or -
+BLOCK|piece name|piece_id or null|day|HH:MM|HH:MM
+BLOCK|piece name|piece_id or null|day|HH:MM|HH:MM|needs_review or missing|brief note
+EVENT|event_type|title|YYYY-MM-DD|HH:MM or -|HH:MM or -|full_cast or piece_id|location or -|true or false
+UNKNOWN|description|brief source quote max 80 chars or -
 
-3. UNCERTAIN ITEMS: anything you could not categorize, could not parse, or have low confidence about.
-
-Available day values: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
-Available event_type values: tech, dress, spacing, photo_dress, performance, warm_up, costume_fitting, company_meeting, no_rehearsal, notes_cleaning, load_in_strike, other
-
-COMPACT OUTPUT RULES (mandatory - large schedules will fail if output is too long):
-- DO NOT include an "original_text" field anywhere in schedule_changes or special_events. It is forbidden in those sections.
-- Omit any field whose value is null, unless it is piece_id (always include piece_id even if null).
-- Omit status_reason when null, location when null, piece_match_notes when null, notes when null, piece_match_status when "ready".
-- Keep labels short (under 60 chars).
-
-Return ONLY valid JSON:
-{
-  "schedule_changes": [
-    {
-      "start_date": "YYYY-MM-DD",
-      "label": "short period name",
-      "status": "ready",
-      "recurring_blocks": [
-        {
-          "piece_name": "piece name as written in the document",
-          "piece_id": 1,
-          "day": "Monday",
-          "start_time": "HH:MM",
-          "end_time": "HH:MM"
-        }
-      ]
-    }
-  ],
-  "special_events": [
-    {
-      "status": "ready",
-      "event_type": "performance",
-      "title": "event title",
-      "date": "YYYY-MM-DD",
-      "start_time": "HH:MM",
-      "end_time": "HH:MM",
-      "applies_to": "full_cast",
-      "piece_ids": [],
-      "visible_to_dancers": true
-    }
-  ],
-  "uncertain_items": [
-    {
-      "description": "what is unclear",
-      "original_text": "brief quote, max 80 chars"
-    }
-  ]
-}
-
-Status field rules:
-- "ready": confident extraction
-- "needs_review": something inferred or uncertain - include status_reason explaining what
-- "missing": required field cannot be determined
-
-Piece matching rules:
-- If confident match: set piece_id to the integer ID; omit piece_match_status and piece_match_notes
-- If uncertain: set piece_id to best-guess ID, set piece_match_status to "needs_review", include piece_match_notes
-- If no match: set piece_id to null, set piece_match_status to "missing"
-- All times 24-hour HH:MM. All dates YYYY-MM-DD.`;
+Rules:
+- BLOCK lines belong to the most recent CHANGE line above them
+- Use - for null/empty fields. Never use | inside a field value.
+- All times 24h HH:MM. All dates YYYY-MM-DD.
+- piece_id must be an integer from the pieces list, or null if no match
+- event_type values: tech, dress, spacing, photo_dress, performance, warm_up, costume_fitting, company_meeting, no_rehearsal, notes_cleaning, load_in_strike, other
+- day values: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday`;
 
   // Claude requires at least one text block in the user turn alongside images/documents
   if (!msgContent.some(b => b.type === 'text')) {
@@ -4981,16 +4936,77 @@ Piece matching rules:
     messages: [{ role: 'user', content: msgContent }],
   });
   const message = await stream.finalMessage();
-  const raw = message.content[0]?.text || '';
-  // Strip optional markdown fences before parsing
-  const stripped = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
-  const m = stripped.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error(`AI response could not be parsed as JSON. Raw: ${raw.slice(0, 200)}`);
-  try {
-    return JSON.parse(m[0]);
-  } catch (e) {
-    throw new Error(`JSON parse failed: ${e.message}. Raw snippet: ${m[0].slice(0, 200)}`);
+
+  if (message.stop_reason === 'max_tokens') {
+    throw new Error('The schedule document is too large to process in one pass. Try splitting it into smaller sections and importing them separately.');
   }
+
+  const raw = (message.content[0]?.text || '').trim();
+
+  // Parse pipe-delimited format into the structure the rest of the code expects
+  const schedule_changes = [];
+  const special_events = [];
+  const uncertain_items = [];
+  let currentChange = null;
+
+  for (const rawLine of raw.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const p = line.split('|');
+
+    if (p[0] === 'CHANGE') {
+      currentChange = {
+        start_date: p[1] || null,
+        label: p[2] || 'Unnamed',
+        status: p[3] || 'ready',
+        status_reason: (p[4] && p[4] !== '-') ? p[4] : null,
+        original_text: null,
+        recurring_blocks: []
+      };
+      schedule_changes.push(currentChange);
+    } else if (p[0] === 'BLOCK' && currentChange) {
+      const block = {
+        piece_name: p[1] || '',
+        piece_id: (p[2] && p[2] !== 'null') ? parseInt(p[2]) : null,
+        day: p[3] || '',
+        start_time: p[4] || '',
+        end_time: p[5] || '',
+        piece_match_status: (p[6] && p[6] !== '-') ? p[6] : 'ready',
+        piece_match_notes: (p[7] && p[7] !== '-') ? p[7] : null
+      };
+      currentChange.recurring_blocks.push(block);
+    } else if (p[0] === 'EVENT') {
+      const pieceField = p[6] || 'full_cast';
+      const pieceId = parseInt(pieceField);
+      special_events.push({
+        status: 'ready',
+        status_reason: null,
+        original_text: null,
+        event_type: p[1] || 'other',
+        title: p[2] || 'Untitled',
+        date: p[3] || null,
+        start_time: (p[4] && p[4] !== '-') ? p[4] : null,
+        end_time: (p[5] && p[5] !== '-') ? p[5] : null,
+        applies_to: isNaN(pieceId) ? pieceField : 'piece',
+        piece_ids: isNaN(pieceId) ? [] : [pieceId],
+        piece_match_notes: null,
+        location: (p[7] && p[7] !== '-') ? p[7] : null,
+        notes: null,
+        visible_to_dancers: p[8] !== 'false'
+      });
+    } else if (p[0] === 'UNKNOWN') {
+      uncertain_items.push({
+        description: p[1] || '',
+        original_text: (p[2] && p[2] !== '-') ? p[2] : null
+      });
+    }
+  }
+
+  if (schedule_changes.length === 0 && special_events.length === 0 && uncertain_items.length === 0) {
+    throw new Error('Could not extract any schedule data. Raw response: ' + raw.slice(0, 300));
+  }
+
+  return { schedule_changes, special_events, uncertain_items };
 }
 
 app.post('/api/schedule/ai-import/parse', requireAuth('master'), upload.array('files', 3), async (req, res) => {
