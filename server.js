@@ -4913,20 +4913,23 @@ Extract three categories from the document:
 Available day values: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
 Available event_type values: tech, dress, spacing, photo_dress, performance, warm_up, costume_fitting, company_meeting, no_rehearsal, notes_cleaning, load_in_strike, other
 
-Return ONLY valid JSON (omit original_text from schedule_changes and special_events to keep the response compact):
+COMPACT OUTPUT RULES (mandatory - large schedules will fail if output is too long):
+- DO NOT include an "original_text" field anywhere in schedule_changes or special_events. It is forbidden in those sections.
+- Omit any field whose value is null, unless it is piece_id (always include piece_id even if null).
+- Omit status_reason when null, location when null, piece_match_notes when null, notes when null, piece_match_status when "ready".
+- Keep labels short (under 60 chars).
+
+Return ONLY valid JSON:
 {
   "schedule_changes": [
     {
       "start_date": "YYYY-MM-DD",
-      "label": "short name for this rehearsal period",
+      "label": "short period name",
       "status": "ready",
-      "status_reason": null,
       "recurring_blocks": [
         {
           "piece_name": "piece name as written in the document",
-          "piece_id": <integer id from the pieces list above, or null>,
-          "piece_match_status": "ready",
-          "piece_match_notes": null,
+          "piece_id": 1,
           "day": "Monday",
           "start_time": "HH:MM",
           "end_time": "HH:MM"
@@ -4937,37 +4940,33 @@ Return ONLY valid JSON (omit original_text from schedule_changes and special_eve
   "special_events": [
     {
       "status": "ready",
-      "status_reason": null,
       "event_type": "performance",
       "title": "event title",
       "date": "YYYY-MM-DD",
       "start_time": "HH:MM",
       "end_time": "HH:MM",
-      "location": null,
       "applies_to": "full_cast",
       "piece_ids": [],
-      "piece_match_notes": null,
-      "notes": null,
       "visible_to_dancers": true
     }
   ],
   "uncertain_items": [
     {
-      "description": "what is unclear or could not be categorized",
-      "original_text": "brief quote from source, max 100 chars"
+      "description": "what is unclear",
+      "original_text": "brief quote, max 80 chars"
     }
   ]
 }
 
 Status field rules:
-- "ready": confident extraction, date/time/day are clear
-- "needs_review": something was inferred or uncertain
-- "missing": date or required field cannot be determined
+- "ready": confident extraction
+- "needs_review": something inferred or uncertain - include status_reason explaining what
+- "missing": required field cannot be determined
 
 Piece matching rules:
-- "ready": confident match; set piece_id to the matched integer ID
-- "needs_review": uncertain (similar names, abbreviations); set piece_id to best-guess ID and explain in piece_match_notes
-- "missing": no match; set piece_id to null
+- If confident match: set piece_id to the integer ID; omit piece_match_status and piece_match_notes
+- If uncertain: set piece_id to best-guess ID, set piece_match_status to "needs_review", include piece_match_notes
+- If no match: set piece_id to null, set piece_match_status to "missing"
 - All times 24-hour HH:MM. All dates YYYY-MM-DD.`;
 
   // Claude requires at least one text block in the user turn alongside images/documents
@@ -4975,14 +4974,14 @@ Piece matching rules:
     msgContent.push({ type: 'text', text: 'Extract the schedule information from the document(s) above.' });
   }
 
-  const response = await anthropic.messages.create({
+  const stream = anthropic.messages.stream({
     model: 'claude-sonnet-4-6',
-    max_tokens: 16000,
+    max_tokens: 32000,
     system,
     messages: [{ role: 'user', content: msgContent }],
   });
-
-  const raw = response.content[0]?.text || '';
+  const message = await stream.finalMessage();
+  const raw = message.content[0]?.text || '';
   // Strip optional markdown fences before parsing
   const stripped = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
   const m = stripped.match(/\{[\s\S]*\}/);
