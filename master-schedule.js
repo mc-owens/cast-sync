@@ -32,6 +32,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   let originalDayBeforeDrag = null;
   let pendingDragMove       = null;
   let blockWasDragged       = false;
+  let dragStartX            = 0;
+  let dragStartY            = 0;
+  const DRAG_THRESHOLD      = 6; // px — below this is treated as a click
 
   // ── Rehearsal drawer state ────────────────────────────────────────────────────
   let drawerPieceCasts       = [];
@@ -1470,6 +1473,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       activeBlockId = currentBlock.dataset.dbId;
       originalDayBeforeDrag = currentBlock.dataset.day;
       blockWasDragged = false;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
       const dayWidth = grid.clientWidth / 7;
       const dayIdx   = DAYS.indexOf(currentBlock.dataset.day);
       currentBlock.style.width = `${dayWidth}px`;
@@ -1547,7 +1552,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       currentBlock.style.top   = `${y}px`;
       currentBlock.style.left  = `${dayIndex * dayWidth}px`;
       currentBlock.dataset.day = DAYS[dayIndex];
-      if (currentBlock.classList.contains('master-block')) blockWasDragged = true;
+      if (currentBlock.classList.contains('master-block')) {
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
+        if (Math.sqrt(dx * dx + dy * dy) >= DRAG_THRESHOLD) blockWasDragged = true;
+      }
     }
   });
 
