@@ -4882,7 +4882,12 @@ Piece matching: match document piece names to the production pieces above by ID.
 async function parseFullScheduleWithAI(msgContent, { season, pieces, segments }) {
   if (!anthropic) throw new Error('ANTHROPIC_API_KEY not configured.');
 
-  const fmt = d => d ? new Date(d + 'T00:00:00').toISOString().slice(0,10) : null;
+  const fmt = d => {
+    if (!d) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(d))) return String(d);
+    const p = new Date(d);
+    return isNaN(p) ? null : p.toISOString().slice(0, 10);
+  };
   const dateRange = (season.start_date && season.end_date)
     ? `${fmt(season.start_date)} to ${fmt(season.end_date)}`
     : 'not specified';
@@ -4997,7 +5002,7 @@ app.post('/api/schedule/ai-import/parse', requireAuth('master'), upload.array('f
   if (!anthropic) return res.status(503).json({ error: 'Import feature not configured. Contact support.' });
   try {
     const [seasonRes, piecesRes, segmentsRes] = await Promise.all([
-      pool.query('SELECT name AS season_name, start_date, end_date FROM seasons WHERE id = $1', [seasonId]),
+      pool.query(`SELECT name AS season_name, to_char(start_date,'YYYY-MM-DD') AS start_date, to_char(end_date,'YYYY-MM-DD') AS end_date FROM seasons WHERE id = $1`, [seasonId]),
       pool.query('SELECT id, name FROM pieces WHERE season_id = $1 ORDER BY name', [seasonId]),
       pool.query(`SELECT id, to_char(start_date,'YYYY-MM-DD') AS start_date, label FROM schedule_segments WHERE season_id = $1 ORDER BY start_date`, [seasonId]),
     ]);
