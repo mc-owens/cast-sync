@@ -1280,7 +1280,7 @@
           const payload = {
             mode,
             schedule_changes: aiImportCollectChanges(),
-            special_events: aiImportData.special_events.filter(ev => ev._included !== false && ev.date && ev.title),
+            special_events: aiImportCollectEvents(),
           };
           const res = await fetch('/api/schedule/ai-import/apply', {
             method: 'POST',
@@ -1320,87 +1320,143 @@
       function aiImportCollectChanges() {
         if (!aiImportData) return [];
         return aiImportData.schedule_changes.map((change, ci) => ({
-          ...change,
-          recurring_blocks: change.recurring_blocks.map((blk, bi) => {
-            const sel = document.getElementById(`ai-blk-piece-${ci}-${bi}`);
-            return { ...blk, piece_id: sel ? (parseInt(sel.value) || null) : blk.piece_id };
-          }).filter(blk => blk.piece_id && blk.day && blk.start_time && blk.end_time),
+          start_date: document.getElementById(`ai-ch-date-${ci}`)?.value || change.start_date,
+          label: document.getElementById(`ai-ch-label-${ci}`)?.value.trim() || change.label,
+          recurring_blocks: change.recurring_blocks.map((blk, bi) => ({
+            piece_id: parseInt(document.getElementById(`ai-blk-piece-${ci}-${bi}`)?.value) || null,
+            day: document.getElementById(`ai-blk-day-${ci}-${bi}`)?.value || blk.day,
+            start_time: document.getElementById(`ai-blk-st-${ci}-${bi}`)?.value || blk.start_time,
+            end_time: document.getElementById(`ai-blk-et-${ci}-${bi}`)?.value || blk.end_time,
+          })).filter(blk => blk.piece_id && blk.day && blk.start_time && blk.end_time),
         }));
+      }
+
+      function aiImportCollectEvents() {
+        if (!aiImportData) return [];
+        return aiImportData.special_events.map((ev, i) => ({
+          event_type: document.getElementById(`ai-ev-type-${i}`)?.value || ev.event_type,
+          title: document.getElementById(`ai-ev-title-${i}`)?.value?.trim() || ev.title,
+          date: document.getElementById(`ai-ev-date-${i}`)?.value || ev.date,
+          start_time: document.getElementById(`ai-ev-st-${i}`)?.value || null,
+          end_time: document.getElementById(`ai-ev-et-${i}`)?.value || null,
+          location: document.getElementById(`ai-ev-loc-${i}`)?.value?.trim() || null,
+          applies_to: ev.applies_to || 'full_cast',
+          piece_ids: ev.piece_ids || [],
+          visible_to_dancers: ev.visible_to_dancers !== false,
+        })).filter(ev => ev.date && ev.title?.trim());
+      }
+
+      function aiDeleteChange(ci) {
+        aiImportData.schedule_changes.splice(ci, 1);
+        aiImportRenderReview();
+      }
+
+      function aiDeleteBlock(ci, bi) {
+        aiImportData.schedule_changes[ci].recurring_blocks.splice(bi, 1);
+        aiImportRenderReview();
+      }
+
+      function aiAddBlock(ci) {
+        aiImportData.schedule_changes[ci].recurring_blocks.push({
+          piece_name: '', piece_id: null, day: 'Monday', start_time: '', end_time: '',
+          piece_match_status: 'missing', piece_match_notes: null
+        });
+        aiImportRenderReview();
+      }
+
+      function aiDeleteEvent(i) {
+        aiImportData.special_events.splice(i, 1);
+        aiImportRenderReview();
       }
 
       function aiImportRenderReview() {
         if (!aiImportData) return;
         const { schedule_changes, special_events, uncertain_items, pieces } = aiImportData;
+        const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+        const EVENT_TYPES = { tech:'Tech Rehearsal', dress:'Dress Rehearsal', spacing:'Spacing Rehearsal', photo_dress:'Photo Dress', performance:'Performance', warm_up:'Warm Up', costume_fitting:'Costume Fitting', company_meeting:'Company Meeting', no_rehearsal:'No Rehearsal / Day Off', notes_cleaning:'Notes / Cleaning', load_in_strike:'Load-In / Strike', other:'Other' };
 
         const totalBlocks = schedule_changes.reduce((n, c) => n + c.recurring_blocks.length, 0);
         const summaryParts = [];
-        if (schedule_changes.length) summaryParts.push(`${schedule_changes.length} schedule change${schedule_changes.length !== 1 ? 's' : ''} (${totalBlocks} recurring block${totalBlocks !== 1 ? 's' : ''})`);
+        if (schedule_changes.length) summaryParts.push(`${schedule_changes.length} schedule change${schedule_changes.length !== 1 ? 's' : ''} (${totalBlocks} block${totalBlocks !== 1 ? 's' : ''})`);
         if (special_events.length) summaryParts.push(`${special_events.length} special event${special_events.length !== 1 ? 's' : ''}`);
         if (uncertain_items.length) summaryParts.push(`${uncertain_items.length} item${uncertain_items.length !== 1 ? 's' : ''} need attention`);
 
-        let html = `<div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;margin-bottom:16px;">
-          <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:2px;">Found in your document:</div>
+        let html = `<div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+          <div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:2px;">Found in your document</div>
           <div style="font-size:13px;color:#6b7280;">${summaryParts.join(' &middot; ') || 'Nothing was extracted. Try pasting more text.'}</div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:5px;">Edit anything below before importing. Hit &times; to remove items you don't want.</div>
         </div>`;
 
         if (schedule_changes.length) {
           html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;margin-bottom:8px;">Schedule Changes</div>`;
           schedule_changes.forEach((change, ci) => {
-            const startLabel = change.start_date ? new Date(change.start_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : change.start_date;
-            const statusDot = change.status === 'needs_review' ? '#d97706' : '#16a34a';
             html += `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;margin-bottom:10px;">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                <div style="width:8px;height:8px;border-radius:50%;background:${statusDot};flex-shrink:0;"></div>
-                <span style="font-weight:600;font-size:14px;">${escapeHtml(change.label || 'Schedule Change')}</span>
-                <span style="font-size:12px;color:#6b7280;">starting ${startLabel}</span>
+              <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;flex-wrap:wrap;">
+                <input type="text" id="ai-ch-label-${ci}" value="${escapeHtml(change.label || '')}" placeholder="Period label"
+                  style="font-size:13px;font-weight:600;border:1px solid #e5e7eb;border-radius:5px;padding:4px 8px;flex:1;min-width:140px;outline:none;">
+                <span style="font-size:12px;color:#9ca3af;flex-shrink:0;">starting</span>
+                <input type="date" id="ai-ch-date-${ci}" value="${change.start_date || ''}"
+                  style="font-size:12px;border:1px solid #e5e7eb;border-radius:5px;padding:3px 7px;flex-shrink:0;outline:none;">
+                <button onclick="aiDeleteChange(${ci})" title="Remove this schedule change"
+                  style="background:none;border:none;font-size:20px;line-height:1;color:#d1d5db;cursor:pointer;padding:0 2px;margin-left:auto;flex-shrink:0;">&times;</button>
               </div>`;
             if (change.status_reason) {
-              html += `<div style="font-size:12px;color:#92400e;background:#fef3c7;border-radius:4px;padding:4px 8px;margin-bottom:8px;">${escapeHtml(change.status_reason)}</div>`;
+              html += `<div style="font-size:11px;color:#92400e;background:#fef3c7;border-radius:4px;padding:4px 8px;margin-bottom:8px;">${escapeHtml(change.status_reason)}</div>`;
             }
             if (change.recurring_blocks.length) {
-              html += `<div style="display:flex;flex-direction:column;gap:5px;">`;
+              html += `<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px;">`;
               change.recurring_blocks.forEach((blk, bi) => {
-                const needsPiecePick = blk.piece_match_status !== 'ready';
-                const pieceOpts = pieces.map(p => `<option value="${p.id}" ${p.id === blk.piece_id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
-                const piecePicker = needsPiecePick
-                  ? `<select id="ai-blk-piece-${ci}-${bi}" class="form-select form-select-sm" style="font-size:11px;padding:1px 6px;height:auto;display:inline-block;width:auto;max-width:160px;">
-                      <option value="">-- pick piece --</option>${pieceOpts}
-                     </select>`
-                  : `<span style="font-size:12px;font-weight:500;color:#374151;">${escapeHtml(blk.piece_name || '')}</span>`;
-                const warn = blk.piece_match_notes ? `<span style="font-size:11px;color:#d97706;">(${escapeHtml(blk.piece_match_notes)})</span>` : '';
-                html += `<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#6b7280;background:#f9fafb;border-radius:4px;padding:4px 8px;">
-                  <span style="font-weight:600;color:#374151;min-width:70px;">${escapeHtml(blk.day)}</span>
-                  <span>${blk.start_time} &ndash; ${blk.end_time}</span>
-                  <span style="margin-left:auto;display:flex;align-items:center;gap:4px;">${piecePicker}${warn}</span>
+                const pieceOpts = `<option value="">-- piece --</option>` + pieces.map(p => `<option value="${p.id}" ${p.id === blk.piece_id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+                html += `<div style="display:flex;align-items:center;gap:5px;background:#f9fafb;border-radius:5px;padding:5px 8px;flex-wrap:wrap;">
+                  <select id="ai-blk-day-${ci}-${bi}" style="font-size:12px;border:1px solid #e5e7eb;border-radius:4px;padding:2px 4px;background:#fff;outline:none;">
+                    ${DAYS.map(d => `<option value="${d}" ${blk.day === d ? 'selected' : ''}>${d}</option>`).join('')}
+                  </select>
+                  <input type="time" id="ai-blk-st-${ci}-${bi}" value="${blk.start_time || ''}"
+                    style="font-size:12px;border:1px solid #e5e7eb;border-radius:4px;padding:2px 5px;width:90px;outline:none;">
+                  <span style="font-size:11px;color:#9ca3af;">to</span>
+                  <input type="time" id="ai-blk-et-${ci}-${bi}" value="${blk.end_time || ''}"
+                    style="font-size:12px;border:1px solid #e5e7eb;border-radius:4px;padding:2px 5px;width:90px;outline:none;">
+                  <select id="ai-blk-piece-${ci}-${bi}" style="font-size:12px;border:1px solid #e5e7eb;border-radius:4px;padding:2px 4px;background:#fff;flex:1;min-width:110px;outline:none;">
+                    ${pieceOpts}
+                  </select>
+                  <button onclick="aiDeleteBlock(${ci},${bi})" title="Remove this block"
+                    style="background:none;border:none;font-size:17px;line-height:1;color:#d1d5db;cursor:pointer;padding:0 1px;flex-shrink:0;">&times;</button>
                 </div>`;
               });
               html += `</div>`;
             } else {
-              html += `<div style="font-size:12px;color:#9ca3af;">No recurring blocks found for this period.</div>`;
+              html += `<div style="font-size:12px;color:#9ca3af;margin-bottom:8px;">No recurring blocks.</div>`;
             }
+            html += `<button onclick="aiAddBlock(${ci})"
+              style="font-size:12px;color:#6b7280;background:#f9fafb;border:1px dashed #d1d5db;border-radius:5px;padding:4px 0;cursor:pointer;width:100%;">+ Add block</button>`;
             html += `</div>`;
           });
         }
 
-        const EVENT_LABELS = { tech:'Tech Rehearsal', dress:'Dress Rehearsal', spacing:'Spacing Rehearsal', photo_dress:'Photo Dress', performance:'Performance', warm_up:'Warm Up', costume_fitting:'Costume Fitting', company_meeting:'Company Meeting', no_rehearsal:'No Rehearsal / Day Off', notes_cleaning:'Notes / Cleaning', load_in_strike:'Load-In / Strike', other:'Other' };
-        const EVENT_COLORS = { tech:'#2c3e50', dress:'#8e44ad', spacing:'#16a085', photo_dress:'#e91e63', performance:'#c0392b', warm_up:'#e67e22', costume_fitting:'#2980b9', company_meeting:'#0369a1', no_rehearsal:'#64748b', notes_cleaning:'#0d9488', load_in_strike:'#b45309', other:'#7f8c8d' };
-
         if (special_events.length) {
           html += `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#9ca3af;margin:16px 0 8px;">Special Events</div>`;
-          special_events.forEach(ev => {
-            const label = EVENT_LABELS[ev.event_type] || 'Other';
-            const color = EVENT_COLORS[ev.event_type] || '#7f8c8d';
-            const dateStr = ev.date ? new Date(ev.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
-            const timeStr = [ev.start_time, ev.end_time].filter(Boolean).join(' – ');
-            const statusDot = ev.status === 'needs_review' ? '#d97706' : ev.status === 'missing' ? '#dc2626' : '#16a34a';
-            html += `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;margin-bottom:8px;display:flex;gap:10px;align-items:start;">
-              <div style="width:8px;height:8px;border-radius:50%;background:${statusDot};flex-shrink:0;margin-top:5px;"></div>
-              <div style="flex:1;min-width:0;">
-                <span class="badge me-1" style="background:${color};font-size:10px;">${label}</span>
-                <span style="font-weight:600;font-size:13px;">${escapeHtml(ev.title || 'Untitled')}</span>
-                <div style="font-size:12px;color:#6b7280;margin-top:2px;">${[dateStr, timeStr, ev.location].filter(Boolean).join(' &middot; ')}</div>
-                ${ev.status_reason ? `<div style="font-size:11px;color:#92400e;margin-top:3px;">${escapeHtml(ev.status_reason)}</div>` : ''}
+          special_events.forEach((ev, i) => {
+            const typeOpts = Object.entries(EVENT_TYPES).map(([v,l]) => `<option value="${v}" ${ev.event_type===v?'selected':''}>${l}</option>`).join('');
+            html += `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+                <select id="ai-ev-type-${i}" style="font-size:11px;border:1px solid #e5e7eb;border-radius:4px;padding:2px 4px;background:#fff;outline:none;">${typeOpts}</select>
+                <input type="text" id="ai-ev-title-${i}" value="${escapeHtml(ev.title||'')}" placeholder="Event title"
+                  style="font-size:13px;font-weight:600;border:1px solid #e5e7eb;border-radius:4px;padding:3px 7px;flex:1;min-width:130px;outline:none;">
+                <button onclick="aiDeleteEvent(${i})" title="Remove this event"
+                  style="background:none;border:none;font-size:17px;line-height:1;color:#d1d5db;cursor:pointer;padding:0 1px;margin-left:auto;flex-shrink:0;">&times;</button>
               </div>
+              <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                <input type="date" id="ai-ev-date-${i}" value="${ev.date||''}"
+                  style="font-size:12px;border:1px solid #e5e7eb;border-radius:4px;padding:2px 6px;outline:none;">
+                <input type="time" id="ai-ev-st-${i}" value="${ev.start_time||''}"
+                  style="font-size:12px;border:1px solid #e5e7eb;border-radius:4px;padding:2px 5px;width:90px;outline:none;">
+                <span style="font-size:11px;color:#9ca3af;">to</span>
+                <input type="time" id="ai-ev-et-${i}" value="${ev.end_time||''}"
+                  style="font-size:12px;border:1px solid #e5e7eb;border-radius:4px;padding:2px 5px;width:90px;outline:none;">
+                <input type="text" id="ai-ev-loc-${i}" value="${escapeHtml(ev.location||'')}" placeholder="Location (optional)"
+                  style="font-size:12px;border:1px solid #e5e7eb;border-radius:4px;padding:2px 6px;flex:1;min-width:100px;outline:none;">
+              </div>
+              ${ev.status_reason ? `<div style="font-size:11px;color:#92400e;margin-top:6px;">${escapeHtml(ev.status_reason)}</div>` : ''}
             </div>`;
           });
         }
@@ -1416,12 +1472,8 @@
         }
 
         document.getElementById('ai-import-review-body').innerHTML = html;
-
-        const totalReady = schedule_changes.length + special_events.filter(e => e.status !== 'missing').length;
         const btn = document.getElementById('ai-import-confirm-btn');
-        btn.disabled = totalReady === 0;
-        btn.style.fontWeight = '600';
-        btn.style.fontSize = '14px';
+        btn.disabled = schedule_changes.length === 0 && special_events.length === 0;
       }
     }
   </script>
