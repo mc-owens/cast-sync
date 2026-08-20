@@ -10,7 +10,7 @@
     { section: 'Operations', items: [
       { label: 'Attendance',       href: 'staff-attendance.html' },
       { label: 'Production Notes', href: 'staff-notes.html' },
-      { label: 'My Notes',         href: 'staff-my-notes.html' },
+      { label: 'My Private Notes', href: 'staff-my-notes.html' },
     ]},
   ];
 

@@ -894,7 +894,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (selectedUnderstudies.length > 0) castSummary.push(`${selectedUnderstudies.length} understudy`);
       const castNote = castSummary.length > 0 ? ` · ${castSummary.join(', ')} saved` : '';
 
-      successEl.textContent = `✓ "${pieceName}", ${day} ${startTime} – ${endTime} added to Master Schedule${castNote}`;
+      successEl.textContent = `✓ "${pieceName}", ${day} ${startTime} – ${endTime} added to Production Timeline${castNote}`;
       successEl.classList.remove('d-none');
       document.getElementById('piece-name-input').value = '';
       // Reload blocks and re-render grid to reflect the new rehearsal

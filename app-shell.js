@@ -16,15 +16,15 @@
     ]},
     { section: 'Production', items: [
       { label: 'Production Timeline',    href: 'master.html' },
-      { label: 'Availability Analysis', href: 'search.html' },
-      { label: 'Piece Builder',         href: 'cast.html' },
+      { label: 'Casting Availability', href: 'search.html' },
+      { label: 'Cast Builder',         href: 'cast.html' },
       { label: 'Cast List',             href: 'casting.html' },
     ]},
     { section: 'Operations', items: [
       { label: 'Attendance',       href: 'attendance.html' },
       { label: 'Absence Requests', href: 'absence-requests.html' },
       { label: 'Production Notes', href: 'notes.html' },
-      { label: 'My Notes',         href: 'my-notes.html' },
+      { label: 'My Private Notes', href: 'my-notes.html' },
     ]},
     { section: 'Settings', items: [
       { label: 'Production Settings', href: 'production-settings.html' },

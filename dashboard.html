@@ -101,7 +101,7 @@
         <h6 class="label-gold mb-2">Quick Actions</h6>
         <div class="d-flex flex-wrap gap-2">
           <a href="dancers.html"           class="btn btn-outline-secondary btn-sm">Auditionees</a>
-          <a href="cast.html"              class="btn btn-outline-secondary btn-sm">Piece Builder</a>
+          <a href="cast.html"              class="btn btn-outline-secondary btn-sm">Cast Builder</a>
           <a href="master.html"            class="btn btn-outline-secondary btn-sm">Production Timeline</a>
           <a href="absence-requests.html"  class="btn btn-outline-secondary btn-sm">Absence Requests</a>
           <a href="notes.html"             class="btn btn-outline-secondary btn-sm">Production Notes</a>
@@ -204,7 +204,7 @@
           }
         }
         if (pieces.length === 0) {
-          alerts.push('No pieces added yet. Head to Piece Builder to get started.');
+          alerts.push('No pieces added yet. Head to Cast Builder to get started.');
         }
         const pendingAbsences = absenceRequests.filter(r => r.status === 'pending');
         if (pendingAbsences.length > 0) {

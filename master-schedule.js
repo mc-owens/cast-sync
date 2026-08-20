@@ -748,9 +748,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const date = dateForDayInWeek(window._currentWeekMonday || new Date().toISOString().slice(0,10), drawerCurrentDay);
     const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     content.innerHTML = `
-      <p style="font-size:11.5px;color:#9ca3af;margin:0 0 10px;">Notes are private and save to your <a href="my-notes.html" style="color:#9ca3af;">My Notes</a> page.</p>
+      <p style="font-size:11.5px;color:#9ca3af;margin:0 0 10px;">Notes are private and save to your <a href="my-notes.html" style="color:#9ca3af;">My Private Notes</a> page.</p>
       <textarea id="drawer-note-text" placeholder="Type a note..." style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-height:100px;resize:vertical;font-family:inherit;box-sizing:border-box;"></textarea>
-      <button id="drawer-note-save-btn" style="margin-top:8px;width:100%;padding:8px;background:#111;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Save to My Notes</button>
+      <button id="drawer-note-save-btn" style="margin-top:8px;width:100%;padding:8px;background:#111;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Save to My Private Notes</button>
       <span id="drawer-note-saved" style="font-size:12px;color:#16a34a;margin-top:6px;display:none;text-align:center;display:block;"></span>`;
     content.querySelector('#drawer-note-save-btn')?.addEventListener('click', async () => {
       const textarea = content.querySelector('#drawer-note-text');
@@ -767,12 +767,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         if (r.ok) {
           textarea.value = '';
-          if (savedEl) { savedEl.textContent = 'Saved to My Notes.'; savedEl.style.display = 'block'; setTimeout(() => { if (savedEl) savedEl.style.display = 'none'; }, 2500); }
+          if (savedEl) { savedEl.textContent = 'Saved to My Private Notes.'; savedEl.style.display = 'block'; setTimeout(() => { if (savedEl) savedEl.style.display = 'none'; }, 2500); }
         } else {
           alert('Could not save note.');
         }
       } catch (e) { alert('Could not connect to server.'); }
-      btn.disabled = false; btn.textContent = 'Save to My Notes';
+      btn.disabled = false; btn.textContent = 'Save to My Private Notes';
     });
   }
 
@@ -786,7 +786,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (tabName === 'cast') {
       const cast = drawerPieceCasts.filter(c => String(c.piece_id) === String(drawerCurrentPieceId));
       if (cast.length === 0) {
-        content.innerHTML = `<p style="font-size:13px;color:#6b7280;margin:0;">No cast assigned yet. Add dancers from the <a href="search.html" style="color:inherit;">Availability Analysis</a> tab.</p>`;
+        content.innerHTML = `<p style="font-size:13px;color:#6b7280;margin:0;">No cast assigned yet. Add dancers from the <a href="search.html" style="color:inherit;">Casting Availability</a> tab.</p>`;
       } else {
         content.innerHTML = cast.map(c => `
           <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f9fafb;">

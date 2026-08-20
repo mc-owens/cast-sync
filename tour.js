@@ -48,12 +48,12 @@
         selector: '.app-sidebar',
         position: 'right',
         title: 'Your Workspace',
-        body: 'This sidebar is your entire workflow. We\'re starting on <strong>Master Schedule</strong>, your production\'s choreographic timeline.',
+        body: 'This sidebar is your entire workflow. We\'re starting on <strong>Production Timeline</strong>, your production\'s choreographic timeline.',
       },
       {
         selector: '#grid',
         position: 'top',
-        title: 'Master Schedule Grid',
+        title: 'Production Timeline Grid',
         body: 'We\'ve loaded 2 sample pieces with 3 rehearsal blocks so you can see how this works. <strong>Drag</strong> on the grid to place a block, <strong>resize</strong> to adjust the time. Blocks that exceed your room count turn red automatically.',
       },
       {
@@ -76,7 +76,7 @@
         selector: '.schedule-wrapper',
         position: 'top',
         title: 'Availability Grid',
-        body: 'We\'ve loaded 5 sample dancers so you can see this populated. Each colored block shows when a dancer is available. The colors match your pieces from the Master Schedule.',
+        body: 'We\'ve loaded 5 sample dancers so you can see this populated. Each colored block shows when a dancer is available. The colors match your pieces from the Production Timeline.',
       },
       {
         selector: null,
