@@ -4749,6 +4749,26 @@ app.delete('/api/season/special-events/:id', requireAuth('master'), async (req, 
   } catch (err) { res.status(500).json({ error: 'Failed to delete event.' }); }
 });
 
+app.delete('/api/season/special-events', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  try {
+    const { ids } = req.body || {};
+    let deleted;
+    if (Array.isArray(ids) && ids.length > 0) {
+      const result = await pool.query(
+        'DELETE FROM special_events WHERE id = ANY($1::int[]) AND season_id=$2',
+        [ids, seasonId]
+      );
+      deleted = result.rowCount;
+    } else {
+      const result = await pool.query('DELETE FROM special_events WHERE season_id=$1', [seasonId]);
+      deleted = result.rowCount;
+    }
+    res.json({ deleted });
+  } catch (err) { res.status(500).json({ error: 'Failed to delete events.' }); }
+});
+
 app.get('/api/my-schedule/special-events', requireAuth('auditionee'), async (req, res) => {
   const userId = req.session.userId;
   try {

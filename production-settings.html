@@ -104,6 +104,11 @@
         These appear on the Master Schedule and, if visible to dancers, on each dancer's My Schedule.
       </p>
 
+      <div id="se-bulk-bar" class="d-none align-items-center gap-2 mb-2 p-2 rounded" style="background:#fef2f2;border:1px solid #fca5a5;">
+        <span id="se-selected-count" style="font-size:13px;font-weight:600;color:#991b1b;"></span>
+        <button type="button" class="btn btn-sm btn-danger ms-auto" id="se-delete-selected-btn">Delete Selected</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="se-deselect-btn">Cancel</button>
+      </div>
       <div id="special-events-list" class="mb-3"></div>
 
       <div id="special-event-form" class="border rounded p-3 d-none" style="background:#fafafa;">
@@ -175,10 +180,12 @@
         </div>
       </div>
 
-      <div class="d-flex gap-2 flex-wrap">
+      <div class="d-flex gap-2 flex-wrap align-items-center">
         <button type="button" class="btn btn-sm btn-outline-secondary" id="add-special-event-btn">+ Add Event</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-create-btn">Bulk Create</button>
         <button type="button" class="btn btn-sm btn-gold" id="import-schedule-btn">Import Schedule</button>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-auto" id="se-select-mode-btn" style="display:none;">Select to Delete</button>
+        <button type="button" class="btn btn-sm btn-outline-danger ms-auto" id="se-clear-all-btn" style="display:none;">Clear All</button>
       </div>
     </div>
 
@@ -518,13 +525,42 @@
         let seEditingId = null;
         let sePieces = [];
 
+        let seSelectMode = false;
+
+        function seUpdateBulkBar() {
+          const checked = document.querySelectorAll('.se-checkbox:checked');
+          const bar = document.getElementById('se-bulk-bar');
+          const count = document.getElementById('se-selected-count');
+          if (checked.length > 0) {
+            bar.classList.remove('d-none');
+            bar.classList.add('d-flex');
+            count.textContent = `${checked.length} event${checked.length !== 1 ? 's' : ''} selected`;
+          } else {
+            bar.classList.add('d-none');
+            bar.classList.remove('d-flex');
+          }
+        }
+
         async function loadSpecialEvents() {
           const listEl = document.getElementById('special-events-list');
           try {
             const r = await fetch('/api/season/special-events');
             const events = r.ok ? await r.json() : [];
+
+            const selectModeBtn = document.getElementById('se-select-mode-btn');
+            const clearAllBtn = document.getElementById('se-clear-all-btn');
+            if (events.length > 0) {
+              selectModeBtn.style.display = '';
+              clearAllBtn.style.display = '';
+            } else {
+              selectModeBtn.style.display = 'none';
+              clearAllBtn.style.display = 'none';
+              seSelectMode = false;
+            }
+
             if (events.length === 0) {
               listEl.innerHTML = '<div class="text-muted" style="font-size:12px;">No special events yet.</div>';
+              document.getElementById('se-bulk-bar').classList.add('d-none');
               return;
             }
             listEl.innerHTML = events.map(ev => {
@@ -533,19 +569,25 @@
               const times = [fmt24h(ev.start_time), fmt24h(ev.end_time)].filter(Boolean).join(' - ');
               return `
                 <div class="d-flex align-items-start justify-content-between mb-2 pb-2" style="border-bottom:1px solid #eee;" data-se-row="${ev.id}">
-                  <div>
+                  <div class="se-checkbox-col me-2 flex-shrink-0" style="${seSelectMode ? '' : 'display:none;'}align-self:center;">
+                    <input type="checkbox" class="form-check-input se-checkbox" data-se-id="${ev.id}" style="cursor:pointer;">
+                  </div>
+                  <div style="flex:1;min-width:0;">
                     <span class="badge me-1" style="background:${meta.color};font-size:10px;">${meta.label}</span>
                     <span style="font-size:13px;font-weight:600;">${escapeHtml(ev.title)}</span>
                     <div style="font-size:12px;color:#666;margin-top:2px;">${nice}${times ? ' &middot; ' + escapeHtml(times) : ''}${ev.location ? ' &middot; ' + escapeHtml(ev.location) : ''}</div>
                     ${ev.notes ? `<div style="font-size:11px;color:#888;margin-top:1px;">${escapeHtml(ev.notes)}</div>` : ''}
                   </div>
-                  <div class="d-flex gap-2 flex-shrink-0 ms-2">
+                  <div class="se-action-col d-flex gap-2 flex-shrink-0 ms-2" style="${seSelectMode ? 'display:none!important;' : ''}">
                     <button type="button" class="btn btn-link btn-sm p-0 text-secondary se-edit-btn" data-se-id="${ev.id}" style="font-size:12px;">Edit</button>
                     <button type="button" class="btn-close se-delete-btn" style="font-size:9px;" data-se-id="${ev.id}" aria-label="Delete event"></button>
                   </div>
                 </div>`;
             }).join('');
 
+            listEl.querySelectorAll('.se-checkbox').forEach(cb => {
+              cb.addEventListener('change', seUpdateBulkBar);
+            });
             listEl.querySelectorAll('.se-delete-btn').forEach(btn => {
               btn.addEventListener('click', async () => {
                 if (!confirm('Delete this event?')) return;
@@ -567,6 +609,51 @@
             listEl.innerHTML = '<div class="text-danger" style="font-size:12px;">Could not load events.</div>';
           }
         }
+
+        document.getElementById('se-select-mode-btn').addEventListener('click', () => {
+          seSelectMode = !seSelectMode;
+          document.getElementById('se-select-mode-btn').textContent = seSelectMode ? 'Cancel Selection' : 'Select to Delete';
+          document.querySelectorAll('.se-checkbox-col').forEach(el => el.style.display = seSelectMode ? '' : 'none');
+          document.querySelectorAll('.se-action-col').forEach(el => el.style.display = seSelectMode ? 'none' : '');
+          if (!seSelectMode) {
+            document.querySelectorAll('.se-checkbox').forEach(cb => cb.checked = false);
+            document.getElementById('se-bulk-bar').classList.add('d-none');
+            document.getElementById('se-bulk-bar').classList.remove('d-flex');
+          }
+        });
+
+        document.getElementById('se-deselect-btn').addEventListener('click', () => {
+          document.querySelectorAll('.se-checkbox').forEach(cb => cb.checked = false);
+          seUpdateBulkBar();
+        });
+
+        document.getElementById('se-delete-selected-btn').addEventListener('click', async () => {
+          const ids = [...document.querySelectorAll('.se-checkbox:checked')].map(cb => parseInt(cb.dataset.seId));
+          if (!ids.length) return;
+          if (!confirm(`Delete ${ids.length} selected event${ids.length !== 1 ? 's' : ''}?`)) return;
+          const res = await fetch('/api/season/special-events', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids }),
+          });
+          if (!res.ok) { alert('Could not delete events.'); return; }
+          seSelectMode = false;
+          document.getElementById('se-select-mode-btn').textContent = 'Select to Delete';
+          loadSpecialEvents();
+        });
+
+        document.getElementById('se-clear-all-btn').addEventListener('click', async () => {
+          if (!confirm('Delete ALL special events for this production? This cannot be undone.')) return;
+          const res = await fetch('/api/season/special-events', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          if (!res.ok) { alert('Could not delete events.'); return; }
+          seSelectMode = false;
+          document.getElementById('se-select-mode-btn').textContent = 'Select to Delete';
+          loadSpecialEvents();
+        });
 
         async function loadSePieces() {
           if (sePieces.length > 0) return;
