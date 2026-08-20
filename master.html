@@ -1490,7 +1490,17 @@
     <div style="padding:8px 16px 12px;border-bottom:1px solid #f3f4f6;">
       <div id="drawer-day-time" style="font-size:14px;color:#111;margin-bottom:3px;font-weight:500;"></div>
       <div style="font-size:12px;color:#9ca3af;">Repeats weekly</div>
-      <div id="drawer-room" style="font-size:12px;color:#6b7280;margin-top:3px;display:none;"></div>
+      <div id="drawer-room" style="font-size:12px;color:#6b7280;margin-top:3px;display:none;">
+        <span id="drawer-room-label"></span>
+        <button id="drawer-room-edit-btn" style="background:none;border:none;padding:0 0 0 6px;font-size:11px;color:#c4943a;cursor:pointer;text-decoration:underline;">Edit</button>
+      </div>
+      <div id="drawer-room-edit-form" style="display:none;margin-top:8px;">
+        <select id="drawer-room-inline-select" style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;margin-bottom:8px;"></select>
+        <div style="display:flex;gap:6px;">
+          <button id="drawer-room-save-btn" style="flex:1;padding:5px;background:#111;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">Save</button>
+          <button id="drawer-room-cancel-btn" style="flex:1;padding:5px;background:none;color:#6b7280;border:1px solid #d1d5db;border-radius:6px;font-size:12px;cursor:pointer;">Cancel</button>
+        </div>
+      </div>
     </div>
     <div id="drawer-tab-bar" style="display:flex;border-bottom:1px solid #f3f4f6;overflow-x:auto;">
       <button class="drawer-tab active" data-drawer-tab="cast">Cast</button>

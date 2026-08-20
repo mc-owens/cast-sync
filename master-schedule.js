@@ -768,8 +768,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (room) {
       const roomObj = roomId ? rooms.find(r => String(r.id) === String(roomId)) : null;
-      if (roomObj) { room.textContent = roomObj.name; room.style.display = ''; }
-      else           room.style.display = 'none';
+      if (rooms.length > 0) {
+        const label = document.getElementById('drawer-room-label');
+        if (label) label.textContent = roomObj ? roomObj.name : 'No room assigned';
+        room.style.display = '';
+      } else {
+        room.style.display = 'none';
+      }
+      const editForm = document.getElementById('drawer-room-edit-form');
+      if (editForm) editForm.style.display = 'none';
     }
 
     showNormalDrawerView();
@@ -1800,6 +1807,48 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('drawer-adjust-btn')?.addEventListener('click', () => {
     deleteModalFromDrawer = true;
     openDeleteBlockModal(drawerCurrentDbId, drawerCurrentDay, document.querySelector(`.master-block[data-db-id="${drawerCurrentDbId}"]`));
+  });
+
+  document.getElementById('drawer-room-edit-btn')?.addEventListener('click', () => {
+    const editForm = document.getElementById('drawer-room-edit-form');
+    const select   = document.getElementById('drawer-room-inline-select');
+    if (editForm && select) {
+      select.innerHTML = `<option value="">No room</option>` +
+        rooms.map(r => `<option value="${r.id}"${String(r.id) === String(drawerCurrentRoomId || '') ? ' selected' : ''}>${r.name}</option>`).join('');
+      editForm.style.display = '';
+    }
+  });
+
+  document.getElementById('drawer-room-cancel-btn')?.addEventListener('click', () => {
+    const editForm = document.getElementById('drawer-room-edit-form');
+    if (editForm) editForm.style.display = 'none';
+  });
+
+  document.getElementById('drawer-room-save-btn')?.addEventListener('click', async () => {
+    const select  = document.getElementById('drawer-room-inline-select');
+    const newRoomId = select?.value || null;
+    const saveBtn = document.getElementById('drawer-room-save-btn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+    try {
+      const res = await fetch(`/api/master-blocks/${drawerCurrentDbId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_id: newRoomId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Could not update the room.');
+      } else {
+        drawerCurrentRoomId = newRoomId;
+        const roomObj = newRoomId ? rooms.find(r => String(r.id) === String(newRoomId)) : null;
+        const label = document.getElementById('drawer-room-label');
+        if (label) label.textContent = roomObj ? roomObj.name : 'No room assigned';
+        const blockEl = document.querySelector(`.master-block[data-db-id="${drawerCurrentDbId}"]`);
+        if (blockEl) { blockEl.dataset.roomId = newRoomId || ''; repositionAllBlocks(); }
+        const editForm = document.getElementById('drawer-room-edit-form');
+        if (editForm) editForm.style.display = 'none';
+      }
+    } catch (e) { alert('Could not connect to server.'); }
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save'; }
   });
 
   document.getElementById('drawer-apply-change-btn')?.addEventListener('click', async () => {
