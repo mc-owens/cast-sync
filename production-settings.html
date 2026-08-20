@@ -444,49 +444,6 @@
           });
         });
 
-        // ── Performance dates (a production can have more than one show night) ──
-
-        async function loadPerformanceDates() {
-          const listEl = document.getElementById('performance-dates-list');
-          try {
-            const r = await fetch('/api/season/performance-dates');
-            const performanceDates = r.ok ? await r.json() : [];
-            listEl.innerHTML = performanceDates.map(d => {
-              const nice = new Date(`${d.date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-              return `
-                <div class="d-flex align-items-center justify-content-between mb-1" data-perf-date-row="${d.id}">
-                  <span style="font-size:13px;">${nice}</span>
-                  <button type="button" class="btn-close" style="font-size:9px;" data-delete-perf-date="${d.id}" aria-label="Remove date"></button>
-                </div>`;
-            }).join('') || '<div class="text-muted" style="font-size:12px;">No performance dates yet.</div>';
-
-            listEl.querySelectorAll('[data-delete-perf-date]').forEach(btn => {
-              btn.addEventListener('click', async () => {
-                const res = await fetch(`/api/season/performance-dates/${btn.dataset.deletePerfDate}`, { method: 'DELETE' });
-                if (!res.ok) { const data = await res.json(); alert(data.error || 'Could not remove date.'); return; }
-                loadPerformanceDates();
-              });
-            });
-          } catch (e) { listEl.innerHTML = '<div class="text-danger" style="font-size:12px;">Could not load performance dates.</div>'; }
-        }
-        loadPerformanceDates();
-
-        document.getElementById('add-performance-date-btn').addEventListener('click', async () => {
-          const input = document.getElementById('new-performance-date-input');
-          const errEl = document.getElementById('performance-date-error');
-          errEl.classList.add('d-none');
-          if (!input.value) return;
-          try {
-            const res = await fetch('/api/season/performance-dates', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date: input.value }),
-            });
-            const data = await res.json();
-            if (!res.ok) { errEl.textContent = data.error || 'Could not add date.'; errEl.classList.remove('d-none'); return; }
-            input.value = '';
-            loadPerformanceDates();
-          } catch (e) { errEl.textContent = 'Could not connect to server.'; errEl.classList.remove('d-none'); }
-        });
-
         // ── Special Events ─────────────────────────────────────────────────────
 
         const EVENT_META = {
