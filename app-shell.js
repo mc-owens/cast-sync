@@ -15,10 +15,10 @@
       { label: 'Auditionees',   href: 'dancers.html' },
     ]},
     { section: 'Production', items: [
-      { label: 'Production Timeline',    href: 'master.html' },
+      { label: 'Production Timeline', href: 'master.html' },
       { label: 'Casting Availability', href: 'search.html' },
       { label: 'Cast Builder',         href: 'cast.html' },
-      { label: 'Cast List',             href: 'casting.html' },
+      { label: 'Cast List',            href: 'casting.html' },
     ]},
     { section: 'Operations', items: [
       { label: 'Attendance',       href: 'attendance.html' },
@@ -57,13 +57,20 @@
         ${items.map(renderSidebarItem).join('')}
       </div>
     `).join('');
+    const guideActive = location.pathname.split('/').pop() === 'guide.html' ? ' active' : '';
     return `
       <nav class="app-sidebar offcanvas offcanvas-start" tabindex="-1" id="appSidebar" aria-labelledby="appSidebarLabel">
         <div class="offcanvas-header app-sidebar-mobile-header">
           <h5 class="offcanvas-title" id="appSidebarLabel">Menu</h5>
           <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
         </div>
-        <div class="offcanvas-body app-sidebar-body">${sections}</div>
+        <div class="offcanvas-body app-sidebar-body">
+          ${sections}
+          <div class="app-sidebar-section" style="border-top:1px solid #f0f0f0;margin-top:4px;padding-top:4px;">
+            <a class="app-sidebar-link${guideActive}" href="guide.html"
+              style="font-size:12.5px;color:#9ca3af;">Help &amp; Guide</a>
+          </div>
+        </div>
       </nav>
     `;
   }
@@ -76,10 +83,96 @@
         </button>
         <a class="navbar-brand app-shell-brand" href="#"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
         <ul class="navbar-nav app-shell-context-seam"></ul>
+        <button id="app-help-btn" type="button" aria-label="Open help"
+          style="width:26px;height:26px;border-radius:50%;border:1.5px solid #d1d5db;background:transparent;font-size:12px;font-weight:700;color:#9ca3af;cursor:pointer;flex-shrink:0;margin-right:10px;line-height:1;padding:0;">?</button>
         <div id="right-nav" class="app-nav-right app-shell-right"></div>
       </header>
     `;
   }
+
+  // ── Help system ────────────────────────────────────────────────────────────
+
+  function renderHelpOffcanvas() {
+    return `
+      <div class="offcanvas offcanvas-end" id="helpOffcanvas" tabindex="-1" aria-labelledby="helpOffcanvasLabel"
+        style="width:400px;max-width:90vw;">
+        <div class="offcanvas-header" style="border-bottom:1px solid #f3f4f6;padding:16px 20px 14px;">
+          <div>
+            <h5 class="offcanvas-title mb-0" id="helpOffcanvasLabel"
+              style="font-weight:700;font-size:15px;">Help</h5>
+            <div id="help-page-label" style="font-size:12px;color:#9ca3af;margin-top:2px;"></div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close help"></button>
+        </div>
+        <div class="offcanvas-body" id="help-body"
+          style="padding:20px 24px;font-size:13.5px;line-height:1.6;overflow-y:auto;"></div>
+      </div>
+    `;
+  }
+
+  function openHelp() {
+    const page    = location.pathname.split('/').pop() || 'dashboard.html';
+    const content = window.HELP_CONTENT?.[page];
+    const body    = document.getElementById('help-body');
+    const label   = document.getElementById('help-page-label');
+
+    if (!body) return;
+
+    if (label) {
+      const allItems = NAV_SECTIONS.flatMap(s => s.items);
+      const navItem  = allItems.find(item => (item.matchHref || item.href).split('?')[0] === page);
+      label.textContent = navItem ? navItem.label : '';
+    }
+
+    if (!content) {
+      body.innerHTML = `
+        <p style="color:#6b7280;margin-bottom:16px;">No specific help for this page yet.</p>
+        <a href="guide.html" style="color:#111;font-size:13px;">Open Help &amp; Guide &rarr;</a>
+      `;
+    } else {
+      let html = '';
+      if (content.intro) {
+        html += `<p style="color:#374151;margin-bottom:22px;">${content.intro}</p>`;
+      }
+      (content.sections || []).forEach(s => {
+        html += `
+          <div style="margin-bottom:18px;">
+            <div style="font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;
+              color:#374151;margin-bottom:5px;">${s.heading}</div>
+            <div style="color:#4b5563;font-size:13px;line-height:1.6;">${s.body}</div>
+          </div>
+        `;
+      });
+      html += `
+        <div style="margin-top:28px;padding-top:16px;border-top:1px solid #f3f4f6;">
+          <a href="guide.html" style="color:#9ca3af;font-size:12px;">Full Help &amp; Guide &rarr;</a>
+        </div>
+      `;
+      body.innerHTML = html;
+    }
+
+    if (window.bootstrap) {
+      bootstrap.Offcanvas.getOrCreateInstance(
+        document.getElementById('helpOffcanvas')
+      ).show();
+    }
+  }
+
+  function mountHelpSystem() {
+    document.body.insertAdjacentHTML('beforeend', renderHelpOffcanvas());
+
+    const helpBtn = document.getElementById('app-help-btn');
+    if (helpBtn) helpBtn.addEventListener('click', openHelp);
+
+    // Load help content eagerly so it is ready on first click.
+    // The file is small and does not block rendering.
+    const s   = document.createElement('script');
+    s.src     = 'help-content.js';
+    s.async   = true;
+    document.head.appendChild(s);
+  }
+
+  // ── Production switcher ────────────────────────────────────────────────────
 
   // Replaces the old "Account" link in the header's right-nav (Account now lives in the
   // sidebar above, making that link redundant) with a dropdown for switching between
@@ -94,7 +187,7 @@
           ${user.seasonName || 'Productions'}
         </button>
         <ul class="dropdown-menu dropdown-menu-end" id="prod-switcher-menu" style="min-width:220px;font-size:13px;">
-          <li><span class="dropdown-item-text text-muted" style="font-size:12px;">Loading…</span></li>
+          <li><span class="dropdown-item-text text-muted" style="font-size:12px;">Loading&hellip;</span></li>
         </ul>
       </div>
     `;
@@ -162,5 +255,6 @@
     root.insertAdjacentHTML('afterend', renderSidebar());
     root.remove();
     watchBreakpoint();
+    mountHelpSystem();
   }
 })();

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Help &amp; Guide | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="app-shell.css">
+  <style>
+    .guide-section { margin-bottom: 48px; }
+    .guide-section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      color: #9ca3af;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .guide-card {
+      border: 1px solid #f0f0f0;
+      border-radius: 10px;
+      padding: 20px 22px;
+      margin-bottom: 12px;
+      background: #fff;
+    }
+    .guide-card-title {
+      font-weight: 700;
+      font-size: 14px;
+      color: #111;
+      margin-bottom: 6px;
+    }
+    .guide-card-body {
+      font-size: 13.5px;
+      color: #4b5563;
+      line-height: 1.65;
+    }
+    .guide-card-body p { margin-bottom: 10px; }
+    .guide-card-body p:last-child { margin-bottom: 0; }
+    .guide-card-body ul { padding-left: 18px; margin-bottom: 10px; }
+    .guide-card-body li { margin-bottom: 4px; }
+    .guide-step {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #111;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-right: 8px;
+    }
+  </style>
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body style="visibility:hidden">
+
+  <div id="app-shell-root"></div>
+  <script src="app-shell.js"></script>
+
+  <div class="app-main">
+  <div class="container-fluid mt-4 px-4 pb-6" style="max-width:740px;">
+
+    <div class="mb-4">
+      <h5 class="mb-1 fw-semibold">Help &amp; Guide</h5>
+      <p class="text-muted mb-0" style="font-size:13px;">
+        A task-oriented reference for the full director workflow.
+        For quick help on any page, click the <strong>?</strong> button in the top bar.
+      </p>
+    </div>
+
+    <!-- Getting Started -->
+    <div class="guide-section">
+      <div class="guide-section-title">Getting Started</div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">How CastSync works</div>
+        <div class="guide-card-body">
+          <p>CastSync is organized around a production. Everything -- auditions, casting, rehearsals, attendance -- lives inside one production at a time. You can have multiple productions across one or more organizations.</p>
+          <p>The typical workflow moves through four phases:</p>
+          <ul>
+            <li><strong>Collect auditions</strong> -- build your form, share the join code, and let dancers submit their availability</li>
+            <li><strong>Build your cast</strong> -- review availability, schedule rehearsal blocks, and assign dancers to pieces</li>
+            <li><strong>Plan rehearsals</strong> -- fill out the production timeline with recurring blocks, special events, and room assignments</li>
+            <li><strong>Communicate</strong> -- publish the cast list so dancers can see their schedule, send emails, and manage day-to-day notes and attendance</li>
+          </ul>
+          <p>These phases overlap in practice. You can start scheduling before auditions close, or send a partial cast list while still casting other pieces.</p>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Setting up a new production</div>
+        <div class="guide-card-body">
+          <ul>
+            <li>Create the production from the Organizations page</li>
+            <li>Set the production name, start date, end date, and audition date in <a href="production-settings.html">Production Settings</a></li>
+            <li>Build your audition form in <a href="form-builder.html?scope=season">Audition Form</a></li>
+            <li>Share the Join Code from Production Settings so dancers can find the form</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Collect Auditions -->
+    <div class="guide-section">
+      <div class="guide-section-title">Collect Auditions</div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Building the audition form</div>
+        <div class="guide-card-body">
+          <p>The <a href="form-builder.html?scope=season">Audition Form</a> builder lets you add, remove, and reorder fields. Standard fields (name, email) are always included. Common additions include piece preferences, experience notes, headshot upload, and availability.</p>
+          <p>The <strong>availability field</strong> is the most important one: it generates the color-coded grid in Casting Availability. Dancers mark which days and times they are free and that data drives the entire availability analysis.</p>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Sharing the form with dancers</div>
+        <div class="guide-card-body">
+          <p>Find the <strong>Join Code</strong> in Production Settings. Share it with dancers -- they enter it on the CastSync auditionee portal to find and complete your production's form. Each production has its own unique code.</p>
+          <p>You can control whether the form is open or closed from the <strong>Submission Window</strong> section of Production Settings. Set a deadline to close automatically, or toggle manually at any time.</p>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Reviewing submissions</div>
+        <div class="guide-card-body">
+          <p>All submissions appear in <a href="dancers.html">Auditionees</a>. From there you can see each dancer's availability data, notes, and audition number (if your form includes one).</p>
+          <p>Audition numbers are useful for numbered audition formats where directors track dancers by number rather than name during the audition itself.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Build Your Cast -->
+    <div class="guide-section">
+      <div class="guide-section-title">Build Your Cast</div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">The two casting tools and when to use each</div>
+        <div class="guide-card-body">
+          <p><strong><a href="cast.html">Cast Builder</a></strong> is for creating a new rehearsal block and casting it in one step. Pick a piece, pick a time window, see who is available, select your dancers, and click "Add to Schedule." The block and the casting are both saved at once.</p>
+          <p><strong><a href="search.html">Casting Availability</a></strong> is for reviewing availability across the whole cast before making decisions. The colored grid shows every dancer's availability for each rehearsal slot at a glance. You can add dancers to pieces from here too.</p>
+          <p>In practice: use Casting Availability to study the picture, then use Cast Builder (or Cast List) to finalize assignments.</p>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Cast members vs understudies</div>
+        <div class="guide-card-body">
+          <p>Cast members are the primary performers. Understudies learn the role and cover if needed. Both are stored per piece and both appear on the published cast list.</p>
+          <p>You can drag dancers between Cast Members and Understudies in <a href="casting.html">Cast List</a> at any time. This does not affect rehearsal block assignments.</p>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Adjusting casting after the fact</div>
+        <div class="guide-card-body">
+          <p>Go to <a href="casting.html">Cast List</a> to add or remove dancers from a piece, assign named roles, reorder the display, and manage understudies. You can also add more dancers from Casting Availability at any point.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Plan Rehearsals -->
+    <div class="guide-section">
+      <div class="guide-section-title">Plan Rehearsals</div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">The Production Timeline</div>
+        <div class="guide-card-body">
+          <p>The <a href="master.html">Production Timeline</a> is your week-by-week rehearsal grid. Columns are days of the week; rows are rooms. Drag on any empty cell to create a rehearsal block, resize from the right edge to adjust duration.</p>
+          <p>Click any block to open the detail drawer. From there you can: assign the block to a piece, change the room, view cast members for that piece, log attendance, check for approved absences, and save notes.</p>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Rooms</div>
+        <div class="guide-card-body">
+          <p>If your production uses named rooms, set them up in Production Settings. Once rooms are configured, each block in the drawer shows a room assignment and the grid rows represent individual rooms.</p>
+          <p>The org overlay shows other productions' blocks as subtle background elements. This helps you spot double-booked rooms across your organization before it becomes a problem.</p>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Special Events</div>
+        <div class="guide-card-body">
+          <p>Add one-time events in Production Settings: performances, tech rehearsals, dress rehearsals, spacing rehearsals, fittings, company meetings, and more. Each event has a date, optional time, optional location, and a scope (full cast, specific pieces, or staff only).</p>
+          <p>Events marked "visible to dancers" appear in dancer schedules. Performances show with a gold highlight on the timeline; other events appear as colored markers at the top.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Run Your Production -->
+    <div class="guide-section">
+      <div class="guide-section-title">Run Your Production</div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Attendance</div>
+        <div class="guide-card-body">
+          <p>Log attendance from the <a href="attendance.html">Attendance</a> page or from the drawer on the Production Timeline. Select a rehearsal date and piece, then mark each dancer present, absent, or late.</p>
+          <p>Dancers with approved absence requests are flagged automatically so you can quickly distinguish excused absences from unexcused ones.</p>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Absence Requests</div>
+        <div class="guide-card-body">
+          <p>Dancers submit absence requests from their portal. Review them in <a href="absence-requests.html">Absence Requests</a>. Approving a request marks it as excused in Attendance and shows a callout in the Production Timeline drawer for that rehearsal date.</p>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Production Notes vs My Private Notes</div>
+        <div class="guide-card-body">
+          <p><strong><a href="notes.html">Production Notes</a></strong> are shared with all directors and staff on this production. A notification email goes out when a note is posted (configurable in Production Settings). Use these for information the team needs to see.</p>
+          <p><strong><a href="my-notes.html">My Private Notes</a></strong> are only visible to you. When saving a note from the Production Timeline drawer, you can choose which destination to use. Notes saved from the drawer are automatically prefixed with the piece name, day, and date for context.</p>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Faculty and staff</div>
+        <div class="guide-card-body">
+          <p>Add staff members (choreographers, rehearsal directors, etc.) to individual pieces from <a href="casting.html">Cast List</a> -- expand a piece card and use the Production Staff section. Staff get a limited view of the app: only their assigned pieces, no production-wide settings or auditionee data.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Communicate with Dancers -->
+    <div class="guide-section">
+      <div class="guide-section-title">Communicate with Dancers</div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Publishing the cast list</div>
+        <div class="guide-card-body">
+          <p>The <strong>Publish to Dancers</strong> toggle in <a href="casting.html">Cast List</a> controls whether cast results are visible in the dancer portal. While set to Draft, nothing is visible. Once Published, dancers can see which pieces they are in.</p>
+          <p>Publishing requires two things to be true before dancers see their schedules: casting must be published AND "Enable My Rehearsals" must be turned on in Production Settings under Student Access.</p>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">Emailing the cast</div>
+        <div class="guide-card-body">
+          <p>Click <strong>Email Cast</strong> in Cast List to send the cast list to all auditionees. Add an optional message at the top of the email for rehearsal expectations, required attire, or what happens next.</p>
+          <p>For a formatted, themed version of the cast list (with your choice of header color, suitable for printing or sharing as a PDF), use <strong>Design &amp; Export</strong>.</p>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-card-title">What dancers see in their portal</div>
+        <div class="guide-card-body">
+          <p>Once casting is published and My Rehearsals is enabled, a cast member sees:</p>
+          <ul>
+            <li>Their rehearsal blocks for pieces they are cast in, organized by week</li>
+            <li>Special events marked "full cast" or scoped to their pieces, if visible to dancers</li>
+            <li>A "Next Up" summary showing the next scheduled rehearsal</li>
+          </ul>
+          <p>Dancers do not see other people's casting, production-wide schedules, or any director tools.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    (async () => {
+      try {
+        const res  = await fetch('/api/auth/me');
+        const user = await res.json();
+        if (!res.ok || (user.role !== 'master' && user.mode !== 'director')) { window.location.href = 'login.html'; return; }
+        if (!user.orgId) { window.location.href = 'org-select.html'; return; }
+        const nav = document.querySelector('.navbar-nav');
+        nav.insertAdjacentHTML('beforeend',
+          `<li class="nav-item"><span class="nav-link nav-context">${user.orgName} &middot; ${user.seasonName}</span></li>`
+        );
+        document.getElementById('right-nav').innerHTML =
+          window.renderProductionSwitcher(user) +
+          `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+        window.initProductionSwitcher();
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+        document.body.style.visibility = 'visible';
+      } catch (err) { window.location.href = 'login.html'; }
+    })();
+  </script>
+
+</body>
+</html>
