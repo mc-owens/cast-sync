@@ -12,9 +12,17 @@
       .no-print { display: none !important; }
       body { visibility: visible !important; }
       #preview-card { border: none !important; box-shadow: none !important; }
+      .preview-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
-    .piece-block { border-top: 1px solid #e0e0e0; padding-top: 16px; margin-bottom: 24px; }
     .cast-name { font-size: 14px; margin: 2px 0; }
+    .piece-block { padding-top: 16px; margin-bottom: 24px; }
+    .theme-swatch {
+      width: 26px; height: 26px; border-radius: 50%; cursor: pointer;
+      border: 3px solid transparent; transition: border-color .15s, transform .1s;
+      flex-shrink: 0;
+    }
+    .theme-swatch.active { border-color: #1a1a1a; transform: scale(1.15); }
+    .theme-swatch:hover { transform: scale(1.1); }
   </style>
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -26,8 +34,31 @@
   <div id="app-shell-root"></div>
   <script src="app-shell.js"></script>
 
-  <div class="app-main">
+  <!-- Send confirmation modal -->
+  <div class="modal fade" id="sendConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content" style="border-radius:12px;border:none;">
+        <div class="modal-header" style="border-bottom:1px solid #f3f4f6;">
+          <h5 class="modal-title" style="font-weight:700;">Send Cast List</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" style="padding:20px 24px;">
+          <p style="font-size:14px;color:#374151;margin-bottom:8px;">
+            This will email the cast list to <strong id="confirm-count"></strong>.
+          </p>
+          <p style="font-size:13px;color:#6b7280;margin:0;">
+            Make sure your cast list and message look right in the preview before sending. This cannot be undone.
+          </p>
+        </div>
+        <div class="modal-footer" style="border-top:1px solid #f3f4f6;gap:8px;">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-dark" id="confirm-send-btn">Send Now</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
+  <div class="app-main">
   <div class="container-fluid mt-4 px-4" style="max-width:860px;">
 
     <!-- Controls -->
@@ -37,7 +68,7 @@
           <h5 class="mb-0 fw-semibold">Publish Casting</h5>
           <p class="text-muted mb-0" style="font-size:13px;" id="subtitle">Loading…</p>
         </div>
-        <a href="casting.html" class="btn btn-sm btn-outline-secondary">← Back to Cast List</a>
+        <a href="casting.html" class="btn btn-sm btn-outline-secondary">Back to Cast List</a>
       </div>
 
       <div class="card mb-3">
@@ -45,7 +76,18 @@
           <label class="form-label fw-semibold">Optional Message</label>
           <textarea id="blurb" class="form-control" rows="3"
             placeholder="Add any additional information for your auditionees: rehearsal expectations, required attire, etc."></textarea>
-          <div class="form-text">This will appear at the top of the email and printed sheet, below the org name.</div>
+          <div class="form-text">This will appear at the top of the email and printed sheet.</div>
+        </div>
+      </div>
+
+      <!-- Theme picker -->
+      <div class="card mb-3">
+        <div class="card-body py-3">
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span style="font-size:13px;font-weight:600;color:#374151;white-space:nowrap;">Theme Color</span>
+            <div id="theme-swatches" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"></div>
+            <span style="font-size:12px;color:#9ca3af;" id="theme-label"></span>
+          </div>
         </div>
       </div>
 
@@ -59,8 +101,8 @@
 
     <!-- Preview (also the print target) -->
     <div class="card" id="preview-card">
-      <div class="card-body" id="preview-body">
-        <div class="text-muted">Loading preview…</div>
+      <div class="card-body" id="preview-body" style="padding:0;overflow:hidden;border-radius:8px;">
+        <div class="text-muted p-4">Loading preview…</div>
       </div>
     </div>
 
@@ -73,56 +115,95 @@
       return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
+    const THEMES = [
+      { id: 'black',    label: 'Classic',   accent: '#1a1a1a', text: '#ffffff', border: '#1a1a1a' },
+      { id: 'navy',     label: 'Navy',      accent: '#1e3a5f', text: '#ffffff', border: '#1e3a5f' },
+      { id: 'forest',   label: 'Forest',    accent: '#1a4731', text: '#ffffff', border: '#1a4731' },
+      { id: 'burgundy', label: 'Burgundy',  accent: '#7c1d3a', text: '#ffffff', border: '#7c1d3a' },
+      { id: 'gold',     label: 'Gold',      accent: '#92650a', text: '#ffffff', border: '#92650a' },
+      { id: 'slate',    label: 'Slate',     accent: '#4b5563', text: '#ffffff', border: '#4b5563' },
+      { id: 'rose',     label: 'Rose',      accent: '#9f1239', text: '#ffffff', border: '#9f1239' },
+    ];
+
+    let activeTheme = THEMES[0];
     let publishData = null;
+
+    // Render theme swatches
+    const swatchContainer = document.getElementById('theme-swatches');
+    THEMES.forEach(t => {
+      const swatch = document.createElement('button');
+      swatch.className = 'theme-swatch' + (t.id === activeTheme.id ? ' active' : '');
+      swatch.style.background = t.accent;
+      swatch.title = t.label;
+      swatch.addEventListener('click', () => {
+        activeTheme = t;
+        document.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active'));
+        swatch.classList.add('active');
+        document.getElementById('theme-label').textContent = t.label;
+        renderPreview(document.getElementById('blurb').value.trim());
+      });
+      swatchContainer.appendChild(swatch);
+    });
+    document.getElementById('theme-label').textContent = activeTheme.label;
 
     function renderPreview(blurb) {
       if (!publishData) return;
       const { org_name, season_name, pieces } = publishData;
+      const t = activeTheme;
 
-      let html = `<h2 style="text-align:center;margin-bottom:4px;">${org_name}</h2>`;
-      html += `<p style="text-align:center;color:#555;margin-top:0;margin-bottom:${blurb ? '16px' : '8px'};">${season_name}</p>`;
+      // Header with production name big, org name smaller below
+      let html = `<div class="preview-header" style="background:${t.accent};padding:28px 32px 24px;text-align:center;margin-bottom:0;">
+        <div style="font-size:22px;font-weight:700;color:${t.text};letter-spacing:-.3px;margin-bottom:6px;">${escapeHtml(season_name)}</div>
+        <div style="font-size:13px;color:${t.text};opacity:.75;font-weight:500;text-transform:uppercase;letter-spacing:.8px;">${escapeHtml(org_name)}</div>
+      </div>`;
+
+      html += `<div style="padding:24px 32px;">`;
 
       if (blurb) {
-        html += `<p style="border-left:3px solid #ccc;padding:6px 12px;color:#333;margin-bottom:20px;font-size:14px;">${blurb.replace(/\n/g,'<br>')}</p>`;
+        html += `<div style="border-left:3px solid ${t.accent};padding:8px 14px;color:#333;margin-bottom:24px;font-size:14px;background:#fafafa;border-radius:0 6px 6px 0;">${escapeHtml(blurb).replace(/\n/g,'<br>')}</div>`;
       }
 
       if (pieces.length === 0) {
         html += '<p class="text-muted">No pieces added to the schedule yet.</p>';
       }
 
-      pieces.forEach(p => {
-        const blocks      = p.blocks || [];
-        const casts       = p.casts  || [];
-        const members     = casts.filter(c => c.cast_role === 'member');
+      pieces.forEach((p, i) => {
+        const blocks       = p.blocks || [];
+        const casts        = p.casts  || [];
+        const members      = casts.filter(c => c.cast_role === 'member');
         const understudies = casts.filter(c => c.cast_role === 'understudy');
         const rehearsalStr = blocks.length
           ? blocks.map(b => `${b.day} ${b.start_time}–${b.end_time}`).join(', ')
-          : '<em style="color:#888;">TBD</em>';
+          : '<em style="color:#aaa;">TBD</em>';
 
-        html += `<div class="piece-block">`;
+        html += `<div class="piece-block" style="${i > 0 ? `border-top:1px solid #e5e7eb;` : ''}">`;
+        html += `<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px;">
+          <h5 style="margin:0;font-size:15px;font-weight:700;color:${t.accent};">${escapeHtml(p.name)}</h5>
+        </div>`;
+
         if (p.choreographer_name) {
-          html += `<h5 style="margin-bottom:2px;">${p.choreographer_name}</h5>`;
-          if (p.choreographer_email) html += `<p style="font-size:13px;color:#555;margin-bottom:6px;">${p.choreographer_email}</p>`;
-        } else {
-          html += `<h5 style="margin-bottom:6px;color:#aaa;font-style:italic;">No choreographer listed</h5>`;
+          html += `<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:2px;">${escapeHtml(p.choreographer_name)}</div>`;
+          if (p.choreographer_email) html += `<div style="font-size:12px;color:#6b7280;margin-bottom:6px;">${escapeHtml(p.choreographer_email)}</div>`;
         }
-        html += `<p style="font-size:13px;color:#555;margin-bottom:10px;">Rehearsals: ${rehearsalStr}</p>`;
+
+        html += `<div style="font-size:12px;color:#6b7280;margin-bottom:10px;">Rehearsals: ${rehearsalStr}</div>`;
 
         if (members.length === 0 && understudies.length === 0) {
           html += `<p style="font-size:13px;color:#aaa;font-style:italic;">No cast assigned yet.</p>`;
         } else {
           members.forEach(c => {
-            const role = c.role_name ? `<span style="color:#777;font-size:12px;">, ${escapeHtml(c.role_name)}</span>` : '';
+            const role = c.role_name ? `<span style="color:#9ca3af;font-size:12px;">, ${escapeHtml(c.role_name)}</span>` : '';
             html += `<p class="cast-name">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}${role}</p>`;
           });
           understudies.forEach(c => {
-            const role = c.role_name ? `<span style="color:#777;font-size:12px;">, ${escapeHtml(c.role_name)}</span>` : '';
-            html += `<p class="cast-name">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}${role} <span style="color:#888;font-size:12px;">(understudy)</span></p>`;
+            const role = c.role_name ? `<span style="color:#9ca3af;font-size:12px;">, ${escapeHtml(c.role_name)}</span>` : '';
+            html += `<p class="cast-name" style="color:#6b7280;">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}${role} <span style="font-size:12px;font-style:italic;">(understudy)</span></p>`;
           });
         }
         html += `</div>`;
       });
 
+      html += `</div>`;
       document.getElementById('preview-body').innerHTML = html;
     }
 
@@ -131,13 +212,23 @@
       renderPreview(this.value.trim());
     });
 
-    // Send button
-    document.getElementById('send-btn').addEventListener('click', async () => {
-      const btn      = document.getElementById('send-btn');
+    // Send button opens confirmation modal
+    document.getElementById('send-btn').addEventListener('click', () => {
+      const count = publishData?.auditionee_count ?? 0;
+      document.getElementById('confirm-count').textContent =
+        `${count} auditionee${count !== 1 ? 's' : ''}`;
+      new bootstrap.Modal(document.getElementById('sendConfirmModal')).show();
+    });
+
+    // Actual send from modal
+    document.getElementById('confirm-send-btn').addEventListener('click', async () => {
+      const modal    = bootstrap.Modal.getInstance(document.getElementById('sendConfirmModal'));
+      const btn      = document.getElementById('confirm-send-btn');
       const resultEl = document.getElementById('send-result');
       const blurb    = document.getElementById('blurb').value.trim();
       btn.disabled   = true;
       btn.textContent = 'Sending…';
+      modal.hide();
       resultEl.textContent = '';
       resultEl.className = '';
       try {
@@ -155,7 +246,7 @@
         resultEl.className   = 'text-danger';
       } finally {
         btn.disabled    = false;
-        btn.innerHTML   = `Send to All Auditionees (<span id="send-count">${publishData?.auditionee_count ?? '…'}</span>)`;
+        btn.textContent = 'Send Now';
       }
     });
 
@@ -189,11 +280,11 @@
         const res  = await fetch('/api/publish');
         publishData = await res.json();
         document.getElementById('subtitle').textContent =
-          `${publishData.org_name} · ${publishData.season_name}`;
+          `${publishData.season_name} · ${publishData.org_name}`;
         document.getElementById('send-count').textContent = publishData.auditionee_count;
         renderPreview('');
       } catch (err) {
-        document.getElementById('preview-body').textContent = 'Could not load casting data.';
+        document.getElementById('preview-body').innerHTML = '<div class="p-4 text-danger">Could not load casting data.</div>';
       }
     }
 
