@@ -173,10 +173,56 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function renderRoomsList() {
     document.getElementById('rooms-list').innerHTML = rooms.map(r => `
-      <div class="d-flex align-items-center justify-content-between mb-1" data-room-row="${r.id}">
-        <span style="font-size:12.5px;">${r.name}</span>
-        <button type="button" class="btn-close" style="font-size:9px;" data-delete-room="${r.id}" aria-label="Delete room"></button>
+      <div class="d-flex align-items-center gap-1 mb-1" data-room-row="${r.id}">
+        <span style="font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.name}</span>
+        <button type="button" data-edit-room="${r.id}" aria-label="Rename room"
+          style="border:none;background:none;padding:2px 4px;color:#9ca3af;cursor:pointer;flex-shrink:0;font-size:12px;line-height:1;">&#9998;</button>
+        <button type="button" class="btn-close" style="font-size:9px;flex-shrink:0;" data-delete-room="${r.id}" aria-label="Delete room"></button>
       </div>`).join('') || '<div class="text-muted" style="font-size:12px;">No rooms yet.</div>';
+
+    document.querySelectorAll('[data-edit-room]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id  = btn.dataset.editRoom;
+        const room = rooms.find(r => String(r.id) === id);
+        if (!room) return;
+        const row = btn.closest('[data-room-row]');
+        row.innerHTML = `
+          <input type="text" value="${room.name}" maxlength="60"
+            style="flex:1;font-size:12.5px;border:1px solid #d1d5db;border-radius:4px;padding:2px 6px;min-width:0;">
+          <button type="button" data-save-room="${id}"
+            style="border:none;background:none;padding:2px 6px;color:#111;cursor:pointer;font-size:12px;font-weight:600;flex-shrink:0;">Save</button>
+          <button type="button" data-cancel-edit
+            style="border:none;background:none;padding:2px 4px;color:#9ca3af;cursor:pointer;font-size:12px;flex-shrink:0;">Cancel</button>
+        `;
+        const input = row.querySelector('input');
+        input.focus();
+        input.select();
+
+        row.querySelector('[data-cancel-edit]').addEventListener('click', () => renderRoomsList());
+
+        const doSave = async () => {
+          const newName = input.value.trim();
+          if (!newName) return;
+          try {
+            const res = await fetch(`/api/season/rooms/${id}`, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: newName }),
+            });
+            if (!res.ok) { const d = await res.json(); alert(d.error || 'Could not rename room.'); return; }
+            const updated = await res.json();
+            rooms = rooms.map(r => String(r.id) === id ? updated : r);
+            renderRoomsList();
+            updateRoomModeUI();
+            repositionAllBlocks();
+          } catch (e) { alert('Could not connect to server.'); }
+        };
+        row.querySelector('[data-save-room]').addEventListener('click', doSave);
+        input.addEventListener('keydown', e => {
+          if (e.key === 'Enter') doSave();
+          if (e.key === 'Escape') renderRoomsList();
+        });
+      });
+    });
 
     document.querySelectorAll('[data-delete-room]').forEach(btn => {
       btn.addEventListener('click', async () => {
