@@ -77,6 +77,17 @@
       </div>
     </div>
 
+    <div class="app-card mb-4">
+      <h6 class="label-gold mb-3">Production Staff</h6>
+      <div id="piece-staff-list"><span class="text-muted" style="font-size:13px;">Loading…</span></div>
+      <div style="margin-top:16px;background:#fdf8f0;border:1px solid #f3e0b0;border-radius:8px;padding:14px 16px;">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#c4943a;margin-bottom:6px;">How to add production staff</div>
+        <div style="font-size:13px;color:#374151;line-height:1.6;">
+          Go to the <a href="casting.html" style="color:#c4943a;font-weight:600;">Cast List</a> tab. On any piece, click the staff email field and enter their email address. They'll get an invitation email to join CastSync and will have their own production staff portal where they can view the rehearsal schedule, cast list, attendance, and notes for their piece only.
+        </div>
+      </div>
+    </div>
+
   </div>
 
   </div>
@@ -106,7 +117,7 @@
 
         const dirRes = await fetch('/api/season/faculty-directory');
         if (!dirRes.ok) { document.getElementById('directors-list').textContent = 'Could not load faculty.'; return; }
-        const { directors, choreographers } = await dirRes.json();
+        const { directors, choreographers, piece_staff } = await dirRes.json();
 
         const facultyModalEl = document.getElementById('facultyModal');
         function openFacultyModal({ title, email, roleLabel, piecesHtml }) {
@@ -160,6 +171,28 @@
                     : p.blocks.map(b => `<div class="text-muted" style="font-size:12px;">${b.day}, ${b.start_time} – ${b.end_time}</div>`).join('')}
                 </div>`).join('');
               openFacultyModal({ title: c.name || c.email, email: c.email, roleLabel: 'Choreographer', piecesHtml });
+            });
+          });
+        }
+
+        const pieceStaffListEl = document.getElementById('piece-staff-list');
+        if (!piece_staff || piece_staff.length === 0) {
+          pieceStaffListEl.innerHTML = '<span class="text-muted" style="font-size:13px;">No production staff added yet.</span>';
+        } else {
+          pieceStaffListEl.innerHTML = piece_staff.map((s, i) => `
+            <div class="faculty-row">
+              <button class="faculty-name-btn open-staff" data-index="${i}">${s.email}</button>
+              <span class="faculty-role-badge">${s.pieces.length} piece${s.pieces.length === 1 ? '' : 's'}</span>
+            </div>`).join('');
+          pieceStaffListEl.querySelectorAll('.open-staff').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const s = piece_staff[btn.dataset.index];
+              const piecesHtml = s.pieces.map(p => `
+                <div class="mb-2">
+                  <div style="font-size:13px;font-weight:600;">${p.name}</div>
+                  ${p.title ? `<div class="text-muted" style="font-size:12px;">${p.title}</div>` : ''}
+                </div>`).join('');
+              openFacultyModal({ title: s.email, email: s.email, roleLabel: s.title || 'Production Staff', piecesHtml });
             });
           });
         }

@@ -28,6 +28,8 @@
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body style="visibility:hidden">
 
@@ -93,7 +95,8 @@
 
       <div class="d-flex gap-2 flex-wrap mb-2">
         <button id="send-btn" class="btn btn-dark">Send to All Auditionees (<span id="send-count">…</span>)</button>
-        <button id="pdf-btn" class="btn btn-outline-secondary" onclick="window.print()">Download PDF</button>
+        <button id="print-btn" class="btn btn-outline-secondary" onclick="window.print()">Print</button>
+        <button id="pdf-btn" class="btn btn-outline-secondary">Download PDF</button>
         <button id="csv-btn" class="btn btn-outline-secondary">Download CSV</button>
       </div>
       <div id="send-result" class="mt-2" style="font-size:13px;"></div>
@@ -125,7 +128,11 @@
       { id: 'rose',     label: 'Rose',      accent: '#9f1239', text: '#ffffff', border: '#9f1239' },
     ];
 
-    let activeTheme = THEMES[0];
+    const STORAGE_BLURB = 'cs_publish_blurb';
+    const STORAGE_THEME = 'cs_publish_theme';
+
+    const savedThemeId = localStorage.getItem(STORAGE_THEME) || 'black';
+    let activeTheme = THEMES.find(t => t.id === savedThemeId) || THEMES[0];
     let publishData = null;
 
     // Render theme swatches
@@ -137,6 +144,7 @@
       swatch.title = t.label;
       swatch.addEventListener('click', () => {
         activeTheme = t;
+        localStorage.setItem(STORAGE_THEME, t.id);
         document.querySelectorAll('.theme-swatch').forEach(s => s.classList.remove('active'));
         swatch.classList.add('active');
         document.getElementById('theme-label').textContent = t.label;
@@ -207,8 +215,13 @@
       document.getElementById('preview-body').innerHTML = html;
     }
 
-    // Live preview update as director types blurb
+    // Restore saved blurb
+    const savedBlurb = localStorage.getItem(STORAGE_BLURB) || '';
+    if (savedBlurb) document.getElementById('blurb').value = savedBlurb;
+
+    // Live preview update + auto-save as director types blurb
     document.getElementById('blurb').addEventListener('input', function () {
+      localStorage.setItem(STORAGE_BLURB, this.value);
       renderPreview(this.value.trim());
     });
 
@@ -250,6 +263,43 @@
       }
     });
 
+    // PDF download
+    document.getElementById('pdf-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('pdf-btn');
+      btn.disabled = true;
+      btn.textContent = 'Generating…';
+      try {
+        const element = document.getElementById('preview-card');
+        const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pageW = pdf.internal.pageSize.getWidth();
+        const pageH = pdf.internal.pageSize.getHeight();
+        const imgW = pageW;
+        const imgH = (canvas.height * imgW) / canvas.width;
+        let y = 0;
+        while (y < imgH) {
+          const sliceH = Math.min(pageH, imgH - y);
+          const srcY = (y / imgH) * canvas.height;
+          const srcH = (sliceH / imgH) * canvas.height;
+          const slice = document.createElement('canvas');
+          slice.width = canvas.width;
+          slice.height = srcH;
+          slice.getContext('2d').drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+          if (y > 0) pdf.addPage();
+          pdf.addImage(slice.toDataURL('image/png'), 'PNG', 0, 0, pageW, sliceH);
+          y += pageH;
+        }
+        const name = publishData ? `${publishData.season_name.replace(/\s+/g,'_')}_cast_list.pdf` : 'cast_list.pdf';
+        pdf.save(name);
+      } catch (err) {
+        alert('Could not generate PDF: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Download PDF';
+      }
+    });
+
     // CSV export
     document.getElementById('csv-btn').addEventListener('click', () => {
       if (!publishData) return;
@@ -282,7 +332,7 @@
         document.getElementById('subtitle').textContent =
           `${publishData.season_name} · ${publishData.org_name}`;
         document.getElementById('send-count').textContent = publishData.auditionee_count;
-        renderPreview('');
+        renderPreview(document.getElementById('blurb').value.trim());
       } catch (err) {
         document.getElementById('preview-body').innerHTML = '<div class="p-4 text-danger">Could not load casting data.</div>';
       }

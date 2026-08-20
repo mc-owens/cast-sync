@@ -5410,7 +5410,7 @@ app.get('/api/season/faculty-directory', requireAuth('master'), async (req, res)
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
-    const [orgOwner, seasonMembers, choreographerRows] = await Promise.all([
+    const [orgOwner, seasonMembers, choreographerRows, pieceStaffRows] = await Promise.all([
       pool.query(
         `SELECT u.email, om.role FROM org_members om JOIN users u ON u.id = om.user_id
          WHERE om.org_id = $1 AND om.role = 'owner'`,
@@ -5430,6 +5430,15 @@ app.get('/api/season/faculty-directory', requireAuth('master'), async (req, res)
          ORDER BY p.choreographer_email, p.name, mb.day, mb.start_time`,
         [seasonId]
       ),
+      pool.query(
+        `SELECT u.email, ps.display_title, p.id AS piece_id, p.name AS piece_name
+         FROM piece_staff ps
+         JOIN users u ON u.id = ps.user_id
+         JOIN pieces p ON p.id = ps.piece_id
+         WHERE p.season_id = $1
+         ORDER BY u.email, p.name`,
+        [seasonId]
+      ),
     ]);
 
     const directors = [...orgOwner.rows, ...seasonMembers.rows];
@@ -5442,9 +5451,16 @@ app.get('/api/season/faculty-directory', requireAuth('master'), async (req, res)
       if (r.day) choreographer.pieces.get(r.piece_id).blocks.push({ day: r.day, start_time: r.start_time, end_time: r.end_time });
     });
 
+    const staffMap = new Map();
+    pieceStaffRows.rows.forEach(r => {
+      if (!staffMap.has(r.email)) staffMap.set(r.email, { email: r.email, title: r.display_title, pieces: [] });
+      staffMap.get(r.email).pieces.push({ id: r.piece_id, name: r.piece_name, title: r.display_title });
+    });
+
     res.json({
       directors,
       choreographers: [...choreographers.values()].map(c => ({ ...c, pieces: [...c.pieces.values()] })),
+      piece_staff: [...staffMap.values()],
     });
   } catch (err) {
     console.error(err.message);
