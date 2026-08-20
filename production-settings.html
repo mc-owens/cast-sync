@@ -78,30 +78,20 @@
       </div>
       <p class="text-muted mt-2 mb-0" style="font-size:12px;">
         Setting a start and end date turns on week-by-week navigation on the
-        <a href="master.html">Master Schedule</a> page.
+        <a href="master.html">Production Timeline</a> page.
       </p>
       <span id="dates-saved-msg" class="text-success d-none" style="font-size:12px;">Saved.</span>
     </div>
 
-    <div class="app-card mb-4">
-      <h6 class="label-gold mb-3">Performance Dates</h6>
-      <p class="text-muted mb-3" style="font-size:12px;">
-        Add one date per show. Each one shows up directly on the
-        <a href="master.html">Master Schedule</a> page when you navigate to that week.
-      </p>
-      <div id="performance-dates-list" class="mb-2"></div>
-      <div class="d-flex gap-2">
-        <input type="date" class="form-control form-control-sm" id="new-performance-date-input" style="max-width:200px;">
-        <button class="btn btn-sm btn-outline-secondary" id="add-performance-date-btn">Add</button>
-      </div>
-      <div id="performance-date-error" class="text-danger mt-1 d-none" style="font-size:12px;"></div>
-    </div>
+    <!-- Performance Dates card retired: performances are now added as Special Events
+         (event_type = 'performance'). Legacy performance_dates rows were migrated to
+         special_events in Step 39. The API endpoints remain live as a safety net. -->
 
     <div class="app-card mb-4" id="special-events-card">
       <h6 class="label-gold mb-2">Special Events</h6>
       <p class="text-muted mb-3" style="font-size:12px;">
         One-time dated events like tech rehearsals, dress rehearsals, performances, and fittings.
-        These appear on the Master Schedule and, if visible to dancers, on each dancer's My Schedule.
+        These appear on the Production Timeline and, if visible to dancers, on each dancer's My Schedule. Add performances here -- they'll show on the timeline with a performance-specific highlight.
       </p>
 
       <div id="se-bulk-bar" class="d-none align-items-center gap-2 mb-2 p-2 rounded" style="background:#fef2f2;border:1px solid #fca5a5;">

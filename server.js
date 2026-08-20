@@ -7120,6 +7120,28 @@ async function runMigrations() {
     console.log('Migration step 38 (private_notes table) complete.');
   } catch (err) { console.error('Migration step 38 error:', err.message); }
 
+  // Step 39: Migrate legacy performance_dates into special_events so that
+  // Performance Special Events become the single source of truth.
+  // Skips any date where a matching performance special event already exists
+  // for the same season (no duplicates, no modification of existing records).
+  // Migrated events: full_cast scope, visible_to_dancers = true (performance
+  // dates were always implicitly visible), time/location/notes left null.
+  try {
+    await pool.query(`
+      INSERT INTO special_events
+        (season_id, event_type, title, date, applies_to, visible_to_dancers)
+      SELECT pd.season_id, 'performance', 'Performance', pd.date, 'full_cast', true
+      FROM performance_dates pd
+      WHERE NOT EXISTS (
+        SELECT 1 FROM special_events se
+        WHERE se.season_id   = pd.season_id
+          AND se.event_type  = 'performance'
+          AND se.date        = pd.date
+      );
+    `);
+    console.log('Migration step 39 (performance_dates → special_events) complete.');
+  } catch (err) { console.error('Migration step 39 error:', err.message); }
+
   console.log('All migrations complete.');
 }
 

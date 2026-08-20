@@ -808,16 +808,14 @@
       const today = new Date().toISOString().slice(0, 10);
       if (!card) return;
       try {
-        const [segRes, datesRes, seRes, perfRes] = await Promise.all([
+        const [segRes, datesRes, seRes] = await Promise.all([
           fetch('/api/season/segments'),
           fetch('/api/season/production-dates'),
           fetch('/api/season/special-events'),
-          fetch('/api/season/performance-dates'),
         ]);
-        const segments  = segRes.ok   ? await segRes.json()   : [];
-        const dates     = datesRes.ok ? await datesRes.json() : {};
-        const seEvents  = seRes.ok    ? await seRes.json()    : [];
-        const perfDates = perfRes.ok  ? await perfRes.json()  : [];
+        const segments = segRes.ok   ? await segRes.json()   : [];
+        const dates    = datesRes.ok ? await datesRes.json() : {};
+        const seEvents = seRes.ok    ? await seRes.json()    : [];
 
         const prodStart = dates.start_date || null;
         const prodEnd   = dates.end_date   || null;
@@ -864,10 +862,6 @@
             const off = dayOff(monday, dates.audition_date);
             if (off >= 0 && off <= 6) weekItems.push(`Audition Day · ${DAY_SHORT[off]}`);
           }
-          perfDates.forEach(p => {
-            const off = dayOff(monday, p.date);
-            if (off >= 0 && off <= 6) weekItems.push(`Performance · ${DAY_SHORT[off]}`);
-          });
           seEvents.forEach(ev => {
             const off = dayOff(monday, ev.date);
             if (off < 0 || off > 6) return;

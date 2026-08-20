@@ -1358,15 +1358,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const monday = window._currentWeekMonday;
     if (!monday) return;
     try {
-      const [datesRes, perfRes] = await Promise.all([
+      const [datesRes, seRes] = await Promise.all([
         fetch('/api/season/production-dates'),
-        fetch('/api/season/performance-dates'),
+        fetch('/api/season/special-events'),
       ]);
-      const dates = datesRes.ok ? await datesRes.json() : {};
-      const perfDates = perfRes.ok ? await perfRes.json() : [];
+      const dates  = datesRes.ok ? await datesRes.json() : {};
+      const events = seRes.ok   ? await seRes.json()    : [];
       const milestones = [];
       if (dates.audition_date) milestones.push({ date: dates.audition_date, type: 'Audition' });
-      perfDates.forEach(p => milestones.push({ date: p.date, type: 'Performance' }));
+      events.filter(e => e.event_type === 'performance').forEach(e => milestones.push({ date: e.date, type: 'Performance' }));
 
       const inWeek = milestones
         .map(m => ({ ...m, idx: dayIndexInWeek(monday, m.date) }))
@@ -1446,33 +1446,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!monday || !band) return;
 
     try {
-      const [seRes, datesRes, perfRes] = await Promise.all([
+      const [seRes, datesRes] = await Promise.all([
         fetch('/api/season/special-events'),
         fetch('/api/season/production-dates'),
-        fetch('/api/season/performance-dates'),
       ]);
 
-      const events    = seRes.ok    ? await seRes.json()    : [];
-      const dates     = datesRes.ok ? await datesRes.json() : {};
-      const perfDates = perfRes.ok  ? await perfRes.json()  : [];
+      const events = seRes.ok    ? await seRes.json()    : [];
+      const dates  = datesRes.ok ? await datesRes.json() : {};
 
-      // Milestone chips (outlined)
-      const milestones = [];
-      if (dates.audition_date) milestones.push({ date: dates.audition_date, label: 'Audition Day', color: '#c4943a' });
-      perfDates.forEach(p => milestones.push({ date: p.date, label: 'Performance', color: '#c0392b' }));
+      // Audition Day milestone chip (outlined -- audition date still comes from production-dates)
+      if (dates.audition_date) {
+        const idx = dayIndexInWeek(monday, dates.audition_date);
+        if (idx !== -1 && cols[idx]) {
+          const chip = document.createElement('div');
+          chip.className = 'se-chip';
+          chip.title = 'Audition Day';
+          chip.style.cssText = `background:${hexToRgba('#c4943a', 0.1)};border:2px solid #c4943a;`;
+          chip.innerHTML = `<div style="font-size:12px;font-weight:700;color:#c4943a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Audition Day</div>`;
+          cols[idx].appendChild(chip);
+        }
+      }
 
-      milestones.forEach(m => {
-        const idx = dayIndexInWeek(monday, m.date);
-        if (idx === -1 || !cols[idx]) return;
-        const chip = document.createElement('div');
-        chip.className = 'se-chip';
-        chip.title = m.label;
-        chip.style.cssText = `background:${hexToRgba(m.color, 0.1)};border:2px solid ${m.color};`;
-        chip.innerHTML = `<div style="font-size:12px;font-weight:700;color:${m.color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${m.label}</div>`;
-        cols[idx].appendChild(chip);
-      });
-
-      // Special event chips (solid fill)
+      // Special event chips (solid fill) -- Performance events now live here as special events
       events.forEach(ev => {
         const idx = dayIndexInWeek(monday, ev.date);
         if (idx === -1 || !cols[idx]) return;
