@@ -2885,7 +2885,9 @@ app.get('/api/my-absence-context', requireAuth('auditionee'), async (req, res) =
 
 // POST /api/absence-requests: auditionee submits a new request
 app.post('/api/absence-requests', requireAuth('auditionee'), async (req, res) => {
-  const { season_id, absence_date, start_time, end_time, reason, piece_id, documentation_link } = req.body;
+  const { season_id, absence_date, start_time, end_time, reason, piece_ids: rawPieceIds, piece_id: legacyPieceId, documentation_link } = req.body;
+  // piece_ids is the new multi-select array; piece_id is kept for backwards compat
+  const piece_id = undefined; // shadow to prevent accidental use below
   if (!season_id || !absence_date || !start_time || !end_time || !reason || !reason.trim()) {
     return res.status(400).json({ error: 'season_id, absence_date, start_time, end_time, and reason are required.' });
   }
@@ -2904,22 +2906,26 @@ app.post('/api/absence-requests', requireAuth('auditionee'), async (req, res) =>
     if (seasonRow.rows.length === 0) return res.status(403).json({ error: 'You have not submitted to this production.' });
     const { org_id, org_name, season_name, casting_published } = seasonRow.rows[0];
 
-    // Only honor piece_id once casting is published, and only for a piece this
-    // dancer is actually cast in, regardless of what the client sent.
-    let finalPieceId = null;
-    if (casting_published && piece_id) {
-      const pieceCheck = await pool.query(
-        `SELECT p.id, p.name FROM pieces p JOIN piece_casts pc ON pc.piece_id = p.id
-         WHERE p.id = $1 AND p.season_id = $2 AND pc.user_id = $3`,
-        [piece_id, season_id, req.session.userId]
-      );
-      if (pieceCheck.rows.length > 0) finalPieceId = pieceCheck.rows[0].id;
+    // Only honor piece selections once casting is published, and only for pieces
+    // this dancer is actually cast in -- validate every ID regardless of what the client sent.
+    const requestedIds = Array.isArray(rawPieceIds) ? rawPieceIds : (legacyPieceId ? [legacyPieceId] : []);
+    const finalPieceIds = [];
+    if (casting_published && requestedIds.length > 0) {
+      for (const pid of requestedIds) {
+        const pieceCheck = await pool.query(
+          `SELECT p.id FROM pieces p JOIN piece_casts pc ON pc.piece_id = p.id
+           WHERE p.id = $1 AND p.season_id = $2 AND pc.user_id = $3`,
+          [pid, season_id, req.session.userId]
+        );
+        if (pieceCheck.rows.length > 0) finalPieceIds.push(pieceCheck.rows[0].id);
+      }
     }
+    const finalPieceId = finalPieceIds[0] || null; // kept for backwards compat column
 
     const result = await pool.query(
-      `INSERT INTO absence_requests (user_id, org_id, season_id, absence_date, start_time, end_time, reason, piece_id, documentation_link)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-      [req.session.userId, org_id, season_id, absence_date, start_time, end_time, reason.trim(), finalPieceId, docLink || null]
+      `INSERT INTO absence_requests (user_id, org_id, season_id, absence_date, start_time, end_time, reason, piece_id, piece_ids, documentation_link)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::INTEGER[],$10) RETURNING id`,
+      [req.session.userId, org_id, season_id, absence_date, start_time, end_time, reason.trim(), finalPieceId, finalPieceIds.length > 0 ? finalPieceIds : null, docLink || null]
     );
     const requestId = result.rows[0].id;
 
@@ -2927,9 +2933,11 @@ app.post('/api/absence-requests', requireAuth('auditionee'), async (req, res) =>
     const dancerName = profileRow.rows[0] ? `${profileRow.rows[0].first_name} ${profileRow.rows[0].last_name}` : 'A dancer';
     const userRow = await pool.query('SELECT email, secondary_email FROM users u LEFT JOIN dancer_profiles dp ON dp.user_id = u.id WHERE u.id = $1', [req.session.userId]);
     const { email: dancerEmail, secondary_email: dancerSecondaryEmail } = userRow.rows[0] || {};
-    const pieceLabel = finalPieceId
-      ? (await pool.query('SELECT name FROM pieces WHERE id = $1', [finalPieceId])).rows[0]?.name
-      : 'TBD / not yet assigned';
+    let pieceLabel = 'TBD / not yet assigned';
+    if (finalPieceIds.length > 0) {
+      const pieceNames = await pool.query('SELECT name FROM pieces WHERE id = ANY($1::INTEGER[]) ORDER BY name', [finalPieceIds]);
+      pieceLabel = pieceNames.rows.map(r => r.name).join(', ');
+    }
     const docLinkHtml = docLink
       ? `<p style="color:#555;font-size:13px;">Documentation: <a href="${docLink}">${docLink}</a></p>`
       : '';
@@ -2998,11 +3006,15 @@ app.get('/api/my-absence-requests', requireAuth('auditionee'), async (req, res) 
   try {
     const result = await pool.query(
       `SELECT ar.id, ar.absence_date, ar.start_time, ar.end_time, ar.reason, ar.status, ar.created_at,
-              ar.documentation_link, o.name AS org_name, s.name AS season_name, p.name AS piece_name
+              ar.documentation_link, o.name AS org_name, s.name AS season_name,
+              ARRAY(
+                SELECT p2.name FROM pieces p2
+                WHERE p2.id = ANY(COALESCE(ar.piece_ids, CASE WHEN ar.piece_id IS NOT NULL THEN ARRAY[ar.piece_id] ELSE '{}'::INTEGER[] END))
+                ORDER BY p2.name
+              ) AS piece_names
        FROM absence_requests ar
        JOIN orgs o ON o.id = ar.org_id
        JOIN seasons s ON s.id = ar.season_id
-       LEFT JOIN pieces p ON p.id = ar.piece_id
        WHERE ar.user_id = $1
        ORDER BY ar.created_at DESC`,
       [req.session.userId]
@@ -3422,7 +3434,7 @@ app.get('/api/pieces', requireAuth('master'), async (req, res) => {
        LEFT JOIN rooms r ON r.id = mb.room_id
        WHERE p.season_id = $1
        GROUP BY p.id
-       ORDER BY p.created_at ASC`,
+       ORDER BY p.display_order ASC, p.created_at ASC`,
       [seasonId]
     );
     res.json(result.rows);
@@ -3471,6 +3483,23 @@ app.patch('/api/pieces/:id', requireAuth('master'), async (req, res) => {
     res.json({ message: 'Updated.', name: result.rows[0].name });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update piece.' });
+  }
+});
+
+// PATCH /api/pieces/reorder: save a new display order for piece cards
+app.patch('/api/pieces/reorder', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { ordered_ids } = req.body;
+  if (!Array.isArray(ordered_ids) || ordered_ids.length === 0) return res.status(400).json({ error: 'ordered_ids required.' });
+  try {
+    for (let i = 0; i < ordered_ids.length; i++) {
+      await pool.query('UPDATE pieces SET display_order = $1 WHERE id = $2 AND season_id = $3', [i, ordered_ids[i], seasonId]);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to reorder pieces.' });
   }
 });
 
@@ -5619,14 +5648,23 @@ app.get('/api/season/attendance', requireAuth('master'), async (req, res) => {
       `SELECT u.id AS user_id, dp.first_name, dp.last_name, pc.cast_role,
               COALESCE(ar.present, TRUE) AS present,
               COALESCE(ar.status, 'none') AS status,
-              ar.status_note
+              ar.status_note,
+              abr.status  AS absence_status,
+              abr.reason  AS absence_reason
        FROM piece_casts pc
        JOIN users u ON u.id = pc.user_id
        JOIN dancer_profiles dp ON dp.user_id = u.id
        LEFT JOIN attendance_records ar ON ar.user_id = u.id AND ar.piece_id = $1 AND ar.rehearsal_date = $2
+       LEFT JOIN LATERAL (
+         SELECT status, reason FROM absence_requests
+         WHERE user_id = u.id AND absence_date = $2 AND season_id = $3
+           AND (piece_id = $1 OR piece_id IS NULL OR $1 = ANY(COALESCE(piece_ids, '{}'::INTEGER[])))
+         ORDER BY CASE status WHEN 'approved' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, created_at DESC
+         LIMIT 1
+       ) abr ON TRUE
        WHERE pc.piece_id = $1
        ORDER BY dp.last_name, dp.first_name`,
-      [piece_id, date]
+      [piece_id, date, seasonId]
     );
 
     // Context: every piece rehearsing on this date's day of week, with times, so
@@ -5741,7 +5779,13 @@ app.get('/api/season/absence-requests', requireAuth('master'), async (req, res) 
   try {
     const result = await pool.query(
       `SELECT ar.id, ar.absence_date, ar.start_time, ar.end_time, ar.reason, ar.status,
-              ar.created_at, ar.piece_id, ar.documentation_link, dp.first_name, dp.last_name, p.name AS piece_name
+              ar.created_at, ar.piece_id, ar.piece_ids, ar.documentation_link,
+              dp.first_name, dp.last_name, p.name AS piece_name,
+              ARRAY(
+                SELECT p2.name FROM pieces p2
+                WHERE p2.id = ANY(COALESCE(ar.piece_ids, CASE WHEN ar.piece_id IS NOT NULL THEN ARRAY[ar.piece_id] ELSE '{}'::INTEGER[] END))
+                ORDER BY p2.name
+              ) AS piece_names
        FROM absence_requests ar
        JOIN dancer_profiles dp ON dp.user_id = ar.user_id
        LEFT JOIN pieces p ON p.id = ar.piece_id
@@ -7141,6 +7185,20 @@ async function runMigrations() {
     `);
     console.log('Migration step 39 (performance_dates → special_events) complete.');
   } catch (err) { console.error('Migration step 39 error:', err.message); }
+
+  // Step 40: piece_ids array on absence_requests (multi-piece support); display_order on pieces
+  try {
+    await pool.query(`
+      ALTER TABLE absence_requests ADD COLUMN IF NOT EXISTS piece_ids INTEGER[];
+      ALTER TABLE pieces           ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0;
+    `);
+    await pool.query(`
+      UPDATE absence_requests
+      SET piece_ids = ARRAY[piece_id]
+      WHERE piece_id IS NOT NULL AND piece_ids IS NULL;
+    `);
+    console.log('Migration step 40 (absence_requests.piece_ids, pieces.display_order) complete.');
+  } catch (err) { console.error('Migration step 40 error:', err.message); }
 
   console.log('All migrations complete.');
 }

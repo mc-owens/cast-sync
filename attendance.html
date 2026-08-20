@@ -160,8 +160,23 @@
       const row = document.createElement('div');
       row.className = 'attendance-row';
       row.dataset.userId = d.user_id;
+
+      let absenceBadge = '';
+      if (d.absence_status === 'approved') {
+        absenceBadge = `<div style="font-size:11px;color:#166534;background:#dcfce7;border-radius:4px;padding:2px 7px;margin-top:3px;display:inline-block;">
+          Approved absence: ${escapeHtml(d.absence_reason || '')}
+        </div>`;
+      } else if (d.absence_status === 'pending') {
+        absenceBadge = `<div style="font-size:11px;color:#92400e;background:#fef9c3;border-radius:4px;padding:2px 7px;margin-top:3px;display:inline-block;">
+          Pending request: ${escapeHtml(d.absence_reason || '')}
+        </div>`;
+      }
+
       row.innerHTML = `
-        <div class="attendance-name">${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)}</div>
+        <div class="attendance-name" style="flex-direction:column;align-items:flex-start;">
+          <span>${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)}</span>
+          ${absenceBadge}
+        </div>
         <div class="form-check form-switch mb-0">
           <input class="form-check-input present-toggle" type="checkbox" role="switch" ${d.present ? 'checked' : ''}>
           <label class="form-check-label present-label" style="font-size:13px;width:58px;display:inline-block;">${d.present ? 'Present' : 'Absent'}</label>

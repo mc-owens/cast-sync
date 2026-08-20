@@ -69,6 +69,12 @@
     .role-name-input::placeholder { color: #bbb; font-style: italic; }
     .role-name-input:focus { border-color: #86b7fe; box-shadow: none; }
     .dancer-row.insert-above { border-top: 2px solid #0d6efd !important; }
+    .dancer-name-link { cursor:pointer; color:#0d6efd; text-decoration:underline; }
+    .dancer-name-link:hover { color:#0a58ca; }
+    .piece-card.piece-dragging { opacity:0.45; }
+    .piece-card.piece-insert-above { border-top:3px solid #0d6efd !important; }
+    .piece-drag-handle { color:#ccc; cursor:grab; font-size:16px; padding-right:6px; user-select:none; flex-shrink:0; }
+    .piece-drag-handle:hover { color:#9ca3af; }
   </style>
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -148,6 +154,24 @@
   </div>
 
 
+  <!-- Dancer profile modal -->
+  <div class="modal fade" id="castDancerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content" style="border-radius:12px;">
+        <div class="modal-header" style="border-bottom:1px solid #f3f4f6;">
+          <div>
+            <h5 class="modal-title mb-0" id="cast-dancer-modal-name" style="font-weight:700;font-size:15px;"></h5>
+            <div id="cast-dancer-modal-pieces" style="font-size:12px;color:#9ca3af;margin-top:2px;"></div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" style="padding:20px 24px;font-size:13.5px;color:#374151;">
+          <div id="cast-dancer-modal-body"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Trial banner -->
   <div id="trial-banner" style="display:none;background:#fefce8;border-bottom:1px solid #fde68a;">
     <div class="container-fluid px-4 py-2 d-flex align-items-center justify-content-between gap-3">
@@ -211,13 +235,14 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
-    let roomCount      = 1;
-    let namedRooms     = []; // non-empty means this season uses named rooms (set on Master Schedule); the old free-text Room field below is replaced by a read-only summary
-    let allPieces      = [];
-    let allCasts       = [];
-    let draggingCastId = null; // tracked across dragstart/dragover/drop
+    let roomCount       = 1;
+    let namedRooms      = [];
+    let allPieces       = [];
+    let allCasts        = [];
+    let draggingCastId  = null;
+    let draggingPieceId = null;
 
-    // Per-card "Roles" toggle — event delegation so it works for all cards
+    // Per-card "Roles" toggle
     document.getElementById('pieces-container').addEventListener('change', (e) => {
       const toggle = e.target.closest('.role-toggle');
       if (!toggle) return;
@@ -225,9 +250,109 @@
       if (card) card.classList.toggle('show-role-names', toggle.checked);
     });
 
-    // Clean up drag indicators on dragend (fires even if drop was cancelled)
+    // Dancer name link → profile modal
+    document.getElementById('pieces-container').addEventListener('click', (e) => {
+      const link = e.target.closest('.dancer-name-link');
+      if (!link) return;
+      openDancerModal(link.dataset.userId);
+    });
+
+    async function openDancerModal(userId) {
+      try {
+        const [dancerRes, piecesRes] = await Promise.all([
+          fetch(`/api/dancers/${userId}`),
+          fetch(`/api/dancers/${userId}/pieces`),
+        ]);
+        if (!dancerRes.ok) return;
+        const dancer = await dancerRes.json();
+        const pieces = piecesRes.ok ? await piecesRes.json() : [];
+        const thisProd = pieces.filter(p => allPieces.some(ap => ap.id === p.id));
+
+        document.getElementById('cast-dancer-modal-name').textContent =
+          `${dancer.first_name} ${dancer.last_name}`;
+        document.getElementById('cast-dancer-modal-pieces').textContent =
+          thisProd.length > 0 ? thisProd.map(p => p.name).join(', ') : '';
+
+        const rows = [
+          dancer.email             && ['Email',    dancer.email],
+          dancer.phone             && ['Phone',    dancer.phone],
+          dancer.grade             && ['Grade',    dancer.grade],
+          dancer.technique_classes && ['Technique', dancer.technique_classes],
+          dancer.absences          && ['Known Absences', dancer.absences],
+        ].filter(Boolean);
+
+        document.getElementById('cast-dancer-modal-body').innerHTML = rows.length === 0
+          ? '<p style="color:#9ca3af;margin:0;">No profile details on file.</p>'
+          : `<table class="table table-sm" style="font-size:13px;margin:0;">
+              <tbody>
+                ${rows.map(([label, val]) => `
+                  <tr>
+                    <th style="width:130px;color:#6b7280;font-weight:600;">${label}</th>
+                    <td style="white-space:pre-wrap;">${escapeHtml(String(val))}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>`;
+
+        new bootstrap.Modal(document.getElementById('castDancerModal')).show();
+      } catch (err) { console.error(err); }
+    }
+
+    // ── Piece card drag-to-reorder ─────────────────────────────────────────────
+    const piecesContainer = document.getElementById('pieces-container');
+
+    piecesContainer.addEventListener('dragstart', (e) => {
+      const handle = e.target.closest('.piece-drag-handle');
+      const card   = handle && handle.closest('.piece-card');
+      if (!card) return;
+      draggingPieceId = card.dataset.pieceId;
+      card.classList.add('piece-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('dragType', 'piece');
+    });
+
+    piecesContainer.addEventListener('dragover', (e) => {
+      if (!draggingPieceId) return;
+      e.preventDefault();
+      const card = e.target.closest('.piece-card');
+      if (!card || card.dataset.pieceId === draggingPieceId) return;
+      document.querySelectorAll('.piece-card.piece-insert-above').forEach(c => c.classList.remove('piece-insert-above'));
+      const rect = card.getBoundingClientRect();
+      if (e.clientY < rect.top + card.offsetHeight / 2) card.classList.add('piece-insert-above');
+      else card.nextElementSibling?.classList.add('piece-insert-above');
+    });
+
+    piecesContainer.addEventListener('dragleave', (e) => {
+      if (!piecesContainer.contains(e.relatedTarget)) {
+        document.querySelectorAll('.piece-card.piece-insert-above').forEach(c => c.classList.remove('piece-insert-above'));
+      }
+    });
+
+    piecesContainer.addEventListener('drop', async (e) => {
+      if (!draggingPieceId) return;
+      e.preventDefault();
+      document.querySelectorAll('.piece-card.piece-insert-above').forEach(c => c.classList.remove('piece-insert-above'));
+      const targetCard = e.target.closest('.piece-card');
+      if (!targetCard || targetCard.dataset.pieceId === draggingPieceId) return;
+      const draggingCard = document.getElementById(`piece-card-${draggingPieceId}`);
+      const rect = targetCard.getBoundingClientRect();
+      if (e.clientY < rect.top + targetCard.offsetHeight / 2) {
+        piecesContainer.insertBefore(draggingCard, targetCard);
+      } else {
+        piecesContainer.insertBefore(draggingCard, targetCard.nextSibling);
+      }
+      const orderedIds = [...piecesContainer.querySelectorAll('.piece-card')].map(c => parseInt(c.dataset.pieceId));
+      await fetch('/api/pieces/reorder', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ordered_ids: orderedIds }),
+      }).catch(() => {});
+    });
+
+    // Clean up all drag state on dragend
     document.addEventListener('dragend', () => {
-      draggingCastId = null;
+      document.querySelectorAll('.piece-card.piece-dragging').forEach(c => c.classList.remove('piece-dragging'));
+      document.querySelectorAll('.piece-card.piece-insert-above').forEach(c => c.classList.remove('piece-insert-above'));
+      draggingPieceId = null;
+      draggingCastId  = null;
       document.querySelectorAll('.dancer-row.insert-above').forEach(r => r.classList.remove('insert-above'));
       document.querySelectorAll('.cast-dropzone.drag-over').forEach(z => z.classList.remove('drag-over'));
     });
@@ -277,6 +402,7 @@
           const card = document.createElement('div');
           card.className = 'card piece-card';
           card.id = `piece-card-${piece.id}`;
+          card.dataset.pieceId = piece.id;
 
           const colordot       = `<span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${piece.color};margin-right:8px;vertical-align:middle;flex-shrink:0;"></span>`;
           const membersHTML    = buildDancerList(members,     piece.id, 'member');
@@ -286,6 +412,7 @@
             <div class="card-body">
               <div class="d-flex align-items-center justify-content-between">
                 <div class="d-flex align-items-center" style="gap:0;">
+                  <span class="piece-drag-handle" title="Drag to reorder">⠿</span>
                   ${colordot}
                   <span class="fw-bold" style="font-size:15px;">${piece.name}</span>
                 </div>
@@ -489,7 +616,7 @@
           data-piece-id="${pieceId}" data-role="${role}">
           <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">
             <span class="drag-handle" title="Drag to move between Cast / Understudies">⠿</span>
-            <span style="white-space:nowrap;">${c.last_name}, ${c.first_name}</span>
+            <span class="dancer-name-link" data-user-id="${c.user_id}" style="white-space:nowrap;">${c.last_name}, ${c.first_name}</span>
             <input type="text" class="form-control role-name-input"
               data-cast-id="${c.id}"
               value="${c.role_name ? c.role_name.replace(/"/g, '&quot;') : ''}"

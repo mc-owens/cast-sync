@@ -82,8 +82,8 @@
       </div>
 
       <div class="mb-3">
-        <label class="form-label mb-1" style="font-size:12px;color:#666;">Piece / Rehearsal Affected</label>
-        <select id="absence-piece" class="form-select form-select-sm"></select>
+        <label class="form-label mb-1" style="font-size:12px;color:#666;">Pieces / Rehearsals Affected</label>
+        <div id="absence-pieces-list" style="display:flex;flex-direction:column;gap:4px;margin-top:2px;"></div>
         <div id="absence-piece-hint" class="form-text"></div>
       </div>
 
@@ -133,25 +133,27 @@
     let productions = [];
 
     function populatePieceSelect() {
-      const prodSelect  = document.getElementById('absence-production');
-      const pieceSelect = document.getElementById('absence-piece');
-      const hint        = document.getElementById('absence-piece-hint');
+      const prodSelect = document.getElementById('absence-production');
+      const listEl     = document.getElementById('absence-pieces-list');
+      const hint       = document.getElementById('absence-piece-hint');
       const prod = productions.find(p => String(p.season_id) === prodSelect.value);
       if (!prod) return;
 
-      const options = [{ value: '', label: 'TBD / Not sure yet' }, ...prod.my_pieces.map(p => ({ value: p.id, label: p.name }))];
-      pieceSelect.innerHTML = options.map(o => `<option value="${o.value}">${escapeHtml(o.label)}</option>`).join('');
-
-      if (!prod.casting_published) {
-        pieceSelect.value = '';
-        pieceSelect.disabled = true;
-        hint.textContent = 'Casting hasn\'t been published yet, so this will be marked TBD until it is.';
-      } else {
-        pieceSelect.disabled = false;
-        hint.textContent = prod.my_pieces.length === 0
-          ? 'You\'re not currently cast in this production, so this will be marked TBD.'
-          : '';
+      if (!prod.casting_published || prod.my_pieces.length === 0) {
+        listEl.innerHTML = '<span style="font-size:13px;color:#9ca3af;">TBD / not yet assigned</span>';
+        hint.textContent = !prod.casting_published
+          ? 'Casting hasn\'t been published yet, so this will be marked TBD until it is.'
+          : 'You\'re not currently cast in this production, so this will be marked TBD.';
+        return;
       }
+
+      hint.textContent = 'Select all that apply.';
+      listEl.innerHTML = prod.my_pieces.map(p => `
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+          <input type="checkbox" class="form-check-input piece-checkbox" value="${p.id}" style="margin:0;">
+          ${escapeHtml(p.name)}
+        </label>
+      `).join('');
     }
 
     async function loadContext() {
@@ -189,7 +191,8 @@
       const startRaw  = document.getElementById('absence-start').value;
       const endRaw    = document.getElementById('absence-end').value;
       const reason    = document.getElementById('absence-reason').value.trim();
-      const pieceVal  = document.getElementById('absence-piece').value;
+      const checkedBoxes = [...document.querySelectorAll('.piece-checkbox:checked')];
+      const pieceIds  = checkedBoxes.map(cb => parseInt(cb.value));
       const docLink   = document.getElementById('absence-doc-link').value.trim();
 
       if (!seasonId || !date || !startRaw || !endRaw || !reason) {
@@ -208,7 +211,7 @@
             start_time: to12Hour(startRaw),
             end_time: to12Hour(endRaw),
             reason,
-            piece_id: pieceVal ? parseInt(pieceVal) : null,
+            piece_ids: pieceIds.length > 0 ? pieceIds : null,
             documentation_link: docLink || null,
           }),
         });
@@ -242,7 +245,7 @@
             <span class="badge ${STATUS_BADGE_CLASS[r.status] || 'text-bg-secondary'}">${STATUS_LABELS[r.status] || r.status}</span>
           </div>
           <div style="font-size:13px;margin:4px 0;">${escapeHtml(r.reason)}</div>
-          <div class="absence-meta">${escapeHtml(r.org_name)}, ${escapeHtml(r.season_name)} · ${escapeHtml(r.piece_name || 'TBD')}</div>
+          <div class="absence-meta">${escapeHtml(r.org_name)}, ${escapeHtml(r.season_name)} · ${r.piece_names && r.piece_names.length > 0 ? r.piece_names.map(n => escapeHtml(n)).join(', ') : 'TBD'}</div>
           ${r.documentation_link ? `<div class="absence-meta"><a href="${escapeHtml(r.documentation_link)}" target="_blank" rel="noopener">View documentation</a></div>` : ''}
           <div class="absence-meta">Submitted ${formatTimestamp(r.created_at)}</div>
         </div>

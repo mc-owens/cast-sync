@@ -97,21 +97,22 @@
       card.className = 'request-card';
       card.dataset.requestId = r.id;
 
-      const pieceOptions = ['<option value="">TBD / not yet assigned</option>']
-        .concat(pieces.map(p => `<option value="${p.id}" ${p.id === r.piece_id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`));
+      const pieceLabel = r.piece_names && r.piece_names.length > 0
+        ? r.piece_names.map(n => escapeHtml(n)).join(', ')
+        : (r.piece_name ? escapeHtml(r.piece_name) : 'TBD');
 
       card.innerHTML = `
         <div class="d-flex justify-content-between align-items-start mb-1">
           <span class="fw-semibold" style="font-size:14px;">${escapeHtml(r.first_name)} ${escapeHtml(r.last_name)}</span>
           <span class="request-meta">Submitted ${formatTimestamp(r.created_at)}</span>
         </div>
-        <div style="font-size:13px;margin-bottom:6px;">
+        <div style="font-size:13px;margin-bottom:4px;">
           ${formatDate(r.absence_date)}, ${escapeHtml(r.start_time)} to ${escapeHtml(r.end_time)}
         </div>
+        <div style="font-size:12px;color:#888;margin-bottom:6px;">Piece: ${pieceLabel}</div>
         <div style="font-size:13px;color:#444;margin-bottom:8px;">${escapeHtml(r.reason)}</div>
         ${r.documentation_link ? `<div class="mb-2"><a href="${escapeHtml(r.documentation_link)}" target="_blank" rel="noopener" style="font-size:13px;">View documentation</a></div>` : ''}
         <div class="d-flex align-items-center gap-2 flex-wrap">
-          <select class="form-select form-select-sm piece-select" style="width:200px;">${pieceOptions.join('')}</select>
           <select class="form-select form-select-sm status-select" style="width:140px;">
             ${Object.entries(STATUS_LABELS).map(([val, label]) => `<option value="${val}" ${r.status === val ? 'selected' : ''}>${label}</option>`).join('')}
           </select>
@@ -122,15 +123,14 @@
     }
 
     async function saveRequest(card) {
-      const id = card.dataset.requestId;
-      const pieceVal = card.querySelector('.piece-select').value;
-      const status   = card.querySelector('.status-select').value;
-      const savedEl   = card.querySelector('.row-saved');
+      const id     = card.dataset.requestId;
+      const status = card.querySelector('.status-select').value;
+      const savedEl = card.querySelector('.row-saved');
       try {
         const res = await fetch(`/api/season/absence-requests/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status, piece_id: pieceVal ? parseInt(pieceVal) : null }),
+          body: JSON.stringify({ status }),
         });
         if (!res.ok) { alert('Could not update this request.'); return; }
         savedEl.classList.remove('d-none');
@@ -143,7 +143,7 @@
     document.getElementById('requests-list').addEventListener('change', (e) => {
       const card = e.target.closest('.request-card');
       if (!card) return;
-      if (e.target.classList.contains('piece-select') || e.target.classList.contains('status-select')) {
+      if (e.target.classList.contains('status-select')) {
         saveRequest(card);
       }
     });
