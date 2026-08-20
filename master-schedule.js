@@ -648,6 +648,118 @@ document.addEventListener('DOMContentLoaded', async () => {
     drawerCurrentDay     = null;
   }
 
+  function checkDrawerRoomConflict(selectedRoomId) {
+    const warningEl = document.getElementById('drawer-room-conflict-warning');
+    if (!warningEl) return;
+    if (!selectedRoomId) { warningEl.style.display = 'none'; return; }
+    const curStart = timeStringToMinutes(drawerCurrentStartTime);
+    const curEnd   = timeStringToMinutes(drawerCurrentEndTime);
+    const conflicts = [...document.querySelectorAll(`.master-block[data-day="${drawerCurrentDay}"]`)]
+      .filter(el => String(el.dataset.dbId) !== String(drawerCurrentDbId))
+      .filter(el => String(el.dataset.roomId) === String(selectedRoomId))
+      .filter(el => {
+        const s = timeStringToMinutes(el.dataset.startTime);
+        const e = timeStringToMinutes(el.dataset.endTime);
+        return s < curEnd && e > curStart;
+      });
+    if (conflicts.length === 0) { warningEl.style.display = 'none'; return; }
+    const names = [...new Set(conflicts.map(el => {
+      const p = pieces.find(p => String(p.id) === String(el.dataset.pieceId));
+      return p ? p.name : 'another piece';
+    }))];
+    const roomObj = rooms.find(r => String(r.id) === String(selectedRoomId));
+    warningEl.textContent = `${roomObj ? roomObj.name : 'This room'} is already booked for ${names.join(', ')} at this time.`;
+    warningEl.style.display = '';
+  }
+
+  function renderDrawerConflicts() {
+    const content = document.getElementById('drawer-tab-content');
+    if (!content) return;
+    const thisCast = drawerPieceCasts.filter(c => String(c.piece_id) === String(drawerCurrentPieceId));
+    if (thisCast.length === 0) {
+      content.innerHTML = `<p style="font-size:13px;color:#9ca3af;margin:0;">No cast assigned yet.</p>`;
+      return;
+    }
+    const curStart = timeStringToMinutes(drawerCurrentStartTime);
+    const curEnd   = timeStringToMinutes(drawerCurrentEndTime);
+    const overlapBlocks = [...document.querySelectorAll('.master-block')]
+      .filter(el => String(el.dataset.dbId) !== String(drawerCurrentDbId))
+      .filter(el => el.dataset.day === drawerCurrentDay)
+      .filter(el => {
+        const s = timeStringToMinutes(el.dataset.startTime);
+        const e = timeStringToMinutes(el.dataset.endTime);
+        return s < curEnd && e > curStart;
+      });
+    if (overlapBlocks.length === 0) {
+      content.innerHTML = `<p style="font-size:13px;color:#9ca3af;margin:0;">No other pieces rehearse at this time.</p>`;
+      return;
+    }
+    const overlapPieceIds = new Set(overlapBlocks.map(el => String(el.dataset.pieceId)));
+    let rows = '';
+    for (const dancer of thisCast) {
+      const clashes = drawerPieceCasts.filter(c =>
+        String(c.user_id) === String(dancer.user_id) &&
+        String(c.piece_id) !== String(drawerCurrentPieceId) &&
+        overlapPieceIds.has(String(c.piece_id))
+      );
+      for (const clash of clashes) {
+        const block = overlapBlocks.find(el => String(el.dataset.pieceId) === String(clash.piece_id));
+        const timeRange = block ? `${block.dataset.startTime} – ${block.dataset.endTime}` : '';
+        rows += `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f9fafb;">
+          <div style="width:30px;height:30px;border-radius:50%;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#374151;flex-shrink:0;">
+            ${(dancer.first_name||'?')[0]}${(dancer.last_name||'?')[0]}
+          </div>
+          <div style="min-width:0;">
+            <div style="font-size:13px;font-weight:500;">${dancer.first_name} ${dancer.last_name}</div>
+            <div style="font-size:11px;color:#ef4444;">Also in ${clash.piece_name}${timeRange ? ` · ${timeRange}` : ''}</div>
+          </div>
+        </div>`;
+      }
+    }
+    if (!rows) {
+      content.innerHTML = `<p style="font-size:13px;color:#9ca3af;margin:0;">No scheduling conflicts for this cast.</p>`;
+      return;
+    }
+    content.innerHTML = `
+      <p style="font-size:11.5px;color:#b45309;margin:0 0 10px;">Dancers also in another piece at this time:</p>
+      ${rows}`;
+  }
+
+  function renderDrawerNotes() {
+    const content = document.getElementById('drawer-tab-content');
+    if (!content) return;
+    const pieceName = pieces.find(p => String(p.id) === String(drawerCurrentPieceId))?.name || '';
+    const date = dateForDayInWeek(window._currentWeekMonday || new Date().toISOString().slice(0,10), drawerCurrentDay);
+    const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    content.innerHTML = `
+      <p style="font-size:11.5px;color:#9ca3af;margin:0 0 10px;">Notes are private and save to your <a href="my-notes.html" style="color:#9ca3af;">My Notes</a> page.</p>
+      <textarea id="drawer-note-text" placeholder="Type a note..." style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-height:100px;resize:vertical;font-family:inherit;box-sizing:border-box;"></textarea>
+      <button id="drawer-note-save-btn" style="margin-top:8px;width:100%;padding:8px;background:#111;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Save to My Notes</button>
+      <span id="drawer-note-saved" style="font-size:12px;color:#16a34a;margin-top:6px;display:none;text-align:center;display:block;"></span>`;
+    content.querySelector('#drawer-note-save-btn')?.addEventListener('click', async () => {
+      const textarea = content.querySelector('#drawer-note-text');
+      const text = textarea?.value.trim();
+      if (!text) return;
+      const btn = content.querySelector('#drawer-note-save-btn');
+      const savedEl = content.querySelector('#drawer-note-saved');
+      btn.disabled = true; btn.textContent = 'Saving...';
+      const context = [pieceName, `${drawerCurrentDay} ${drawerCurrentStartTime}–${drawerCurrentEndTime}`, dateLabel].filter(Boolean).join(' · ');
+      try {
+        const r = await fetch('/api/my-notes', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ note_text: `${context}: ${text}` }),
+        });
+        if (r.ok) {
+          textarea.value = '';
+          if (savedEl) { savedEl.textContent = 'Saved to My Notes.'; savedEl.style.display = 'block'; setTimeout(() => { if (savedEl) savedEl.style.display = 'none'; }, 2500); }
+        } else {
+          alert('Could not save note.');
+        }
+      } catch (e) { alert('Could not connect to server.'); }
+      btn.disabled = false; btn.textContent = 'Save to My Notes';
+    });
+  }
+
   function renderDrawerTab(tabName) {
     document.querySelectorAll('[data-drawer-tab]').forEach(btn =>
       btn.classList.toggle('active', btn.dataset.drawerTab === tabName)
@@ -673,9 +785,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     } else if (tabName === 'attendance') {
       renderDrawerAttendance();
-    } else {
-      const labels = { conflicts: 'Conflicts', notes: 'Notes' };
-      content.innerHTML = `<p style="font-size:13px;color:#9ca3af;margin:0;">${labels[tabName] || ''} coming soon.</p>`;
+    } else if (tabName === 'conflicts') {
+      renderDrawerConflicts();
+    } else if (tabName === 'notes') {
+      renderDrawerNotes();
     }
   }
 
@@ -687,9 +800,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     content.innerHTML = `<p style="font-size:13px;color:#9ca3af;">Loading...</p>`;
     try {
-      const res = await fetch(`/api/season/attendance?date=${encodeURIComponent(date)}&piece_id=${encodeURIComponent(pieceId)}`);
+      const [res, absRes] = await Promise.all([
+        fetch(`/api/season/attendance?date=${encodeURIComponent(date)}&piece_id=${encodeURIComponent(pieceId)}`),
+        fetch('/api/season/absence-requests'),
+      ]);
       if (!res.ok) throw new Error();
       const data = await res.json();
+      const absAll = absRes.ok ? await absRes.json() : [];
+
+      const curStart = timeStringToMinutes(drawerCurrentStartTime);
+      const curEnd   = timeStringToMinutes(drawerCurrentEndTime);
+      const castUserIds = new Set(data.dancers.map(d => String(d.user_id)));
+      const approvedAbsences = absAll.filter(a => {
+        if (a.status !== 'approved') return false;
+        if (!castUserIds.has(String(a.user_id))) return false;
+        const aDate = (a.absence_date || '').slice(0, 10);
+        if (aDate !== date) return false;
+        const aStart = timeStringToMinutes(a.start_time);
+        const aEnd   = timeStringToMinutes(a.end_time);
+        return aStart < curEnd && aEnd > curStart;
+      });
 
       const presentCount = data.dancers.filter(d => d.present).length;
       const total = data.dancers.length;
@@ -699,6 +829,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         <span style="font-size:12px;color:#6b7280;">${dateLabel}</span>
         <span id="drawer-attend-count" style="font-size:13px;font-weight:600;color:#374151;">${total > 0 ? `${presentCount}/${total} present` : ''}</span>
       </div>`;
+
+      if (approvedAbsences.length > 0) {
+        html += `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 10px;margin-bottom:10px;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#b91c1c;margin-bottom:5px;">Approved Absences</div>`;
+        html += approvedAbsences.map(a => `
+          <div style="font-size:12.5px;color:#374151;padding:3px 0;">${a.first_name} ${a.last_name}
+            <span style="color:#9ca3af;font-size:11px;"> &middot; ${a.start_time} – ${a.end_time}</span>
+          </div>`).join('');
+        html += `</div>`;
+      }
 
       if (data.dancers.length === 0) {
         html += `<p style="font-size:13px;color:#9ca3af;margin:0;">No one cast in this piece yet.</p>`;
@@ -1816,7 +1956,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       select.innerHTML = `<option value="">No room</option>` +
         rooms.map(r => `<option value="${r.id}"${String(r.id) === String(drawerCurrentRoomId || '') ? ' selected' : ''}>${r.name}</option>`).join('');
       editForm.style.display = '';
+      checkDrawerRoomConflict(drawerCurrentRoomId || '');
     }
+  });
+
+  document.getElementById('drawer-room-edit-form')?.addEventListener('change', (e) => {
+    if (e.target.id === 'drawer-room-inline-select') checkDrawerRoomConflict(e.target.value);
   });
 
   document.getElementById('drawer-room-cancel-btn')?.addEventListener('click', () => {
