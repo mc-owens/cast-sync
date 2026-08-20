@@ -206,7 +206,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       : `${dancer.first_name} ${dancer.last_name}`;
 
     const nameDiv  = document.createElement('div');
-    nameDiv.style.flex = '1';
+    nameDiv.style.cssText = 'flex-shrink:0;max-width:50%;';
 
     const nameSpan = document.createElement('span');
     nameSpan.className   = 'avail-dancer-name' + (isAlreadyCast ? ' conflicted' : '');
@@ -318,8 +318,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
+    const leader = document.createElement('span');
+    leader.style.cssText = 'flex:1;min-width:12px;height:1px;border-bottom:2px dotted #e5e7eb;align-self:center;margin-bottom:2px;';
+
     renderBtns();
     li.appendChild(nameDiv);
+    li.appendChild(leader);
     li.appendChild(btnGroup);
     listEl.appendChild(li);
   }
