@@ -748,31 +748,54 @@ document.addEventListener('DOMContentLoaded', async () => {
     const date = dateForDayInWeek(window._currentWeekMonday || new Date().toISOString().slice(0,10), drawerCurrentDay);
     const dateLabel = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     content.innerHTML = `
-      <p style="font-size:11.5px;color:#9ca3af;margin:0 0 10px;">Notes are private and save to your <a href="my-notes.html" style="color:#9ca3af;">My Private Notes</a> page.</p>
+      <div style="margin-bottom:10px;">
+        <div style="font-size:11.5px;color:#9ca3af;margin-bottom:5px;">Save to:</div>
+        <select id="drawer-note-dest" style="font-size:12px;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;background:#fff;color:#374151;cursor:pointer;width:100%;">
+          <option value="private">My Private Notes</option>
+          <option value="production">Production Notes (shared with directors)</option>
+        </select>
+      </div>
       <textarea id="drawer-note-text" placeholder="Type a note..." style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;min-height:100px;resize:vertical;font-family:inherit;box-sizing:border-box;"></textarea>
-      <button id="drawer-note-save-btn" style="margin-top:8px;width:100%;padding:8px;background:#111;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Save to My Private Notes</button>
+      <button id="drawer-note-save-btn" style="margin-top:8px;width:100%;padding:8px;background:#111;color:#fff;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Save Note</button>
       <span id="drawer-note-saved" style="font-size:12px;color:#16a34a;margin-top:6px;display:none;text-align:center;display:block;"></span>`;
     content.querySelector('#drawer-note-save-btn')?.addEventListener('click', async () => {
       const textarea = content.querySelector('#drawer-note-text');
+      const dest     = content.querySelector('#drawer-note-dest')?.value || 'private';
       const text = textarea?.value.trim();
       if (!text) return;
       const btn = content.querySelector('#drawer-note-save-btn');
       const savedEl = content.querySelector('#drawer-note-saved');
       btn.disabled = true; btn.textContent = 'Saving...';
       const context = [pieceName, `${drawerCurrentDay} ${drawerCurrentStartTime}–${drawerCurrentEndTime}`, dateLabel].filter(Boolean).join(' · ');
+      const noteText = `${context}: ${text}`;
       try {
-        const r = await fetch('/api/my-notes', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ note_text: `${context}: ${text}` }),
-        });
+        let r;
+        if (dest === 'production') {
+          r = await fetch('/api/season/production-notes', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              note_text: noteText,
+              category: 'general',
+              dancer_user_ids: [],
+              piece_ids: drawerCurrentPieceId ? [drawerCurrentPieceId] : [],
+              notify_emails: [],
+            }),
+          });
+        } else {
+          r = await fetch('/api/my-notes', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note_text: noteText }),
+          });
+        }
         if (r.ok) {
           textarea.value = '';
-          if (savedEl) { savedEl.textContent = 'Saved to My Private Notes.'; savedEl.style.display = 'block'; setTimeout(() => { if (savedEl) savedEl.style.display = 'none'; }, 2500); }
+          const label = dest === 'production' ? 'Saved to Production Notes.' : 'Saved to My Private Notes.';
+          if (savedEl) { savedEl.textContent = label; savedEl.style.display = 'block'; setTimeout(() => { if (savedEl) savedEl.style.display = 'none'; }, 2500); }
         } else {
           alert('Could not save note.');
         }
       } catch (e) { alert('Could not connect to server.'); }
-      btn.disabled = false; btn.textContent = 'Save to My Private Notes';
+      btn.disabled = false; btn.textContent = 'Save Note';
     });
   }
 

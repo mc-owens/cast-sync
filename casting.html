@@ -354,7 +354,10 @@
                         id="role-toggle-${piece.id}" role="switch"
                         style="width:1.8em;height:.9em;cursor:pointer;">
                       <label class="form-check-label text-muted" for="role-toggle-${piece.id}"
-                        style="font-size:11px;cursor:pointer;">Roles</label>
+                        style="font-size:11px;cursor:pointer;">Assign named roles</label>
+                      <span data-bs-toggle="tooltip" data-bs-placement="left"
+                        data-bs-title="Show a text field next to each cast member to assign a specific role name, like &quot;Clara&quot; or &quot;Lead Soloist.&quot; Role names appear on the published cast list."
+                        style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;border:1px solid #ccc;font-size:9px;color:#9ca3af;cursor:default;flex-shrink:0;line-height:1;">i</span>
                     </div>
                   </div>
                   <div id="member-list-${piece.id}" class="cast-dropzone" data-role="member" data-piece-id="${piece.id}">
@@ -373,6 +376,7 @@
             </div>`;
 
           container.appendChild(card);
+          card.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(t => bootstrap.Tooltip.getOrCreateInstance(t));
           setupDragAndDrop(piece.id);
           loadPieceStaff(piece.id);
         }
