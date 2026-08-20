@@ -55,9 +55,10 @@
       </p>
     </div>
 
-    <div class="d-flex gap-2 mb-3">
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
       <button class="btn btn-sm btn-dark" id="view-grouped-btn">By Status</button>
       <button class="btn btn-sm btn-outline-secondary" id="view-all-btn">All</button>
+      <input type="text" id="dancer-search" class="form-control form-control-sm" placeholder="Search by dancer name…" style="max-width:220px;margin-left:auto;">
     </div>
 
     <div id="requests-loading" class="text-muted" style="font-size:14px;">Loading…</div>
@@ -157,15 +158,21 @@
     });
 
     let allRequests = [];
-    let viewMode = 'grouped'; // 'grouped' | 'all'
+    let viewMode    = 'grouped';
+    let searchText  = '';
     const sectionExpanded = { pending: true, approved: false, denied: false };
+
+    document.getElementById('dancer-search').addEventListener('input', (e) => {
+      searchText = e.target.value.trim().toLowerCase();
+      render();
+    });
     const STATUS_ORDER = ['pending', 'approved', 'denied'];
 
-    function renderGrouped() {
+    function renderGrouped(requests) {
       const list = document.getElementById('requests-list');
       list.innerHTML = '';
       STATUS_ORDER.forEach(status => {
-        const requests = allRequests.filter(r => r.status === status);
+        const filtered = requests.filter(r => r.status === status);
         const section = document.createElement('div');
         section.className = 'status-section';
         const expanded = sectionExpanded[status];
@@ -173,34 +180,42 @@
           <div class="status-section-header${expanded ? '' : ' collapsed'}" data-status="${status}">
             <span class="chevron">&#9660;</span>
             <span>${STATUS_LABELS[status]}</span>
-            <span class="status-count">${requests.length}</span>
+            <span class="status-count">${filtered.length}</span>
           </div>
           <div class="status-section-body${expanded ? '' : ' d-none'}"></div>
         `;
         const body = section.querySelector('.status-section-body');
-        if (requests.length === 0) {
+        if (filtered.length === 0) {
           body.innerHTML = '<p class="text-muted" style="font-size:13px;">None.</p>';
         } else {
-          requests.forEach(r => body.appendChild(renderRequest(r)));
+          filtered.forEach(r => body.appendChild(renderRequest(r)));
         }
         list.appendChild(section);
       });
     }
 
-    function renderFlat() {
+    function renderFlat(requests) {
       const list = document.getElementById('requests-list');
       list.innerHTML = '';
-      allRequests.forEach(r => list.appendChild(renderRequest(r)));
+      requests.forEach(r => list.appendChild(renderRequest(r)));
+    }
+
+    function visibleRequests() {
+      if (!searchText) return allRequests;
+      return allRequests.filter(r =>
+        `${r.first_name} ${r.last_name}`.toLowerCase().includes(searchText)
+      );
     }
 
     function render() {
       const list = document.getElementById('requests-list');
-      if (allRequests.length === 0) {
-        list.innerHTML = '<p class="text-muted" style="font-size:13px;">No absence requests yet.</p>';
+      const visible = visibleRequests();
+      if (visible.length === 0) {
+        list.innerHTML = `<p class="text-muted" style="font-size:13px;">${allRequests.length === 0 ? 'No absence requests yet.' : 'No requests match that name.'}</p>`;
         return;
       }
-      if (viewMode === 'grouped') renderGrouped();
-      else renderFlat();
+      if (viewMode === 'grouped') renderGrouped(visible);
+      else renderFlat(visible);
     }
 
     document.getElementById('view-grouped-btn').addEventListener('click', () => {

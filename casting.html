@@ -300,9 +300,17 @@
     // ── Piece card drag-to-reorder ─────────────────────────────────────────────
     const piecesContainer = document.getElementById('pieces-container');
 
-    piecesContainer.addEventListener('dragstart', (e) => {
+    // Set draggable=true on a card only when the user grabs its handle,
+    // so that clicks on inputs, buttons, and text inside the card never trigger a card drag.
+    piecesContainer.addEventListener('mousedown', (e) => {
       const handle = e.target.closest('.piece-drag-handle');
-      const card   = handle && handle.closest('.piece-card');
+      piecesContainer.querySelectorAll('.piece-card').forEach(c => {
+        c.draggable = !!(handle && handle.closest('.piece-card') === c);
+      });
+    });
+
+    piecesContainer.addEventListener('dragstart', (e) => {
+      const card = e.target.closest('.piece-card[draggable="true"]');
       if (!card) return;
       draggingPieceId = card.dataset.pieceId;
       card.classList.add('piece-dragging');
@@ -349,8 +357,7 @@
 
     // Clean up all drag state on dragend
     document.addEventListener('dragend', () => {
-      document.querySelectorAll('.piece-card.piece-dragging').forEach(c => c.classList.remove('piece-dragging'));
-      document.querySelectorAll('.piece-card.piece-insert-above').forEach(c => c.classList.remove('piece-insert-above'));
+      piecesContainer.querySelectorAll('.piece-card').forEach(c => { c.draggable = false; c.classList.remove('piece-dragging', 'piece-insert-above'); });
       draggingPieceId = null;
       draggingCastId  = null;
       document.querySelectorAll('.dancer-row.insert-above').forEach(r => r.classList.remove('insert-above'));
