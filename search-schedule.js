@@ -13,14 +13,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   const MINI_RANGE = MINI_END - MINI_START;
 
   // ── State ──────────────────────────────────────────────────────────────────
-  let _pieces       = [];
-  let _allBlocks    = [];
-  let _availFull    = [];
-  let _availPartial = [];
-  let _availNone    = [];
-  let _availPieceId = null;
-  let _sortMode     = 'abc';
-  let _gridReady    = false;
+  let _pieces             = [];
+  let _allBlocks          = [];
+  let _availFull          = [];
+  let _availPartial       = [];
+  let _availNone          = [];
+  let _availPieceId       = null;
+  let _sortMode           = 'abc';
+  let _gridReady          = false;
+  let _liveCastMembers    = new Map(); // userId -> display name
+  let _liveCastUnderstudies = new Map();
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -96,6 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       _availNone    = data.not_available       || [];
       _availPieceId = pieceId;
 
+      initLiveCast([..._availFull, ..._availPartial, ..._availNone]);
       setSortMode('abc');
       contentEl.style.display = '';
     } catch (err) {
@@ -165,6 +168,45 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   document.getElementById('sort-abc').addEventListener('click', () => setSortMode('abc'));
   document.getElementById('sort-num').addEventListener('click', () => setSortMode('num'));
+
+  // ── Live cast panel ────────────────────────────────────────────────────────
+
+  function initLiveCast(allDancers) {
+    _liveCastMembers.clear();
+    _liveCastUnderstudies.clear();
+    allDancers.forEach(d => {
+      if (!d.cast_role) return;
+      const name = `${d.first_name} ${d.last_name}`;
+      if (d.cast_role === 'member')    _liveCastMembers.set(d.id, name);
+      if (d.cast_role === 'understudy') _liveCastUnderstudies.set(d.id, name);
+    });
+    renderLiveCast();
+  }
+
+  function renderLiveCast() {
+    const el = document.getElementById('live-cast-panel');
+    if (!el) return;
+    const mCount = _liveCastMembers.size;
+    const uCount = _liveCastUnderstudies.size;
+    if (mCount + uCount === 0) {
+      el.innerHTML = '<p style="font-size:12.5px;color:#9ca3af;margin:0;">No one added yet.</p>';
+      return;
+    }
+    let html = '';
+    if (mCount > 0) {
+      html += `<div class="live-cast-row">
+        <span class="live-cast-label">Cast (${mCount})</span>
+        ${[..._liveCastMembers.values()].map(n => `<span class="live-cast-chip member">${escapeHtml(n)}</span>`).join('')}
+      </div>`;
+    }
+    if (uCount > 0) {
+      html += `<div class="live-cast-row">
+        <span class="live-cast-label">Understudies (${uCount})</span>
+        ${[..._liveCastUnderstudies.values()].map(n => `<span class="live-cast-chip understudy">${escapeHtml(n)}</span>`).join('')}
+      </div>`;
+    }
+    el.innerHTML = html;
+  }
 
   // ── Dancer sections ────────────────────────────────────────────────────────
 
@@ -293,6 +335,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const data    = await res.json();
         currentRole   = role;
         currentCastId = data.id;
+        const dName = `${dancer.first_name} ${dancer.last_name}`;
+        _liveCastMembers.delete(dancer.id);
+        _liveCastUnderstudies.delete(dancer.id);
+        if (role === 'member') _liveCastMembers.set(dancer.id, dName);
+        else _liveCastUnderstudies.set(dancer.id, dName);
+        renderLiveCast();
         renderBtns();
       } catch (err) {
         console.error(err);
@@ -310,6 +358,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!res.ok) { showErrorToast('Could not remove dancer.'); return; }
         currentRole   = null;
         currentCastId = null;
+        _liveCastMembers.delete(dancer.id);
+        _liveCastUnderstudies.delete(dancer.id);
+        renderLiveCast();
         renderBtns();
       } catch (err) {
         console.error(err);
