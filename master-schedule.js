@@ -500,6 +500,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     el.dataset.startTime = block.start_time;
     el.dataset.endTime   = block.end_time;
     el.dataset.roomId    = block.room_id || '';
+    el.dataset.pieceName  = block.piece_name || '';
+    el.dataset.seasonName = block.season_name || '';
     el.style.top         = `${topPx}px`;
     el.style.height     = `${heightPx}px`;
     el.style.left       = `calc(${dayIndex} * 100% / 7)`;
@@ -654,21 +656,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!selectedRoomId) { warningEl.style.display = 'none'; return; }
     const curStart = timeStringToMinutes(drawerCurrentStartTime);
     const curEnd   = timeStringToMinutes(drawerCurrentEndTime);
-    const conflicts = [...document.querySelectorAll(`.master-block[data-day="${drawerCurrentDay}"]`)]
+
+    // Current production blocks
+    const prodConflicts = [...document.querySelectorAll(`.master-block[data-day="${drawerCurrentDay}"]`)]
       .filter(el => String(el.dataset.dbId) !== String(drawerCurrentDbId))
       .filter(el => String(el.dataset.roomId) === String(selectedRoomId))
       .filter(el => {
         const s = timeStringToMinutes(el.dataset.startTime);
         const e = timeStringToMinutes(el.dataset.endTime);
         return s < curEnd && e > curStart;
+      })
+      .map(el => {
+        const p = pieces.find(p => String(p.id) === String(el.dataset.pieceId));
+        return p ? p.name : 'another piece';
       });
-    if (conflicts.length === 0) { warningEl.style.display = 'none'; return; }
-    const names = [...new Set(conflicts.map(el => {
-      const p = pieces.find(p => String(p.id) === String(el.dataset.pieceId));
-      return p ? p.name : 'another piece';
-    }))];
+
+    // Other productions in the same org
+    const orgConflicts = [...document.querySelectorAll(`.org-overlay-block[data-day="${drawerCurrentDay}"]`)]
+      .filter(el => String(el.dataset.roomId) === String(selectedRoomId))
+      .filter(el => {
+        const s = timeStringToMinutes(el.dataset.startTime);
+        const e = timeStringToMinutes(el.dataset.endTime);
+        return s < curEnd && e > curStart;
+      })
+      .map(el => `${el.dataset.pieceName} (${el.dataset.seasonName})`);
+
+    const allNames = [...new Set([...prodConflicts, ...orgConflicts])];
+    if (allNames.length === 0) { warningEl.style.display = 'none'; return; }
     const roomObj = rooms.find(r => String(r.id) === String(selectedRoomId));
-    warningEl.textContent = `${roomObj ? roomObj.name : 'This room'} is already booked for ${names.join(', ')} at this time.`;
+    warningEl.textContent = `${roomObj ? roomObj.name : 'This room'} is already booked for ${allNames.join(', ')} at this time.`;
     warningEl.style.display = '';
   }
 
@@ -770,7 +786,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (tabName === 'cast') {
       const cast = drawerPieceCasts.filter(c => String(c.piece_id) === String(drawerCurrentPieceId));
       if (cast.length === 0) {
-        content.innerHTML = `<p style="font-size:13px;color:#6b7280;margin:0;">No cast assigned yet. <a href="casting.html" style="color:inherit;">Add dancers in Cast List.</a></p>`;
+        content.innerHTML = `<p style="font-size:13px;color:#6b7280;margin:0;">No cast assigned yet. Add dancers from the <a href="search.html" style="color:inherit;">Availability Analysis</a> tab.</p>`;
       } else {
         content.innerHTML = cast.map(c => `
           <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f9fafb;">
