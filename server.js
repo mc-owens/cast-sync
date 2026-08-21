@@ -5466,10 +5466,12 @@ app.get('/api/season/faculty', requireAuth('master'), async (req, res) => {
       pool.query(`SELECT DISTINCT choreographer_email AS email, name AS piece_name FROM pieces WHERE season_id = $1 AND choreographer_email IS NOT NULL AND choreographer_email != ''`, [seasonId]),
     ]);
     const seen = new Map();
-    orgMembers.rows.forEach(r => seen.set(r.email, { email: r.email, label: r.email }));
-    seasonMembers.rows.forEach(r => seen.set(r.email, { email: r.email, label: r.email }));
+    orgMembers.rows.forEach(r => seen.set(r.email, { email: r.email, label: `${r.email} (Co-director)`, type: 'codirector' }));
+    seasonMembers.rows.forEach(r => {
+      if (!seen.has(r.email)) seen.set(r.email, { email: r.email, label: `${r.email} (Co-director)`, type: 'codirector' });
+    });
     choreographers.rows.forEach(r => {
-      if (!seen.has(r.email)) seen.set(r.email, { email: r.email, label: `${r.email} (${r.piece_name} choreographer)` });
+      if (!seen.has(r.email)) seen.set(r.email, { email: r.email, label: `${r.email} (${r.piece_name} choreographer)`, type: 'choreographer' });
     });
     res.json([...seen.values()]);
   } catch (err) {
@@ -5547,7 +5549,7 @@ app.get('/api/season/faculty-directory', requireAuth('master'), async (req, res)
 app.post('/api/season/production-notes', requireAuth('master'), async (req, res) => {
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
-  const { note_text, category, dancer_user_ids, piece_ids, notify_emails } = req.body;
+  const { note_text, category, dancer_user_ids, piece_ids, notify_emails, notify_codirectors } = req.body;
   if (!note_text || !note_text.trim()) return res.status(400).json({ error: 'Note text is required.' });
   const cat = NOTE_CATEGORIES.includes(category) ? category : 'general';
   const dancerIds = Array.isArray(dancer_user_ids) ? dancer_user_ids.map(Number).filter(Boolean) : [];
@@ -5609,8 +5611,8 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
         }
       }
 
-      // Auto-notify directors and co-directors (excluding the author)
-      if (orgId) {
+      // Auto-notify directors and co-directors (excluding the author), unless toggled off
+      if (orgId && notify_codirectors !== false) {
         const directorRecipients = await getDirectorEmails(orgId, seasonId);
         for (const { user_id, email } of directorRecipients) {
           if (user_id === req.session.userId) continue;
