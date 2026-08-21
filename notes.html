@@ -276,7 +276,7 @@
           </div>
           <div class="note-text">${escapeHtml(n.note_text)}</div>
           <div class="d-flex justify-content-between align-items-center">
-            <div class="note-meta">Posted by ${escapeHtml(n.author_email || 'Unknown')}</div>
+            <div class="note-meta">Posted by ${escapeHtml(n.author_name || n.author_email || 'Unknown')}</div>
             ${canDelete ? `<button class="btn btn-link btn-sm p-0 text-danger delete-note-btn" data-note-id="${n.id}" style="font-size:12px;text-decoration:none;">Delete</button>` : ''}
           </div>
           ${tags ? `<div class="note-tags">${tags}</div>` : ''}

@@ -5426,7 +5426,7 @@ app.get('/api/season/production-notes', requireAuth('master'), async (req, res) 
   try {
     const result = await pool.query(
       `SELECT pn.id, pn.note_text, pn.category, pn.created_at,
-              u.email AS author_email,
+              u.email AS author_email, u.name AS author_name,
               COALESCE(
                 (SELECT array_agg(dp2.first_name || ' ' || dp2.last_name ORDER BY dp2.last_name)
                  FROM unnest(pn.dancer_user_ids) AS uid
@@ -5444,7 +5444,7 @@ app.get('/api/season/production-notes', requireAuth('master'), async (req, res) 
        LEFT JOIN production_note_pieces pnp ON pnp.note_id = pn.id
        LEFT JOIN pieces p ON p.id = pnp.piece_id
        WHERE pn.season_id = $1
-       GROUP BY pn.id, u.email, dp.first_name, dp.last_name
+       GROUP BY pn.id, u.email, u.name, dp.first_name, dp.last_name
        ORDER BY pn.created_at DESC`,
       [seasonId]
     );
@@ -5461,17 +5461,17 @@ app.get('/api/season/faculty', requireAuth('master'), async (req, res) => {
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
     const [orgMembers, seasonMembers, choreographers] = await Promise.all([
-      pool.query(`SELECT DISTINCT u.email FROM org_members om JOIN users u ON u.id = om.user_id WHERE om.org_id = $1`, [orgId]),
-      pool.query(`SELECT DISTINCT u.email FROM season_members sm JOIN users u ON u.id = sm.user_id WHERE sm.season_id = $1`, [seasonId]),
+      pool.query(`SELECT DISTINCT u.email, u.name FROM org_members om JOIN users u ON u.id = om.user_id WHERE om.org_id = $1`, [orgId]),
+      pool.query(`SELECT DISTINCT u.email, u.name FROM season_members sm JOIN users u ON u.id = sm.user_id WHERE sm.season_id = $1`, [seasonId]),
       pool.query(`SELECT DISTINCT choreographer_email AS email, name AS piece_name FROM pieces WHERE season_id = $1 AND choreographer_email IS NOT NULL AND choreographer_email != ''`, [seasonId]),
     ]);
     const currentEmail = (await pool.query('SELECT email FROM users WHERE id = $1', [req.session.userId])).rows[0]?.email;
     const seen = new Map();
     orgMembers.rows.forEach(r => {
-      if (r.email !== currentEmail) seen.set(r.email, { email: r.email, label: r.email, type: 'codirector' });
+      if (r.email !== currentEmail) seen.set(r.email, { email: r.email, label: r.name || r.email, type: 'codirector' });
     });
     seasonMembers.rows.forEach(r => {
-      if (r.email !== currentEmail && !seen.has(r.email)) seen.set(r.email, { email: r.email, label: r.email, type: 'codirector' });
+      if (r.email !== currentEmail && !seen.has(r.email)) seen.set(r.email, { email: r.email, label: r.name || r.email, type: 'codirector' });
     });
     choreographers.rows.forEach(r => {
       if (r.email !== currentEmail && !seen.has(r.email)) seen.set(r.email, { email: r.email, label: `${r.email} (${r.piece_name})`, type: 'choreographer' });
