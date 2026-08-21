@@ -66,6 +66,39 @@ const emailEnabled = !!process.env.RESEND_API_KEY;
 const resend       = emailEnabled ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM_EMAIL   = 'CastSync <support@cast-sync.com>';
 
+// ── Email logging wrapper ──────────────────────────────────────────────────────
+// Every outgoing email goes through sendEmail() instead of sendEmail()
+// directly, so that a record is automatically written to email_logs.
+
+function classifyEmailType(subject) {
+  if (!subject) return 'other';
+  const s = subject.toLowerCase();
+  if (s.includes('verify'))                          return 'verification';
+  if (s.includes('submission'))                      return 'submission';
+  if (s.includes('casting results') || s.includes('cast result')) return 'cast_results';
+  if (s.includes('absence'))                         return 'absence';
+  if (s.includes('password') || s.includes('reset')) return 'password_reset';
+  if (s.includes('confirm') || s.includes('email change')) return 'email_change';
+  if (s.includes('schedule'))                        return 'schedule';
+  if (s.includes('note'))                            return 'notes';
+  if (s.includes('invitation') || s.includes('invite')) return 'invitation';
+  if (s.includes('staff'))                           return 'staff';
+  return 'other';
+}
+
+async function sendEmail(params) {
+  const result = await sendEmail(params);
+  const toRaw   = params.to;
+  const toEmail  = Array.isArray(toRaw) ? toRaw.filter(Boolean).join(', ') : (toRaw || '');
+  const resendId = result?.data?.id || null;
+  pool.query(
+    `INSERT INTO email_logs (resend_id, to_email, subject, email_type, status)
+     VALUES ($1, $2, $3, $4, 'sent')`,
+    [resendId, toEmail, params.subject || '', classifyEmailType(params.subject)]
+  ).catch(() => {});
+  return result;
+}
+
 async function sendConfirmationEmail(toEmail, secondaryEmail, data, orgName, seasonName, isUpdate = false) {
   if (!emailEnabled) return;
   const { first_name, last_name, phone, address, grade, technique_classes, injuries, absences, availability } = data;
@@ -82,7 +115,7 @@ async function sendConfirmationEmail(toEmail, secondaryEmail, data, orgName, sea
     ? `Hi ${first_name}, your submission for <strong>${orgName} — ${seasonName}</strong> has been updated. Here's what we have on file.`
     : `Hi ${first_name}, here's a copy of your submission for <strong>${orgName} — ${seasonName}</strong>.`;
   try {
-    await resend.emails.send({
+    await sendEmail({
       from:    FROM_EMAIL,
       to:      recipients,
       subject: `CastSync Submission ${subjectTag} — ${orgName}`,
@@ -362,7 +395,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         );
         // Welcome email for new Google signups
         if (emailEnabled) {
-          resend.emails.send({
+          sendEmail({
             from: 'CastSync <noreply@cast-sync.com>',
             to:   email,
             subject: 'Welcome to CastSync!',
@@ -551,7 +584,7 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
 
     // Send verification email
     const verifyUrl = `${APP_URL}/verify-email.html?token=${token}`;
-    resend.emails.send({
+    sendEmail({
       from:    FROM_EMAIL,
       to:      user.email,
       subject: 'Verify your CastSync email',
@@ -666,7 +699,7 @@ app.post('/api/auth/resend-verification', authLimiter, async (req, res) => {
     // Always return ok — don't reveal whether email exists
     if (result.rows.length) {
       const verifyUrl = `${APP_URL}/verify-email.html?token=${token}`;
-      resend.emails.send({
+      sendEmail({
         from:    FROM_EMAIL,
         to:      email.toLowerCase().trim(),
         subject: 'Verify your CastSync email',
@@ -815,7 +848,7 @@ app.post('/api/auth/change-email', async (req, res) => {
     );
 
     if (emailEnabled) {
-      await resend.emails.send({
+      await sendEmail({
         from:    FROM_EMAIL,
         to:      normalizedEmail,
         subject: 'Confirm your new CastSync email',
@@ -877,7 +910,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       [token, expires, result.rows[0].id]
     );
     if (!emailEnabled) return;
-    await resend.emails.send({
+    await sendEmail({
       from:    FROM_EMAIL,
       to:      email.toLowerCase().trim(),
       subject: 'Reset your CastSync password',
@@ -918,7 +951,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
     );
     // Security notification
     if (emailEnabled && userRow.rows[0]?.email) {
-      resend.emails.send({
+      sendEmail({
         from: FROM_EMAIL,
         to:   userRow.rows[0].email,
         subject: 'Your CastSync password was changed',
@@ -1244,7 +1277,7 @@ app.post('/api/orgs/:orgId/seasons/:seasonId/invite', requireAuth('master'), asy
         ? `${ownerEmail} has invited you to join CastSync as a co-director for <strong>${seasonName}</strong> at <strong>${orgName}</strong>. Click below to set up your password and get started.`
         : `${ownerEmail} has added you as a co-director for <strong>${seasonName}</strong> at <strong>${orgName}</strong> on CastSync. You now have full access to that production's scheduling and casting.`;
 
-      await resend.emails.send({
+      await sendEmail({
         from: 'CastSync <noreply@cast-sync.com>',
         to:   normalizedEmail,
         subject: `You've been added as a co-director on CastSync`,
@@ -2189,7 +2222,7 @@ app.post('/api/publish/send', requireAuth('master'), async (req, res) => {
     await Promise.all(emailRes.rows.map(async ({ user_id, email, secondary_email }) => {
       if (!(await emailAllowed(user_id, 'casting_updates'))) return;
       sentCount++;
-      return resend.emails.send({ from: FROM_EMAIL, to: [email, secondary_email].filter(Boolean), subject: `Casting Results — ${orgName}`, html })
+      return sendEmail({ from: FROM_EMAIL, to: [email, secondary_email].filter(Boolean), subject: `Casting Results — ${orgName}`, html })
         .catch(err => console.error(`Email to ${email} failed:`, err.message));
     }));
     res.json({ message: `Sent to ${sentCount} auditionee${sentCount === 1 ? '' : 's'}.` });
@@ -2725,7 +2758,7 @@ app.post('/api/staff/pieces/:pieceId/notes', requireAuth('staff'), async (req, r
         const nameList = dancerNames.rows.map(r => r.name).join(', ');
         for (const { user_id, email } of staffRows.rows) {
           if (!(await emailAllowed(user_id, 'production_notes'))) continue;
-          resend.emails.send({
+          sendEmail({
             from: FROM_EMAIL, to: email,
             subject: `Production Note: ${nameList} mentioned`,
             html: noteHtml(` Dancer${dancerIds.length !== 1 ? 's' : ''} mentioned: ${escapeHtml(nameList)}`),
@@ -2739,7 +2772,7 @@ app.post('/api/staff/pieces/:pieceId/notes', requireAuth('staff'), async (req, r
         for (const { user_id, email } of directorRecipients) {
           if (user_id === req.session.userId) continue;
           if (!(await emailAllowed(user_id, 'production_notes'))) continue;
-          resend.emails.send({
+          sendEmail({
             from: FROM_EMAIL, to: email,
             subject: notifySubject,
             html: noteHtml(''),
@@ -2800,7 +2833,7 @@ async function notifyChoreographerForPiece(pieceId, subject, html) {
     const result = await pool.query('SELECT choreographer_email FROM pieces WHERE id = $1', [pieceId]);
     const email = result.rows[0]?.choreographer_email;
     if (!email) return;
-    await resend.emails.send({ from: FROM_EMAIL, to: email, subject, html }).catch(err => console.error('Choreographer email error:', err.message));
+    await sendEmail({ from: FROM_EMAIL, to: email, subject, html }).catch(err => console.error('Choreographer email error:', err.message));
   } catch (err) { console.error('notifyChoreographerForPiece error:', err.message); }
 }
 
@@ -2837,7 +2870,7 @@ async function notifyPieceScheduleChange(pieceId, orgId, seasonId, subject, html
     [...castRecipients, ...directorRecipients].forEach(r => seen.set(r.email, r));
     for (const { email, userId } of seen.values()) {
       if (!(await emailAllowed(userId, 'schedule_changes'))) continue;
-      resend.emails.send({ from: FROM_EMAIL, to: email, subject, html }).catch(err => console.error('Schedule change email error:', err.message));
+      sendEmail({ from: FROM_EMAIL, to: email, subject, html }).catch(err => console.error('Schedule change email error:', err.message));
     }
     notifyChoreographerForPiece(pieceId, subject, html);
   } catch (err) { console.error('notifyPieceScheduleChange error:', err.message); }
@@ -2957,7 +2990,7 @@ app.post('/api/absence-requests', requireAuth('auditionee'), async (req, res) =>
 
     if (emailEnabled && await emailAllowed(req.session.userId, 'absence_requests')) {
       const recipients = [dancerEmail, dancerSecondaryEmail].filter(Boolean);
-      resend.emails.send({
+      sendEmail({
         from: FROM_EMAIL,
         to: recipients,
         subject: `Absence Request Received for ${org_name}`,
@@ -2977,7 +3010,7 @@ app.post('/api/absence-requests', requireAuth('auditionee'), async (req, res) =>
       getDirectorEmails(org_id, season_id).then(async directorRecipients => {
         for (const { email, userId } of directorRecipients) {
           if (!email || !(await emailAllowed(userId, 'absence_requests'))) continue;
-          resend.emails.send({
+          sendEmail({
             from: FROM_EMAIL,
             to: email,
             subject: `New Absence Request from ${dancerName} for ${org_name}`,
@@ -3607,7 +3640,7 @@ app.post('/api/pieces/:pieceId/staff', requireAuth('master'), async (req, res) =
         ? `${adderEmail} has added you as ${roleLabel} for <strong>${pieceName}</strong> in <strong>${seasonName}</strong> at <strong>${orgName}</strong> on CastSync. Click below to set up your password and get started.`
         : `${adderEmail} has added you as ${roleLabel} for <strong>${pieceName}</strong> in <strong>${seasonName}</strong> at <strong>${orgName}</strong> on CastSync.`;
 
-      await resend.emails.send({
+      await sendEmail({
         from:    FROM_EMAIL,
         to:      normalizedEmail,
         subject: `You've been added to ${pieceName} on CastSync`,
@@ -4066,7 +4099,7 @@ app.post('/api/contact', async (req, res) => {
 
   if (emailEnabled) {
     try {
-      await resend.emails.send({
+      await sendEmail({
         from:    'CastSync Contact <noreply@cast-sync.com>',
         to:      'support@cast-sync.com',
         replyTo: email,
@@ -5565,7 +5598,7 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
         const userIdByEmail = new Map(userRows.rows.map(r => [r.email, r.id]));
         for (const to of recipientEmails) {
           if (!(await emailAllowed(userIdByEmail.get(to), 'production_notes'))) continue;
-          resend.emails.send({
+          sendEmail({
             from: FROM_EMAIL, to,
             subject: `New Production Note (${categoryLabel}) for ${orgName}`,
             html: noteHtml(''),
@@ -5580,7 +5613,7 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
           if (user_id === req.session.userId) continue;
           if (Array.isArray(notify_emails) && notify_emails.includes(email)) continue; // already sent above
           if (!(await emailAllowed(user_id, 'production_notes'))) continue;
-          resend.emails.send({
+          sendEmail({
             from: FROM_EMAIL, to: email,
             subject: `New Production Note (${categoryLabel}) for ${orgName}`,
             html: noteHtml(''),
@@ -5607,7 +5640,7 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
         const nameList = dancerNames.rows.map(r => r.name).join(', ');
         for (const { user_id, email } of staffRows.rows) {
           if (!(await emailAllowed(user_id, 'production_notes'))) continue;
-          resend.emails.send({
+          sendEmail({
             from: FROM_EMAIL, to: email,
             subject: `Production Note: ${nameList} mentioned`,
             html: noteHtml(` Dancer${dancerIds.length !== 1 ? 's' : ''} mentioned: ${escapeHtml(nameList)}`),
@@ -5860,7 +5893,7 @@ app.patch('/api/season/absence-requests/:id', requireAuth('master'), async (req,
     if (emailEnabled && status !== undefined && await emailAllowed(reqRow.user_id, 'absence_requests')) {
       const dancerProfile = await pool.query('SELECT secondary_email FROM dancer_profiles WHERE user_id = $1', [reqRow.user_id]);
       const recipients = [reqRow.email, dancerProfile.rows[0]?.secondary_email].filter(Boolean);
-      resend.emails.send({
+      sendEmail({
         from: FROM_EMAIL,
         to: recipients,
         subject: `Your Absence Request Has Been Updated for ${reqRow.org_name}`,
@@ -6363,6 +6396,7 @@ app.get('/admin/masters', async (req, res) => {
       return `<tr><td>${r.email}</td><td>${joined}</td><td>${r.productions}</td></tr>`;
     }).join('');
 
+    const key = req.query.key;
     res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6382,6 +6416,22 @@ app.get('/admin/masters', async (req, res) => {
     td { padding:10px 14px; border-bottom:1px solid #e5e7eb; font-size:14px; color:#374151; }
     tr:last-child td { border-bottom:none; }
     tr:hover td { background:#f9fafb; }
+    .badge { display:inline-block; padding:2px 9px; border-radius:99px; font-size:12px; font-weight:600; }
+    .badge-sent       { background:#f3f4f6; color:#374151; }
+    .badge-delivered  { background:#d1fae5; color:#065f46; }
+    .badge-bounced    { background:#fee2e2; color:#991b1b; }
+    .badge-complained { background:#fef9c3; color:#92400e; }
+    .badge-delay      { background:#fef3c7; color:#92400e; }
+    .type-chip { background:#e5e7eb; color:#374151; padding:1px 7px; border-radius:4px; font-size:11px; }
+    .email-filters { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+    .email-filters input, .email-filters select { padding:6px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; }
+    .email-filters button { padding:6px 16px; background:#111; color:#fff; border:none; border-radius:6px; font-size:13px; cursor:pointer; }
+    #log-count { font-size:13px; color:#6b7280; }
+    #log-pagination { display:flex; gap:8px; margin-top:12px; align-items:center; }
+    #log-pagination button { padding:5px 14px; border:1px solid #d1d5db; background:#fff; border-radius:6px; font-size:13px; cursor:pointer; }
+    #log-pagination button:disabled { opacity:.4; cursor:default; }
+    #log-pagination span { font-size:13px; color:#6b7280; }
+    .mono { font-family:monospace; font-size:12px; color:#9ca3af; }
   </style>
 </head>
 <body>
@@ -6389,6 +6439,7 @@ app.get('/admin/masters', async (req, res) => {
   <div class="tabs">
     <button class="tab active" onclick="show('directors')">Directors (${rows.length})</button>
     <button class="tab" onclick="show('faculty')">Faculty (${facultyRows.length})</button>
+    <button class="tab" onclick="show('emails')">Email Logs</button>
   </div>
   <div class="panel active" id="panel-directors">
     <table>
@@ -6402,13 +6453,107 @@ app.get('/admin/masters', async (req, res) => {
       <tbody>${facultyTableRows || '<tr><td colspan="3" style="color:#9ca3af;text-align:center;padding:24px;">No faculty accounts yet.</td></tr>'}</tbody>
     </table>
   </div>
+  <div class="panel" id="panel-emails">
+    <div class="email-filters">
+      <input type="text" id="log-q" placeholder="Search by email address…" style="width:220px;">
+      <select id="log-type">
+        <option value="">All types</option>
+        <option value="verification">Verification</option>
+        <option value="submission">Submission</option>
+        <option value="cast_results">Cast Results</option>
+        <option value="absence">Absence</option>
+        <option value="password_reset">Password Reset</option>
+        <option value="email_change">Email Change</option>
+        <option value="schedule">Schedule</option>
+        <option value="notes">Notes</option>
+        <option value="invitation">Invitation</option>
+        <option value="staff">Staff</option>
+        <option value="other">Other</option>
+      </select>
+      <select id="log-status">
+        <option value="">All statuses</option>
+        <option value="sent">Sent</option>
+        <option value="delivered">Delivered</option>
+        <option value="bounced">Bounced</option>
+        <option value="complained">Complained</option>
+        <option value="delivery_delayed">Delivery Delayed</option>
+      </select>
+      <button onclick="loadLogs(1)">Search</button>
+      <span id="log-count"></span>
+    </div>
+    <table id="log-table">
+      <thead><tr><th>Recipient</th><th>Subject</th><th>Type</th><th>Status</th><th>Sent</th></tr></thead>
+      <tbody id="log-body"><tr><td colspan="5" style="color:#9ca3af;text-align:center;padding:24px;">Loading…</td></tr></tbody>
+    </table>
+    <div id="log-pagination">
+      <button id="log-prev" onclick="logPage--; loadLogs(logPage)" disabled>Previous</button>
+      <span id="log-page-label"></span>
+      <button id="log-next" onclick="logPage++; loadLogs(logPage)" disabled>Next</button>
+    </div>
+  </div>
   <script>
+    const ADMIN_KEY = ${JSON.stringify(key)};
+    let logPage = 1;
+    const LOG_LIMIT = 100;
+
     function show(tab) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
       event.target.classList.add('active');
       document.getElementById('panel-' + tab).classList.add('active');
+      if (tab === 'emails' && document.getElementById('log-body').textContent.trim() === 'Loading…') {
+        loadLogs(1);
+      }
     }
+
+    function statusBadge(s) {
+      const cls = s === 'delivered' ? 'badge-delivered' : s === 'bounced' ? 'badge-bounced'
+        : s === 'complained' ? 'badge-complained' : s === 'delivery_delayed' ? 'badge-delay' : 'badge-sent';
+      return '<span class="badge ' + cls + '">' + s + '</span>';
+    }
+
+    function fmt(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+        + ' ' + d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
+    }
+
+    async function loadLogs(page) {
+      logPage = page;
+      const q      = document.getElementById('log-q').value.trim();
+      const type   = document.getElementById('log-type').value;
+      const status = document.getElementById('log-status').value;
+      const params = new URLSearchParams({ key: ADMIN_KEY, q, type, status, page, limit: LOG_LIMIT });
+      const tbody  = document.getElementById('log-body');
+      tbody.innerHTML = '<tr><td colspan="5" style="color:#9ca3af;text-align:center;padding:24px;">Loading…</td></tr>';
+      try {
+        const res  = await fetch('/admin/email-logs?' + params);
+        const data = await res.json();
+        const total = data.total || 0;
+        const start = (page - 1) * LOG_LIMIT + 1;
+        const end   = Math.min(page * LOG_LIMIT, total);
+        document.getElementById('log-count').textContent = total === 0 ? '0 results' : start + '–' + end + ' of ' + total.toLocaleString();
+        document.getElementById('log-prev').disabled = page <= 1;
+        document.getElementById('log-next').disabled = end >= total;
+        document.getElementById('log-page-label').textContent = 'Page ' + page;
+        if (!data.rows || data.rows.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="color:#9ca3af;text-align:center;padding:24px;">No emails match those filters.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = data.rows.map(r =>
+          '<tr><td>' + r.to_email + (r.resend_id ? '<div class="mono">' + r.resend_id + '</div>' : '') + '</td>'
+          + '<td>' + (r.subject || '') + '</td>'
+          + '<td><span class="type-chip">' + r.email_type + '</span></td>'
+          + '<td>' + statusBadge(r.status) + '</td>'
+          + '<td style="white-space:nowrap;">' + fmt(r.sent_at) + '</td></tr>'
+        ).join('');
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="5" style="color:#dc2626;padding:24px;">Error loading logs.</td></tr>';
+      }
+    }
+
+    document.getElementById('log-q').addEventListener('keydown', e => { if (e.key === 'Enter') loadLogs(1); });
   </script>
 </body>
 </html>`);
@@ -7213,8 +7358,133 @@ async function runMigrations() {
     console.log('Migration step 40 (absence_requests.piece_ids, pieces.display_order) complete.');
   } catch (err) { console.error('Migration step 40 error:', err.message); }
 
+  // Step 41: email_logs — record of every outgoing email for admin visibility
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS email_logs (
+        id         SERIAL PRIMARY KEY,
+        resend_id  TEXT,
+        to_email   TEXT NOT NULL DEFAULT '',
+        subject    TEXT NOT NULL DEFAULT '',
+        email_type TEXT NOT NULL DEFAULT 'other',
+        status     TEXT NOT NULL DEFAULT 'sent',
+        sent_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS email_logs_to_email_idx ON email_logs (lower(to_email));
+      CREATE INDEX IF NOT EXISTS email_logs_sent_at_idx  ON email_logs (sent_at DESC);
+    `);
+    console.log('Migration step 41 (email_logs) complete.');
+  } catch (err) { console.error('Migration step 41 error:', err.message); }
+
   console.log('All migrations complete.');
 }
+
+// GET /admin/email-logs — JSON endpoint used by the Email Logs tab in /admin/masters
+app.get('/admin/email-logs', async (req, res) => {
+  if (!process.env.MASTER_CODE || req.query.key !== process.env.MASTER_CODE) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const { q = '', type = '', status = '', page = '1', limit = '100' } = req.query;
+    const pageNum  = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit) || 100));
+    const offset   = (pageNum - 1) * limitNum;
+    const conditions = [];
+    const params     = [];
+    if (q.trim()) {
+      params.push(`%${q.trim().toLowerCase()}%`);
+      conditions.push(`lower(to_email) LIKE $${params.length}`);
+    }
+    if (type.trim()) {
+      params.push(type.trim());
+      conditions.push(`email_type = $${params.length}`);
+    }
+    if (status.trim()) {
+      params.push(status.trim());
+      conditions.push(`status = $${params.length}`);
+    }
+    const where    = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const countRes = await pool.query(`SELECT COUNT(*) FROM email_logs ${where}`, params);
+    const total    = parseInt(countRes.rows[0].count);
+    params.push(limitNum, offset);
+    const rows = await pool.query(
+      `SELECT resend_id, to_email, subject, email_type, status, sent_at
+       FROM email_logs ${where}
+       ORDER BY sent_at DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+    res.json({ total, page: pageNum, rows: rows.rows });
+  } catch (err) {
+    console.error('Admin email logs error:', err.message);
+    res.status(500).json({ error: 'Could not fetch logs.' });
+  }
+});
+
+// ── Resend webhook — update email_logs status on delivery events ──────────────
+// Configure in Resend dashboard: POST https://your-domain/api/webhooks/resend?secret=RESEND_WEBHOOK_SECRET
+// Events: email.sent, email.delivered, email.bounced, email.complained, email.delivery_delayed
+app.post('/api/webhooks/resend', async (req, res) => {
+  const secret = req.query.secret;
+  if (!secret || secret !== process.env.RESEND_WEBHOOK_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  const { type, data } = req.body || {};
+  if (type && data?.email_id) {
+    const status = type.startsWith('email.') ? type.slice(6) : type;
+    await pool.query(
+      `UPDATE email_logs SET status = $1, updated_at = NOW() WHERE resend_id = $2`,
+      [status, data.email_id]
+    ).catch(() => {});
+  }
+  res.json({ ok: true });
+});
+
+// ── Admin: email logs ──────────────────────────────────────────────────────────
+app.get('/api/admin/email-logs', requireAuth('master'), async (req, res) => {
+  try {
+    const { q = '', type = '', status = '', page = '1', limit = '50' } = req.query;
+    const pageNum  = Math.max(1, parseInt(page)  || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit) || 50));
+    const offset   = (pageNum - 1) * limitNum;
+
+    const conditions = [];
+    const params     = [];
+
+    if (q.trim()) {
+      params.push(`%${q.trim().toLowerCase()}%`);
+      conditions.push(`lower(to_email) LIKE $${params.length}`);
+    }
+    if (type.trim()) {
+      params.push(type.trim());
+      conditions.push(`email_type = $${params.length}`);
+    }
+    if (status.trim()) {
+      params.push(status.trim());
+      conditions.push(`status = $${params.length}`);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countRes = await pool.query(`SELECT COUNT(*) FROM email_logs ${where}`, params);
+    const total    = parseInt(countRes.rows[0].count);
+
+    params.push(limitNum, offset);
+    const rows = await pool.query(
+      `SELECT id, resend_id, to_email, subject, email_type, status, sent_at, updated_at
+       FROM email_logs ${where}
+       ORDER BY sent_at DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+
+    res.json({ total, page: pageNum, limit: limitNum, rows: rows.rows });
+  } catch (err) {
+    console.error('Email logs error:', err.message);
+    res.status(500).json({ error: 'Could not fetch email logs.' });
+  }
+});
 
 // ── Sentry error handler (must be after all routes) ──────────────────────────
 Sentry.setupExpressErrorHandler(app);
