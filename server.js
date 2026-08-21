@@ -5417,7 +5417,7 @@ app.delete('/api/my-notes/:id', requireAuth(), async (req, res) => {
 // Internal faculty notes (absences, injuries, attendance, casting, general). Scoped
 // to the active season; never exposed to any auditionee-facing route.
 
-const NOTE_CATEGORIES = ['absence', 'injury', 'attendance', 'casting', 'general'];
+const NOTE_CATEGORIES = ['absence', 'injury', 'attendance', 'casting', 'general', 'other'];
 
 // GET /api/season/production-notes, newest first
 app.get('/api/season/production-notes', requireAuth('master'), async (req, res) => {
@@ -5551,7 +5551,9 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   const { note_text, category, dancer_user_ids, piece_ids, notify_emails, notify_codirectors } = req.body;
   if (!note_text || !note_text.trim()) return res.status(400).json({ error: 'Note text is required.' });
-  const cat = NOTE_CATEGORIES.includes(category) ? category : 'general';
+  const cat = NOTE_CATEGORIES.includes(category)
+    ? category
+    : (category && category.trim().length > 0 && category.trim().length <= 50 ? category.trim() : 'other');
   const dancerIds = Array.isArray(dancer_user_ids) ? dancer_user_ids.map(Number).filter(Boolean) : [];
   try {
     const result = await pool.query(
