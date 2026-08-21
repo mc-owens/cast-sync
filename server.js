@@ -87,7 +87,7 @@ function classifyEmailType(subject) {
 }
 
 async function sendEmail(params) {
-  const result = await sendEmail(params);
+  const result = await resend.emails.send(params);
   const toRaw   = params.to;
   const toEmail  = Array.isArray(toRaw) ? toRaw.filter(Boolean).join(', ') : (toRaw || '');
   const resendId = result?.data?.id || null;
