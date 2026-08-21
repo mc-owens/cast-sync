@@ -110,6 +110,11 @@
       <span id="note-error" class="text-danger ms-2 d-none" style="font-size:13px;"></span>
     </div>
 
+    <div id="notes-filter" style="margin-bottom:14px;display:none;">
+      <div style="font-size:12px;color:#666;margin-bottom:6px;">Filter by piece</div>
+      <div id="notes-filter-btns" class="d-flex flex-wrap gap-2"></div>
+    </div>
+
     <div id="notes-loading" class="text-muted" style="font-size:14px;">Loading…</div>
     <div id="notes-list"></div>
 
@@ -291,13 +296,51 @@
       }
     });
 
+    let allNotes = [];
+    let activeFilter = null;
+
+    function applyFilter(pieceName) {
+      activeFilter = pieceName;
+      document.querySelectorAll('.notes-filter-btn').forEach(btn => {
+        const active = btn.dataset.pieceId === (pieceName ?? '');
+        btn.style.background  = active ? '#111' : '';
+        btn.style.color       = active ? '#fff' : '#374151';
+        btn.style.borderColor = active ? '#111' : '#d1d5db';
+      });
+      renderNotes(pieceName == null
+        ? allNotes
+        : allNotes.filter(n => Array.isArray(n.piece_names) && n.piece_names.includes(pieceName))
+      );
+    }
+
+    function buildFilterButtons(notes) {
+      const pieceSet = new Map();
+      notes.forEach(n => (n.piece_names || []).filter(Boolean).forEach(p => pieceSet.set(p, p)));
+      const filterDiv = document.getElementById('notes-filter');
+      const btnContainer = document.getElementById('notes-filter-btns');
+      if (pieceSet.size === 0) { filterDiv.style.display = 'none'; return; }
+      filterDiv.style.display = 'block';
+      const btnStyle = 'font-size:12px;padding:3px 12px;border-radius:20px;border:1px solid #d1d5db;background:none;cursor:pointer;color:#374151;';
+      btnContainer.innerHTML = `<button class="notes-filter-btn" data-piece-id="" style="${btnStyle}background:#111;color:#fff;border-color:#111;">All</button>` +
+        [...pieceSet.keys()].map(p =>
+          `<button class="notes-filter-btn" data-piece-id="${escapeHtml(p)}" style="${btnStyle}">${escapeHtml(p)}</button>`
+        ).join('');
+      btnContainer.addEventListener('click', e => {
+        const btn = e.target.closest('.notes-filter-btn');
+        if (!btn) return;
+        const pid = btn.dataset.pieceId || null;
+        applyFilter(pid);
+      });
+    }
+
     async function loadNotes() {
       try {
         const res = await fetch('/api/season/production-notes');
         if (!res.ok) throw new Error();
-        const notes = await res.json();
+        allNotes = await res.json();
         document.getElementById('notes-loading').style.display = 'none';
-        renderNotes(notes);
+        buildFilterButtons(allNotes);
+        renderNotes(allNotes);
       } catch (err) {
         document.getElementById('notes-loading').textContent = 'Could not load notes.';
       }
@@ -340,7 +383,9 @@
         resetDancerSearch();
         document.querySelectorAll('.note-piece-checkbox:checked').forEach(el => el.checked = false);
         document.querySelectorAll('.note-faculty-checkbox:checked').forEach(el => el.checked = false);
+        const prevFilter = activeFilter;
         await loadNotes();
+        if (prevFilter) applyFilter(prevFilter);
       } catch (err) {
         errEl.textContent = 'Could not connect to server.';
         errEl.classList.remove('d-none');
