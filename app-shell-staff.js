@@ -12,6 +12,9 @@
       { label: 'Production Notes', href: 'staff-notes.html' },
       { label: 'My Private Notes', href: 'staff-my-notes.html' },
     ]},
+    { section: 'Settings', items: [
+      { label: 'Account', href: 'staff-account.html' },
+    ]},
   ];
 
   function isActive(item) {

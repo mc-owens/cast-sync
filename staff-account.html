@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="app-shell.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body style="visibility:hidden">
+
+  <div id="app-shell-root"></div>
+  <script src="app-shell-staff.js"></script>
+
+  <div class="app-main">
+    <div class="container mt-5" style="max-width:520px;">
+
+      <h4 class="mb-1 fw-semibold">Account</h4>
+      <p class="text-muted mb-4" style="font-size:13px;" id="account-email">Loading…</p>
+
+      <div class="card mb-4">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-3">Profile</h6>
+          <div class="mb-2">
+            <label class="form-label">Display Name</label>
+            <p class="text-muted mb-2" style="font-size:12px;">Your name appears on Production Notes you post so directors see who wrote them.</p>
+            <div class="d-flex gap-2">
+              <input type="text" id="name-input" class="form-control" placeholder="Your name" autocomplete="off" />
+              <button class="btn btn-outline-secondary" id="save-name-btn">Save</button>
+            </div>
+            <div id="name-msg" class="mt-1" style="font-size:12px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-1">Change Password</h6>
+          <p class="text-muted mb-2" style="font-size:12px;">
+            <strong>Sign-in method:</strong> <span id="google-status">Loading…</span>
+          </p>
+          <p class="text-muted mb-3" style="font-size:13px;">Enter your current password, then choose a new one.</p>
+          <div id="pw-error" class="alert alert-danger d-none"></div>
+          <div id="pw-success" class="alert alert-success d-none"></div>
+          <div class="mb-3">
+            <label class="form-label">Current Password</label>
+            <input type="password" id="pw-current" class="form-control" autocomplete="current-password" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">New Password</label>
+            <input type="password" id="pw-new" class="form-control" autocomplete="new-password" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Confirm New Password</label>
+            <input type="password" id="pw-confirm" class="form-control" autocomplete="new-password" />
+          </div>
+          <button class="btn btn-dark" id="change-pw-btn">Update Password</button>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-1">Change Email</h6>
+          <p class="text-muted mb-3" style="font-size:13px;">Your current login email is <strong id="current-email-display"></strong>.</p>
+          <div id="pending-email-banner" class="alert alert-info d-none" style="font-size:13px;"></div>
+          <div id="email-error" class="alert alert-danger d-none"></div>
+          <div id="email-success" class="alert alert-success d-none"></div>
+          <div class="mb-3">
+            <label class="form-label">New Email</label>
+            <input type="email" id="new-email-input" class="form-control" autocomplete="off" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Confirm Password</label>
+            <input type="password" id="email-change-password" class="form-control" autocomplete="current-password" />
+          </div>
+          <button class="btn btn-dark" id="change-email-btn">Send Confirmation Link</button>
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-body">
+          <h6 class="fw-semibold mb-1">Notification Preferences</h6>
+          <p class="text-muted mb-3" style="font-size:13px;">Turn off email categories you don't want.</p>
+          <div id="notif-toggles"></div>
+          <div id="notif-saved-msg" class="text-success d-none mt-2" style="font-size:12px;">Saved.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    (async () => {
+      try {
+        const res  = await fetch('/api/auth/me');
+        const user = await res.json();
+        if (!res.ok || user.mode !== 'staff') { window.location.href = 'login.html'; return; }
+
+        document.getElementById('account-email').textContent = user.email;
+        document.getElementById('current-email-display').textContent = user.email;
+
+        document.getElementById('right-nav').innerHTML =
+          `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+
+        const settingsRes = await fetch('/api/auth/account-settings');
+        const settings = settingsRes.ok ? await settingsRes.json() : {};
+
+        document.getElementById('google-status').textContent =
+          settings.googleLinked ? 'Google' : 'Password (not linked to Google)';
+        document.getElementById('name-input').value = settings.name || '';
+
+        if (settings.pendingEmail) {
+          document.getElementById('pending-email-banner').textContent =
+            `Confirmation pending for ${settings.pendingEmail}. Check that inbox for a link, or request a new one below.`;
+          document.getElementById('pending-email-banner').classList.remove('d-none');
+        }
+
+        const NOTIF_CATEGORIES = [
+          { key: 'production_notes', label: 'Production Notes', desc: "Notes you've been tagged to receive from directors." },
+          { key: 'schedule_changes', label: 'Schedule Changes', desc: 'Cancelled, moved, or added rehearsals for your pieces.' },
+          { key: 'absence_requests', label: 'Absence Requests', desc: 'Updates on absence requests for pieces you manage.' },
+        ];
+        const prefs = settings.notificationPrefs || {};
+        document.getElementById('notif-toggles').innerHTML = NOTIF_CATEGORIES.map(c => `
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input notif-toggle" type="checkbox" role="switch" id="notif-${c.key}" data-category="${c.key}" ${prefs[c.key] === false ? '' : 'checked'}>
+            <label class="form-check-label" for="notif-${c.key}" style="font-size:13px;font-weight:600;">${c.label}</label>
+            <div class="text-muted" style="font-size:12px;">${c.desc}</div>
+          </div>`).join('');
+        document.querySelectorAll('.notif-toggle').forEach(toggle => {
+          toggle.addEventListener('change', async () => {
+            const savedEl = document.getElementById('notif-saved-msg');
+            try {
+              await fetch('/api/auth/notification-prefs', {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [toggle.dataset.category]: toggle.checked }),
+              });
+              savedEl.classList.remove('d-none');
+              setTimeout(() => savedEl.classList.add('d-none'), 2000);
+            } catch (e) { alert('Could not save preference. Try again.'); }
+          });
+        });
+
+        document.body.style.visibility = 'visible';
+      } catch (e) { window.location.href = 'login.html'; }
+    })();
+
+    document.getElementById('save-name-btn').addEventListener('click', async () => {
+      const name  = document.getElementById('name-input').value.trim();
+      const msgEl = document.getElementById('name-msg');
+      try {
+        const res = await fetch('/api/auth/name', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+        });
+        if (!res.ok) { const data = await res.json(); msgEl.textContent = data.error || 'Could not save.'; msgEl.className = 'mt-1 text-danger'; msgEl.style.fontSize = '12px'; return; }
+        msgEl.textContent = 'Saved.'; msgEl.className = 'mt-1 text-success'; msgEl.style.fontSize = '12px';
+        setTimeout(() => { msgEl.textContent = ''; }, 2500);
+      } catch (e) {
+        msgEl.textContent = 'Could not connect to server.'; msgEl.className = 'mt-1 text-danger'; msgEl.style.fontSize = '12px';
+      }
+    });
+
+    document.getElementById('change-email-btn').addEventListener('click', async () => {
+      const newEmail = document.getElementById('new-email-input').value.trim();
+      const password = document.getElementById('email-change-password').value;
+      const errEl    = document.getElementById('email-error');
+      const succEl   = document.getElementById('email-success');
+      errEl.classList.add('d-none'); succEl.classList.add('d-none');
+      if (!newEmail || !password) { errEl.textContent = 'New email and password are required.'; errEl.classList.remove('d-none'); return; }
+      try {
+        const res  = await fetch('/api/auth/change-email', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password, newEmail }),
+        });
+        const data = await res.json();
+        if (!res.ok) { errEl.textContent = data.error; errEl.classList.remove('d-none'); return; }
+        succEl.textContent = `Confirmation link sent to ${data.pendingEmail}. Click it to finish the change.`;
+        succEl.classList.remove('d-none');
+        document.getElementById('new-email-input').value = '';
+        document.getElementById('email-change-password').value = '';
+      } catch (e) {
+        errEl.textContent = 'Could not connect to server.'; errEl.classList.remove('d-none');
+      }
+    });
+
+    document.getElementById('change-pw-btn').addEventListener('click', async () => {
+      const current = document.getElementById('pw-current').value;
+      const newPw   = document.getElementById('pw-new').value;
+      const confirm = document.getElementById('pw-confirm').value;
+      const errEl   = document.getElementById('pw-error');
+      const succEl  = document.getElementById('pw-success');
+      errEl.classList.add('d-none'); succEl.classList.add('d-none');
+      if (!current || !newPw) { errEl.textContent = 'All fields are required.'; errEl.classList.remove('d-none'); return; }
+      if (newPw !== confirm)  { errEl.textContent = 'New passwords do not match.'; errEl.classList.remove('d-none'); return; }
+      if (newPw.length < 8)   { errEl.textContent = 'New password must be at least 8 characters.'; errEl.classList.remove('d-none'); return; }
+      const res  = await fetch('/api/auth/change-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: current, newPassword: newPw }),
+      });
+      const data = await res.json();
+      if (!res.ok) { errEl.textContent = data.error; errEl.classList.remove('d-none'); return; }
+      succEl.textContent = 'Password updated.';
+      succEl.classList.remove('d-none');
+      document.getElementById('pw-current').value = '';
+      document.getElementById('pw-new').value = '';
+      document.getElementById('pw-confirm').value = '';
+    });
+  </script>
+  <script src="pw-toggle.js"></script>
+
+</body>
+</html>
