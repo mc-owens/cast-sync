@@ -565,7 +565,7 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
           </a>
         </p>
         <p style="color:#9ca3af;font-size:12px;">
-          This link expires in 24 hours. If you didn't sign up for CastSync, you can ignore this email.
+          If you request another verification email, this link will no longer work. If you didn't sign up for CastSync, you can ignore this email.
         </p>
       </div>`,
     }).catch(err => console.error('Verification email error:', err.message));
@@ -679,7 +679,7 @@ app.post('/api/auth/resend-verification', authLimiter, async (req, res) => {
               Verify Email
             </a>
           </p>
-          <p style="color:#9ca3af;font-size:12px;">This link expires in 24 hours.</p>
+          <p style="color:#9ca3af;font-size:12px;">If you request another verification email, this link will no longer work. Use the most recent email you receive.</p>
         </div>`,
       }).catch(err => console.error('Resend verification error:', err.message));
     }
