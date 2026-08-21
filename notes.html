@@ -86,8 +86,7 @@
       <div class="mb-2">
         <div class="d-flex align-items-center gap-2 mb-1">
           <label class="form-label mb-0" style="font-size:12px;color:#666;">Related piece(s) (optional)</label>
-          <button type="button" onclick="document.querySelectorAll('.note-piece-checkbox').forEach(cb => cb.checked = true)" style="font-size:11px;background:none;border:none;color:#6b7280;cursor:pointer;padding:0;text-decoration:underline;">Select all</button>
-          <button type="button" onclick="document.querySelectorAll('.note-piece-checkbox').forEach(cb => cb.checked = false)" style="font-size:11px;background:none;border:none;color:#6b7280;cursor:pointer;padding:0;text-decoration:underline;">Clear</button>
+          <button type="button" onclick="document.querySelectorAll('.note-piece-checkbox').forEach(cb => cb.checked = false); const g=document.getElementById('note-general'); if(g) g.checked=false;" style="font-size:11px;background:none;border:none;color:#6b7280;cursor:pointer;padding:0;text-decoration:underline;">Clear</button>
         </div>
         <div id="note-pieces" class="d-flex gap-3 flex-wrap"></div>
       </div>
@@ -217,7 +216,12 @@
           container.innerHTML = '<span class="text-muted" style="font-size:12px;">No pieces yet.</span>';
           return;
         }
-        container.innerHTML = pieces.map(p => `
+        container.innerHTML =
+          `<label class="form-check form-check-inline faculty-check mb-0">
+            <input type="checkbox" class="form-check-input" id="note-general" checked>
+            General
+          </label>` +
+          pieces.map(p => `
           <label class="form-check form-check-inline faculty-check mb-0">
             <input type="checkbox" class="form-check-input note-piece-checkbox" value="${p.id}">
             ${escapeHtml(p.name)}
@@ -309,7 +313,9 @@
       });
       renderNotes(pieceName == null
         ? allNotes
-        : allNotes.filter(n => Array.isArray(n.piece_names) && n.piece_names.includes(pieceName))
+        : pieceName === '__general__'
+          ? allNotes.filter(n => !n.piece_names || n.piece_names.filter(Boolean).length === 0)
+          : allNotes.filter(n => Array.isArray(n.piece_names) && n.piece_names.includes(pieceName))
       );
     }
 
@@ -318,18 +324,19 @@
       notes.forEach(n => (n.piece_names || []).filter(Boolean).forEach(p => pieceSet.set(p, p)));
       const filterDiv = document.getElementById('notes-filter');
       const btnContainer = document.getElementById('notes-filter-btns');
-      if (pieceSet.size === 0) { filterDiv.style.display = 'none'; return; }
+      if (notes.length === 0) { filterDiv.style.display = 'none'; return; }
       filterDiv.style.display = 'block';
       const btnStyle = 'font-size:12px;padding:3px 12px;border-radius:20px;border:1px solid #e0d5b8;background:none;cursor:pointer;color:#6b5b3e;';
-      btnContainer.innerHTML = `<button class="notes-filter-btn" data-piece-id="" style="${btnStyle}background:#c9a84c;color:#fff;border-color:#c9a84c;">All</button>` +
+      btnContainer.innerHTML =
+        `<button class="notes-filter-btn" data-piece-id="" style="${btnStyle}background:#c9a84c;color:#fff;border-color:#c9a84c;">All</button>` +
+        `<button class="notes-filter-btn" data-piece-id="__general__" style="${btnStyle}">General</button>` +
         [...pieceSet.keys()].map(p =>
           `<button class="notes-filter-btn" data-piece-id="${escapeHtml(p)}" style="${btnStyle}">${escapeHtml(p)}</button>`
         ).join('');
       btnContainer.addEventListener('click', e => {
         const btn = e.target.closest('.notes-filter-btn');
         if (!btn) return;
-        const pid = btn.dataset.pieceId || null;
-        applyFilter(pid);
+        applyFilter(btn.dataset.pieceId || null);
       });
     }
 
@@ -383,6 +390,7 @@
         resetDancerSearch();
         document.querySelectorAll('.note-piece-checkbox:checked').forEach(el => el.checked = false);
         document.querySelectorAll('.note-faculty-checkbox:checked').forEach(el => el.checked = false);
+        const g = document.getElementById('note-general'); if (g) g.checked = true;
         const prevFilter = activeFilter;
         await loadNotes();
         if (prevFilter) applyFilter(prevFilter);
