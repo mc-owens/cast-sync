@@ -93,17 +93,11 @@
       </div>
 
       <div class="mb-2">
-        <div style="font-size:12px;color:#666;font-weight:600;margin-bottom:6px;">Notifications</div>
-        <label class="form-check mb-2">
-          <input type="checkbox" class="form-check-input" id="notify-codirectors-toggle" checked>
-          <span class="form-check-label" style="font-size:13px;">Notify all co-directors</span>
-        </label>
-        <div class="d-flex align-items-center gap-2 mb-1" style="margin-top:6px;">
-          <span style="font-size:12px;color:#666;">Also notify (optional)</span>
-          <button type="button" onclick="document.querySelectorAll('.note-faculty-checkbox').forEach(cb => cb.checked = true)" style="font-size:11px;background:none;border:none;color:#6b7280;cursor:pointer;padding:0;text-decoration:underline;">Select all</button>
-          <button type="button" onclick="document.querySelectorAll('.note-faculty-checkbox').forEach(cb => cb.checked = false)" style="font-size:11px;background:none;border:none;color:#6b7280;cursor:pointer;padding:0;text-decoration:underline;">Clear</button>
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <div style="font-size:12px;color:#666;font-weight:600;">Notify (optional)</div>
+          <button type="button" onclick="document.querySelectorAll('.note-faculty-checkbox').forEach(cb => cb.checked = false)" style="font-size:11px;background:none;border:none;color:#6b7280;cursor:pointer;padding:0;text-decoration:underline;">Clear all</button>
         </div>
-        <div id="note-faculty" class="d-flex gap-3 flex-wrap"></div>
+        <div id="note-faculty"></div>
       </div>
 
       <button id="add-note-btn" class="btn btn-dark btn-sm mt-1">Add Note</button>
@@ -241,15 +235,21 @@
         if (!res.ok) return;
         const faculty = await res.json();
         const container = document.getElementById('note-faculty');
-        if (faculty.length === 0) {
-          container.innerHTML = '<span class="text-muted" style="font-size:12px;">No co-directors or choreographers on file yet.</span>';
-          return;
+        const directors = faculty.filter(f => f.type === 'codirector');
+        const others    = faculty.filter(f => f.type !== 'codirector');
+        const groupStyle = 'font-size:11px;color:#a89070;font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px;';
+        const checkStyle = 'font-size:13px;';
+        const btnStyle   = 'font-size:11px;background:none;border:none;color:#6b7280;cursor:pointer;padding:0;text-decoration:underline;';
+        let html = '';
+        if (directors.length > 0) {
+          html += `<div class="d-flex align-items-center gap-2 mb-1"><span style="${groupStyle}">Co-directors</span><button type="button" style="${btnStyle}" onclick="document.querySelectorAll('.note-codirector-checkbox').forEach(cb=>cb.checked=true)">Select all</button></div>`;
+          html += `<div class="d-flex gap-3 flex-wrap mb-2">${directors.map(f => `<label class="form-check form-check-inline faculty-check mb-0" style="${checkStyle}"><input type="checkbox" class="form-check-input note-faculty-checkbox note-codirector-checkbox" value="${escapeHtml(f.email)}">${escapeHtml(f.label)}</label>`).join('')}</div>`;
         }
-        container.innerHTML = faculty.map(f => `
-          <label class="form-check form-check-inline faculty-check mb-0">
-            <input type="checkbox" class="form-check-input note-faculty-checkbox" value="${escapeHtml(f.email)}">
-            ${escapeHtml(f.label)}
-          </label>`).join('');
+        if (others.length > 0) {
+          html += `<div style="${groupStyle}margin-top:${directors.length ? '4px' : '0'};">Choreographers & Staff</div>`;
+          html += `<div class="d-flex gap-3 flex-wrap">${others.map(f => `<label class="form-check form-check-inline faculty-check mb-0" style="${checkStyle}"><input type="checkbox" class="form-check-input note-faculty-checkbox" value="${escapeHtml(f.email)}">${escapeHtml(f.label)}</label>`).join('')}</div>`;
+        }
+        container.innerHTML = html || '<span class="text-muted" style="font-size:12px;">No co-directors or choreographers on file yet.</span>';
       } catch (e) { /* leave empty */ }
     }
 
@@ -375,8 +375,7 @@
         ? (document.getElementById('note-category-other').value.trim() || 'other')
         : categorySelect.value;
       const piece_ids          = Array.from(document.querySelectorAll('.note-piece-checkbox:checked')).map(el => parseInt(el.value));
-      const notify_emails      = Array.from(document.querySelectorAll('.note-faculty-checkbox:checked')).map(el => el.value);
-      const notify_codirectors = document.getElementById('notify-codirectors-toggle').checked;
+      const notify_emails = Array.from(document.querySelectorAll('.note-faculty-checkbox:checked')).map(el => el.value);
 
       const btn = document.getElementById('add-note-btn');
       btn.disabled = true;
@@ -390,7 +389,6 @@
             dancer_user_ids: selectedDancers.map(d => parseInt(d.user_id)),
             piece_ids,
             notify_emails,
-            notify_codirectors,
           }),
         });
         if (!res.ok) {

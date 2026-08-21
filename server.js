@@ -5465,13 +5465,16 @@ app.get('/api/season/faculty', requireAuth('master'), async (req, res) => {
       pool.query(`SELECT DISTINCT u.email FROM season_members sm JOIN users u ON u.id = sm.user_id WHERE sm.season_id = $1`, [seasonId]),
       pool.query(`SELECT DISTINCT choreographer_email AS email, name AS piece_name FROM pieces WHERE season_id = $1 AND choreographer_email IS NOT NULL AND choreographer_email != ''`, [seasonId]),
     ]);
+    const currentEmail = (await pool.query('SELECT email FROM users WHERE id = $1', [req.session.userId])).rows[0]?.email;
     const seen = new Map();
-    orgMembers.rows.forEach(r => seen.set(r.email, { email: r.email, label: `${r.email} (Co-director)`, type: 'codirector' }));
+    orgMembers.rows.forEach(r => {
+      if (r.email !== currentEmail) seen.set(r.email, { email: r.email, label: r.email, type: 'codirector' });
+    });
     seasonMembers.rows.forEach(r => {
-      if (!seen.has(r.email)) seen.set(r.email, { email: r.email, label: `${r.email} (Co-director)`, type: 'codirector' });
+      if (r.email !== currentEmail && !seen.has(r.email)) seen.set(r.email, { email: r.email, label: r.email, type: 'codirector' });
     });
     choreographers.rows.forEach(r => {
-      if (!seen.has(r.email)) seen.set(r.email, { email: r.email, label: `${r.email} (${r.piece_name} choreographer)`, type: 'choreographer' });
+      if (r.email !== currentEmail && !seen.has(r.email)) seen.set(r.email, { email: r.email, label: `${r.email} (${r.piece_name})`, type: 'choreographer' });
     });
     res.json([...seen.values()]);
   } catch (err) {
@@ -5613,8 +5616,8 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
         }
       }
 
-      // Auto-notify directors and co-directors (excluding the author), unless toggled off
-      if (orgId && notify_codirectors !== false) {
+      // Auto-notify directors and co-directors only when explicitly requested via toggle
+      if (orgId && notify_codirectors === true) {
         const directorRecipients = await getDirectorEmails(orgId, seasonId);
         for (const { user_id, email } of directorRecipients) {
           if (user_id === req.session.userId) continue;
