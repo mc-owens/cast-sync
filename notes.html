@@ -93,9 +93,8 @@
       </div>
 
       <div class="mb-3">
-        <div class="d-flex align-items-center gap-2 mb-2">
+        <div class="mb-2">
           <div style="font-size:12px;color:#666;font-weight:600;">Notify (optional)</div>
-          <button type="button" onclick="document.querySelectorAll('.note-faculty-checkbox').forEach(cb => cb.checked = false)" style="font-size:11px;background:none;border:none;color:#6b7280;cursor:pointer;padding:0;text-decoration:underline;">Clear</button>
         </div>
         <div id="note-faculty"></div>
       </div>
@@ -242,7 +241,7 @@
         const btnStyle   = 'font-size:11px;background:none;border:none;color:#6b7280;cursor:pointer;padding:0;text-decoration:underline;';
         let html = '';
         if (directors.length > 0) {
-          html += `<div class="d-flex align-items-center gap-2 mb-1"><span style="${groupStyle}">Co-directors</span><button type="button" style="${btnStyle}" onclick="document.querySelectorAll('.note-codirector-checkbox').forEach(cb=>cb.checked=true)">Select all</button></div>`;
+          html += `<div class="d-flex align-items-center gap-2 mb-1"><span style="${groupStyle}">Co-directors</span><button type="button" style="${btnStyle}" onclick="document.querySelectorAll('.note-codirector-checkbox').forEach(cb=>cb.checked=true)">Select all</button><button type="button" style="${btnStyle}" onclick="document.querySelectorAll('.note-codirector-checkbox').forEach(cb=>cb.checked=false)">Clear</button></div>`;
           html += `<div class="d-flex gap-3 flex-wrap mb-2">${directors.map(f => `<label class="form-check form-check-inline faculty-check mb-0" style="${checkStyle}"><input type="checkbox" class="form-check-input note-faculty-checkbox note-codirector-checkbox" value="${escapeHtml(f.email)}">${escapeHtml(f.label)}</label>`).join('')}</div>`;
         }
         if (others.length > 0) {
