@@ -6437,11 +6437,11 @@ app.get('/admin/masters', async (req, res) => {
 <body>
   <h1>CastSync Accounts</h1>
   <div class="tabs">
-    <button class="tab active" onclick="show('directors')">Directors (${rows.length})</button>
-    <button class="tab" onclick="show('faculty')">Faculty (${facultyRows.length})</button>
-    <button class="tab" onclick="show('emails')">Email Logs</button>
+    <button class="tab" data-tab="directors" onclick="show('directors')">Directors (${rows.length})</button>
+    <button class="tab" data-tab="faculty" onclick="show('faculty')">Faculty (${facultyRows.length})</button>
+    <button class="tab" data-tab="emails" onclick="show('emails')">Email Logs</button>
   </div>
-  <div class="panel active" id="panel-directors">
+  <div class="panel" id="panel-directors">
     <table>
       <thead><tr><th>Email</th><th>Joined</th><th>Plan</th><th>Expires</th><th>Promo Code</th><th>Orgs</th></tr></thead>
       <tbody>${tableRows || '<tr><td colspan="6" style="color:#9ca3af;text-align:center;padding:24px;">No director accounts yet.</td></tr>'}</tbody>
@@ -6496,15 +6496,19 @@ app.get('/admin/masters', async (req, res) => {
     let logPage = 1;
     const LOG_LIMIT = 100;
 
-    function show(tab) {
+    function show(tab, pushHash) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      event.target.classList.add('active');
+      document.querySelector('.tab[data-tab="' + tab + '"]').classList.add('active');
       document.getElementById('panel-' + tab).classList.add('active');
+      if (pushHash !== false) location.hash = tab;
       if (tab === 'emails' && document.getElementById('log-body').textContent.trim() === 'Loading…') {
         loadLogs(1);
       }
     }
+
+    const initialTab = ['directors','faculty','emails'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'directors';
+    show(initialTab, false);
 
     function statusBadge(s) {
       const cls = s === 'delivered' ? 'badge-delivered' : s === 'bounced' ? 'badge-bounced'
