@@ -5587,6 +5587,8 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
         <p style="color:#555;font-size:13px;">Posted by ${escapeHtml(authorEmail)}.${extra}</p>
       </div>`;
 
+      const alreadyNotified = new Set();
+
       // Explicit faculty picker recipients (notify_emails from notes.html)
       // notify_emails comes from notes.html's faculty picker as bare email strings (not
       // every recipient necessarily has an account -- a choreographer's email might be
@@ -5603,6 +5605,7 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
             subject: `New Production Note (${categoryLabel}) for ${orgName}`,
             html: noteHtml(''),
           }).catch(err => console.error('Production note email error:', err.message));
+          alreadyNotified.add(to);
         }
       }
 
@@ -5611,13 +5614,14 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
         const directorRecipients = await getDirectorEmails(orgId, seasonId);
         for (const { user_id, email } of directorRecipients) {
           if (user_id === req.session.userId) continue;
-          if (Array.isArray(notify_emails) && notify_emails.includes(email)) continue; // already sent above
+          if (alreadyNotified.has(email)) continue;
           if (!(await emailAllowed(user_id, 'production_notes'))) continue;
           sendEmail({
             from: FROM_EMAIL, to: email,
             subject: `New Production Note (${categoryLabel}) for ${orgName}`,
             html: noteHtml(''),
           }).catch(err => console.error('Director auto-notify error:', err.message));
+          alreadyNotified.add(email);
         }
       }
 
@@ -5639,12 +5643,14 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
         ]);
         const nameList = dancerNames.rows.map(r => r.name).join(', ');
         for (const { user_id, email } of staffRows.rows) {
+          if (alreadyNotified.has(email)) continue;
           if (!(await emailAllowed(user_id, 'production_notes'))) continue;
           sendEmail({
             from: FROM_EMAIL, to: email,
             subject: `Production Note: ${nameList} mentioned`,
             html: noteHtml(` Dancer${dancerIds.length !== 1 ? 's' : ''} mentioned: ${escapeHtml(nameList)}`),
           }).catch(err => console.error('Staff dancer-tag notify error:', err.message));
+          alreadyNotified.add(email);
         }
       }
     }
