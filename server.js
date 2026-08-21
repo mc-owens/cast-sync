@@ -1461,6 +1461,19 @@ app.get('/api/subscription', requireAuth('master'), async (req, res) => {
   }
 });
 
+// POST /api/subscription/end-trial — expire the trial immediately so the user can choose a paid plan
+app.post('/api/subscription/end-trial', requireAuth('master'), async (req, res) => {
+  try {
+    const row = await pool.query('SELECT plan_type FROM users WHERE id = $1', [req.session.userId]);
+    const { plan_type } = row.rows[0] || {};
+    if (plan_type !== 'trial') return res.status(400).json({ error: 'No active trial to end.' });
+    await pool.query('UPDATE users SET plan_expires_at = NOW() WHERE id = $1', [req.session.userId]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not end trial.' });
+  }
+});
+
 // Helper: parse DISCOUNT_CODES env var → Map of CODE → percentage (integer)
 // Format: "SAVE10:10,LAUNCH20:20"
 function parseDiscountCodes() {

@@ -158,6 +158,48 @@
     }
   }
 
+  function maybeShowHelpHint() {
+    if (localStorage.getItem('csHelpHintDismissed')) return;
+    const hint = document.createElement('div');
+    hint.id = 'cs-help-hint';
+    hint.innerHTML = `
+      <div style="position:absolute;top:-8px;right:16px;width:14px;height:14px;background:#111;transform:rotate(45deg);border-radius:2px;"></div>
+      <div style="font-weight:700;font-size:13px;margin-bottom:7px;color:#fff;">Finding your way around</div>
+      <div style="font-size:12.5px;color:rgba(255,255,255,.8);line-height:1.55;">
+        The <strong style="color:#fff;">?</strong> button at the top right opens a help panel specific to whichever page you're on. Each page has its own tips and explanations.<br><br>
+        For full walkthroughs, open <strong style="color:#fff;">Help &amp; Guide</strong> at the bottom of the left sidebar.
+      </div>
+      <div style="text-align:right;margin-top:12px;">
+        <button id="cs-help-hint-dismiss" style="background:rgba(255,255,255,.18);border:none;color:#fff;padding:5px 16px;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">Got it</button>
+      </div>
+    `;
+    Object.assign(hint.style, {
+      position: 'fixed',
+      top: '50px',
+      right: '10px',
+      width: '260px',
+      background: '#111',
+      borderRadius: '10px',
+      padding: '16px 18px 14px',
+      boxShadow: '0 8px 28px rgba(0,0,0,.4)',
+      zIndex: '8000',
+      fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+    });
+    document.body.appendChild(hint);
+    document.getElementById('cs-help-hint-dismiss').addEventListener('click', () => {
+      localStorage.setItem('csHelpHintDismissed', '1');
+      hint.remove();
+    });
+    // Also dismiss if the user opens the ? help panel
+    const helpBtn = document.getElementById('app-help-btn');
+    if (helpBtn) {
+      helpBtn.addEventListener('click', () => {
+        localStorage.setItem('csHelpHintDismissed', '1');
+        hint.remove();
+      }, { once: true });
+    }
+  }
+
   function mountHelpSystem() {
     document.body.insertAdjacentHTML('beforeend', renderHelpOffcanvas());
 
@@ -256,5 +298,6 @@
     root.remove();
     watchBreakpoint();
     mountHelpSystem();
+    maybeShowHelpHint();
   }
 })();

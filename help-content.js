@@ -56,23 +56,27 @@
 
     'cast.html': {
       title: 'Cast Builder',
-      intro: 'Create a rehearsal block and fill it with dancers in one step. Start here when scheduling a new rehearsal and casting it at the same time.',
+      intro: 'Build a potential cast first, then find rehearsal times that work for everyone.',
       sections: [
         {
-          heading: 'The workflow',
-          body: 'Pick a piece, choose a day and time window, then select cast members and understudies from the list of available dancers. Click "Add to Schedule" to create the block on the Production Timeline and save all casting at once.'
+          heading: 'How it works',
+          body: 'Add dancers to the Cast Members list and, if needed, the Understudies list. As you add or remove dancers, CastSync automatically compares their submitted availability and shows the times when everyone is available to rehearse.<br><br>Click a dancer\'s name at any time to view their profile, contact information, and submitted availability.'
         },
         {
-          heading: 'Cast vs Understudy',
-          body: 'Cast members are the primary performers. Understudies learn the role and cover if a cast member is unavailable. Both appear on the published cast list. You can reassign between the two in Cast List at any time.'
+          heading: 'Common Availability',
+          body: 'The availability grid shows the overlap between all selected dancers\' schedules. You can switch between:<ul style="margin:8px 0 8px 0;padding-left:18px;"><li style="margin-bottom:4px;"><strong>All Windows</strong>: every time when all selected dancers are available</li><li><strong>Open Rooms</strong>: only the shared times when a rehearsal room is also available</li></ul>Existing rehearsals from the Production Timeline appear on the grid for additional scheduling context.'
         },
         {
-          heading: 'After adding to schedule',
-          body: 'The block appears on the Production Timeline and the dancers appear under that piece in Cast List. To adjust casting later, go to Cast List or Casting Availability.'
+          heading: 'Add the rehearsal when you\'re ready',
+          body: 'Once you\'ve found a workable group and rehearsal time, select <strong>+ Add Rehearsal to Schedule</strong>. From there you can:<ul style="margin:8px 0 8px 0;padding-left:18px;"><li style="margin-bottom:4px;">choose an existing piece or create a new one</li><li style="margin-bottom:4px;">select one of the shared rehearsal windows</li><li>adjust the exact start and end time</li></ul>Before saving, CastSync warns you about room conflicts or dancer double-booking. When confirmed, the rehearsal is added to the Production Timeline and the selected dancers are saved to that piece as cast members or understudies.'
         },
         {
-          heading: 'Who appears in search',
-          body: 'Only dancers who have submitted an audition form for this production appear here. Availability shown reflects what they marked on their form.'
+          heading: 'Cast Builder vs. Casting Availability',
+          body: '<strong>Cast Builder</strong> starts with the dancers: "Can these dancers rehearse together, and when?"<br><br><strong>Casting Availability</strong> starts with the piece and its rehearsal requirements: "Which dancers can make the schedule for this piece?"'
+        },
+        {
+          heading: 'Cast Builder vs. Cast List',
+          body: '<strong>Cast Builder</strong> helps you experiment with possible groups and rehearsal times. <strong>Cast List</strong> is where you review and manage the casting that has actually been saved.'
         },
       ]
     },
