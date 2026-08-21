@@ -108,7 +108,6 @@
 
       <button id="add-note-btn" class="btn btn-dark btn-sm mt-1">Add Note</button>
       <span id="note-error" class="text-danger ms-2 d-none" style="font-size:13px;"></span>
-      <span id="note-success" class="ms-2 d-none" style="font-size:13px;color:#8a6820;">Your note has been added to the thread.</span>
     </div>
 
     <div id="notes-filter" style="margin-bottom:14px;display:none;">
@@ -119,6 +118,11 @@
     <div id="notes-loading" class="text-muted" style="font-size:14px;">Loading…</div>
     <div id="notes-list"></div>
 
+  </div>
+
+  <div id="cs-toast" style="position:fixed;top:64px;right:16px;z-index:9500;display:none;background:#fffdf7;border:1px solid #e8dfc8;border-left:3px solid #c9a84c;border-radius:8px;padding:11px 16px 11px 14px;box-shadow:0 4px 20px rgba(0,0,0,.13);font-size:13px;color:#8a6820;max-width:260px;pointer-events:none;opacity:0;transition:opacity .25s;">
+    <strong style="display:block;margin-bottom:2px;font-size:13px;">Note added</strong>
+    Your note has been added to the thread.
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
@@ -237,12 +241,11 @@
         if (!res.ok) return;
         const faculty = await res.json();
         const container = document.getElementById('note-faculty');
-        const nonDirectors = faculty.filter(f => f.type !== 'codirector');
-        if (nonDirectors.length === 0) {
-          container.innerHTML = '<span class="text-muted" style="font-size:12px;">No additional choreographers or staff on file yet.</span>';
+        if (faculty.length === 0) {
+          container.innerHTML = '<span class="text-muted" style="font-size:12px;">No co-directors or choreographers on file yet.</span>';
           return;
         }
-        container.innerHTML = nonDirectors.map(f => `
+        container.innerHTML = faculty.map(f => `
           <label class="form-check form-check-inline faculty-check mb-0">
             <input type="checkbox" class="form-check-input note-faculty-checkbox" value="${escapeHtml(f.email)}">
             ${escapeHtml(f.label)}
@@ -363,10 +366,8 @@
 
     document.getElementById('add-note-btn').addEventListener('click', async () => {
       const noteText  = document.getElementById('note-text').value.trim();
-      const errEl     = document.getElementById('note-error');
-      const successEl = document.getElementById('note-success');
+      const errEl = document.getElementById('note-error');
       errEl.classList.add('d-none');
-      successEl.classList.add('d-none');
       if (!noteText) { errEl.textContent = 'Note text is required.'; errEl.classList.remove('d-none'); return; }
 
       const categorySelect = document.getElementById('note-category');
@@ -406,8 +407,10 @@
         document.querySelectorAll('.note-piece-checkbox:checked').forEach(el => el.checked = false);
         document.querySelectorAll('.note-faculty-checkbox:checked').forEach(el => el.checked = false);
         const g = document.getElementById('note-general'); if (g) g.checked = true;
-        successEl.classList.remove('d-none');
-        setTimeout(() => successEl.classList.add('d-none'), 4000);
+        const toast = document.getElementById('cs-toast');
+        toast.style.display = 'block';
+        requestAnimationFrame(() => { toast.style.opacity = '1'; });
+        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => { toast.style.display = 'none'; }, 260); }, 3500);
         const prevFilter = activeFilter;
         await loadNotes();
         if (prevFilter) applyFilter(prevFilter);
