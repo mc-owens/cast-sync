@@ -5593,7 +5593,7 @@ app.post('/api/season/production-notes', requireAuth('master'), async (req, res)
       // on the list with nothing in `users` to match), so preference-resolution is a
       // best-effort lookup keyed by email, not a guaranteed userId per recipient.
       if (Array.isArray(notify_emails) && notify_emails.length > 0) {
-        const recipientEmails = notify_emails.filter(Boolean);
+        const recipientEmails = [...new Set(notify_emails.filter(Boolean))];
         const userRows = await pool.query('SELECT id, email FROM users WHERE email = ANY($1)', [recipientEmails]);
         const userIdByEmail = new Map(userRows.rows.map(r => [r.email, r.id]));
         for (const to of recipientEmails) {
