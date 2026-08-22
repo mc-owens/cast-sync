@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let _availPartial       = [];
   let _availNone          = [];
   let _availPieceId       = null;
-  let _sortMode           = 'abc';
+  let _sortMode           = 'rated';
   let _gridReady          = false;
   let _liveCastMembers    = new Map(); // userId -> display name
   let _liveCastUnderstudies = new Map();
@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         .then(d => { _auditData = d || {}; renderDancerSections(); })
         .catch(() => {});
 
-      setSortMode('abc');
+      setSortMode('rated');
       contentEl.style.display = '';
     } catch (err) {
       showErrorToast('Could not load availability data.');
@@ -152,8 +152,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Dancer sorting ─────────────────────────────────────────────────────────
 
+  function auditRank(dancer) {
+    const a = _auditData[dancer.id] || {};
+    const ratings = a.pieceRatings || [];
+    if (ratings.some(r => r.level === 'high_priority')) return 0;
+    if (ratings.some(r => r.level === 'priority'))      return 1;
+    if (a.hasNote)                                       return 2;
+    return 3;
+  }
+
   function sortDancers(arr) {
     return [...arr].sort((a, b) => {
+      if (_sortMode === 'rated') {
+        const ra = auditRank(a), rb = auditRank(b);
+        if (ra !== rb) return ra - rb;
+      }
       if (_sortMode === 'num') {
         const an = a.audition_number != null ? Number(a.audition_number) : Infinity;
         const bn = b.audition_number != null ? Number(b.audition_number) : Infinity;
@@ -166,17 +179,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function setSortMode(mode) {
     _sortMode = mode;
-    const abcBtn = document.getElementById('sort-abc');
-    const numBtn = document.getElementById('sort-num');
-    abcBtn.className   = mode === 'abc' ? 'btn btn-sm btn-secondary'         : 'btn btn-sm btn-outline-secondary';
-    numBtn.className   = mode === 'num' ? 'btn btn-sm btn-secondary'         : 'btn btn-sm btn-outline-secondary';
-    abcBtn.style.fontSize = '12px';
-    numBtn.style.fontSize = '12px';
+    ['sort-ratings','sort-abc','sort-num'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const active = (id === 'sort-ratings' && mode === 'rated') ||
+                     (id === 'sort-abc'     && mode === 'abc')   ||
+                     (id === 'sort-num'     && mode === 'num');
+      el.className = active ? 'btn btn-sm btn-secondary' : 'btn btn-sm btn-outline-secondary';
+      el.style.fontSize = '12px';
+    });
     renderDancerSections();
   }
 
   document.getElementById('sort-abc').addEventListener('click', () => setSortMode('abc'));
   document.getElementById('sort-num').addEventListener('click', () => setSortMode('num'));
+  document.getElementById('sort-ratings')?.addEventListener('click', () => setSortMode('rated'));
 
   // ── Live cast panel ────────────────────────────────────────────────────────
 
@@ -256,8 +273,40 @@ document.addEventListener('DOMContentLoaded', async () => {
       ? `#${dancer.audition_number} ${dancer.first_name} ${dancer.last_name}`
       : `${dancer.first_name} ${dancer.last_name}`;
 
+    // Left gutter: fixed-width so all names align regardless of indicators
+    const auditCol = document.createElement('div');
+    auditCol.style.cssText = 'width:50px;flex-shrink:0;display:flex;align-items:center;justify-content:flex-end;gap:3px;flex-wrap:wrap;';
+
+    const audit = _auditData[dancer.id];
+    if (audit) {
+      const ratings = audit.pieceRatings || [];
+      const hasHP   = ratings.some(r => r.level === 'high_priority');
+      const hasP    = ratings.some(r => r.level === 'priority');
+
+      if (audit.hasNote) {
+        const dot = document.createElement('span');
+        dot.title = 'Has audition note';
+        dot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:#bbb;flex-shrink:0;display:inline-block;';
+        auditCol.appendChild(dot);
+      }
+      if (hasHP) {
+        const chip = document.createElement('span');
+        chip.textContent = 'HP';
+        chip.style.cssText = 'font-size:10px;font-weight:700;border-radius:4px;padding:1px 5px;background:#c9a84c;color:#fff;';
+        chip.title = 'High Priority: ' + ratings.filter(r => r.level === 'high_priority').map(r => r.rater).join(', ');
+        auditCol.appendChild(chip);
+      }
+      if (hasP) {
+        const chip = document.createElement('span');
+        chip.textContent = 'P';
+        chip.style.cssText = 'font-size:10px;font-weight:700;border-radius:4px;padding:1px 5px;background:rgba(201,168,76,.18);color:#8a6820;border:1px solid rgba(201,168,76,.35);';
+        chip.title = 'Priority: ' + ratings.filter(r => r.level === 'priority').map(r => r.rater).join(', ');
+        auditCol.appendChild(chip);
+      }
+    }
+
     const nameDiv  = document.createElement('div');
-    nameDiv.style.cssText = 'flex-shrink:0;max-width:50%;';
+    nameDiv.style.cssText = 'flex-shrink:0;max-width:50%;margin-left:6px;';
 
     const nameSpan = document.createElement('span');
     nameSpan.className   = 'avail-dancer-name' + (isAlreadyCast ? ' conflicted' : '');
@@ -269,31 +318,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       : 'Click to view schedule';
     nameSpan.addEventListener('click', () => openDancerModal(dancer.id));
     nameDiv.appendChild(nameSpan);
-
-    // Audition day indicators
-    const audit = _auditData[dancer.id];
-    if (audit) {
-      const auditRow = document.createElement('div');
-      auditRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;';
-      if (audit.hasNote) {
-        const dot = document.createElement('span');
-        dot.title = 'Has audition note';
-        dot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:#aaa;flex-shrink:0;display:inline-block;';
-        auditRow.appendChild(dot);
-      }
-      (audit.pieceRatings || []).forEach(r => {
-        const chip = document.createElement('span');
-        chip.textContent = r.level === 'high_priority' ? 'HP' : 'P';
-        const isHP = r.level === 'high_priority';
-        chip.style.cssText = `font-size:10px;font-weight:700;border-radius:4px;padding:1px 5px;` +
-          (isHP
-            ? 'background:#c9a84c;color:#fff;'
-            : 'background:rgba(201,168,76,.18);color:#8a6820;border:1px solid rgba(201,168,76,.35);');
-        chip.title = `${r.level === 'high_priority' ? 'High Priority' : 'Priority'}${r.isChoreographer ? ' · Choreographer' : ''}: ${r.rater}`;
-        auditRow.appendChild(chip);
-      });
-      if (auditRow.children.length > 0) nameDiv.appendChild(auditRow);
-    }
 
     // Conflict detail line for partial / not available
     if (scheduleConflicts && scheduleConflicts.length > 0) {
@@ -407,6 +431,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     leader.style.cssText = 'flex:1;min-width:12px;height:1px;border-bottom:2px dotted #e5e7eb;align-self:center;margin-bottom:2px;';
 
     renderBtns();
+    li.appendChild(auditCol);
     li.appendChild(nameDiv);
     li.appendChild(leader);
     li.appendChild(btnGroup);

@@ -248,6 +248,52 @@
       ]
     },
 
+    'audition-day.html': {
+      title: 'Audition Day',
+      intro: 'Create and manage audition day sessions. Each session holds one or more combos and auto-saves ratings as you go.',
+      sections: [
+        {
+          heading: 'Creating a session',
+          body: 'Hit "+ New Audition Day" and give it a name and date. The group size controls how many dancers appear in each group on the live rating page. You can change this setting after the fact by going live and adding a new combo.'
+        },
+        {
+          heading: 'Going live',
+          body: 'Click "Go Live" to open the rating page for that session. You can share the link with other directors or choreographers in the room so multiple people can rate at the same time without interfering with each other.'
+        },
+        {
+          heading: 'What the stats mean',
+          body: '"Rated" counts how many dancers received at least one priority or high-priority marking. "Callback" counts dancers marked for callbacks. "Combos" is how many combo groups were created in that session.'
+        },
+      ]
+    },
+
+    'audition-day-live.html': {
+      title: 'Audition Day Live',
+      intro: 'Rate dancers in real time. Each combo has its own independent ratings, callbacks, and review.',
+      sections: [
+        {
+          heading: 'Combos',
+          body: 'Each combo tab is independent. Ratings in Combo 1 do not carry over to Combo 2. Add combos with the + button at the top. Group size and sort order default to the last combo\'s settings.'
+        },
+        {
+          heading: 'Rating dancers',
+          body: 'Tap a dancer card to open the priority overlay. Tap P (Priority) or HP (High Priority) for each piece you are rating. Tap again to remove. Tap outside the overlay to close it.'
+        },
+        {
+          heading: 'Callbacks',
+          body: 'Open the Callbacks sub-tab to mark dancers for callback. The group size preview shows how many groups will be formed and flags if the last group is smaller than the rest.'
+        },
+        {
+          heading: 'Multiple people rating at once',
+          body: 'Each person only sees and edits their own ratings. Two choreographers can be on the page at the same time and their ratings will never overwrite each other.'
+        },
+        {
+          heading: 'Review',
+          body: 'The Review sub-tab shows a combined view of all ratings submitted by everyone in the room for the current combo. Use it at the end of a combo to see who received the most attention.'
+        },
+      ]
+    },
+
     'form-builder.html': {
       title: 'Audition Form',
       intro: 'Build the form dancers use to submit their audition and availability information.',
