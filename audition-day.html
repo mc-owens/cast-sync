@@ -124,8 +124,7 @@
           <div class="row g-3 mb-1">
             <div class="col-6">
               <label class="form-label" style="font-size:13px;font-weight:600;">Group Size</label>
-              <input type="number" id="new-day-groupsize" class="form-control" value="8" min="1" max="50">
-              <div class="form-text" style="font-size:11px;">Dancers per group</div>
+              <input type="number" id="new-day-groupsize" class="form-control" value="8" min="1" max="9999">
             </div>
             <div class="col-6">
               <label class="form-label" style="font-size:13px;font-weight:600;">Sort Dancers By</label>
@@ -136,6 +135,7 @@
               </select>
             </div>
           </div>
+          <div id="group-size-preview" style="font-size:12px;color:#8a6820;margin-top:8px;min-height:18px;"></div>
         </div>
         <div class="modal-footer border-0 pt-0">
           <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
@@ -181,7 +181,8 @@
     await loadDays();
   })();
 
-  let pendingDeleteId = null;
+  let pendingDeleteId  = null;
+  let seasonDancerCount = null;
   const createModal = new bootstrap.Modal(document.getElementById('createModal'));
   const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
 
@@ -235,14 +236,46 @@
     });
   }
 
-  document.getElementById('new-day-btn').addEventListener('click', () => {
+  async function fetchDancerCount() {
+    if (seasonDancerCount !== null) return seasonDancerCount;
+    try {
+      const r = await fetch('/api/dancers');
+      const data = r.ok ? await r.json() : [];
+      seasonDancerCount = data.length;
+    } catch (e) { seasonDancerCount = 0; }
+    return seasonDancerCount;
+  }
+
+  function updateGroupPreview() {
+    const gs = parseInt(document.getElementById('new-day-groupsize').value) || 0;
+    const n  = seasonDancerCount;
+    const el = document.getElementById('group-size-preview');
+    if (n === null || !gs) { el.textContent = ''; return; }
+    if (gs > n && n > 0) {
+      el.textContent = `You have ${n} auditionee${n !== 1 ? 's' : ''}. Group size cannot exceed ${n}.`;
+      el.style.color = '#c0392b';
+      return;
+    }
+    el.style.color = '#8a6820';
+    if (n === 0) { el.textContent = 'No auditionees yet.'; return; }
+    const g = Math.ceil(n / gs);
+    el.textContent = `You have ${n} auditionee${n !== 1 ? 's' : ''}. ${gs} per group = ${g} group${g !== 1 ? 's' : ''}.`;
+  }
+
+  document.getElementById('new-day-groupsize').addEventListener('input', updateGroupPreview);
+
+  document.getElementById('new-day-btn').addEventListener('click', async () => {
     document.getElementById('new-day-name').value = '';
     document.getElementById('new-day-date').value = '';
     document.getElementById('new-day-groupsize').value = '8';
     document.getElementById('new-day-sort').value = 'number';
     document.getElementById('create-error').classList.add('d-none');
+    document.getElementById('group-size-preview').textContent = '';
     createModal.show();
     setTimeout(() => document.getElementById('new-day-name').focus(), 300);
+    await fetchDancerCount();
+    document.getElementById('new-day-groupsize').max = seasonDancerCount || 9999;
+    updateGroupPreview();
   });
 
   document.getElementById('create-day-btn').addEventListener('click', async () => {
@@ -254,6 +287,12 @@
     errEl.classList.add('d-none');
 
     if (!name) { errEl.textContent = 'Name is required.'; errEl.classList.remove('d-none'); return; }
+    const gs = parseInt(groupSize) || 0;
+    if (gs < 1) { errEl.textContent = 'Group size must be at least 1.'; errEl.classList.remove('d-none'); return; }
+    if (seasonDancerCount && gs > seasonDancerCount) {
+      errEl.textContent = `Group size cannot exceed the number of auditionees (${seasonDancerCount}).`;
+      errEl.classList.remove('d-none'); return;
+    }
 
     const btn = document.getElementById('create-day-btn');
     btn.disabled = true;

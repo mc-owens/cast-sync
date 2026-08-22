@@ -242,6 +242,7 @@
 
       <div class="ad-tabs">
         <button class="ad-tab active" id="tab-live" onclick="switchTab('live')">Live</button>
+        <button class="ad-tab" id="tab-callbacks" onclick="switchTab('callbacks')">Callbacks</button>
         <button class="ad-tab" id="tab-review" onclick="switchTab('review')">Review</button>
       </div>
 
@@ -254,6 +255,35 @@
         </div>
         <div class="row g-3" id="dancer-grid"></div>
         <div class="save-indicator mt-2" id="save-indicator">Saved</div>
+      </div>
+
+      <!-- Callbacks tab -->
+      <div id="panel-callbacks" style="display:none;">
+        <div id="callback-setup">
+          <p id="callback-dancer-count-text" style="font-size:14px;color:#555;margin-bottom:12px;"></p>
+          <div id="callback-config" style="display:none;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+              <input type="number" id="callback-group-size" class="form-control" style="width:80px;" value="5" min="1" oninput="updateCallbackPreview()">
+              <span style="font-size:13px;color:#555;">per group</span>
+            </div>
+            <div id="callback-group-preview" style="font-size:12px;color:#8a6820;margin-bottom:16px;min-height:18px;"></div>
+            <button class="btn btn-dark btn-sm" onclick="startCallbackRound()">Start Callback Round</button>
+          </div>
+        </div>
+        <div id="callback-groups-panel" style="display:none;">
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <div style="font-size:12px;color:#999;">
+              <button class="btn btn-link btn-sm p-0" style="font-size:12px;color:#999;" onclick="resetCallbackSetup()">← Change group size</button>
+            </div>
+          </div>
+          <div class="group-nav">
+            <button class="btn-group-nav" id="btn-cb-prev" onclick="prevCallbackGroup()">‹</button>
+            <div class="group-label" id="callback-group-label">Callback Group 1 of 1</div>
+            <button class="btn-group-nav" id="btn-cb-next" onclick="nextCallbackGroup()">›</button>
+          </div>
+          <div class="row g-3" id="callback-dancer-grid"></div>
+          <div class="save-indicator mt-2" id="save-indicator-cb">Saved</div>
+        </div>
       </div>
 
       <!-- Review tab -->
@@ -354,36 +384,37 @@
       return;
     }
 
-    document.getElementById('dancer-grid').innerHTML = group.map(d => {
-      const r    = myRatings[d.submission_id] || {};
-      const num  = d.audition_number ? `#${d.audition_number}` : '';
-      const name = dancerDisplayName(d);
-      return `
-        <div class="col-6 col-md-4">
-          <div class="dancer-card">
-            <div>
-              ${num ? `<div class="dancer-card-num">${escHtml(num)}</div>` : ''}
-              <div class="dancer-card-name">${escHtml(name)}</div>
-            </div>
-            <button class="btn-priority${r.priority ? ' active' : ''}"
-                    onclick="togglePriority(${d.submission_id}, this)">
-              ★ High Priority
-            </button>
-            <button class="btn-callback${r.callback ? ' active' : ''}"
-                    onclick="toggleCallback(${d.submission_id}, this)">
-              ↩ Callback
-            </button>
-            <input class="dancer-note-input"
-                   type="text"
-                   maxlength="200"
-                   placeholder="Note (optional)"
-                   value="${escAttr(r.note || '')}"
-                   data-sub="${d.submission_id}"
-                   onblur="saveNote(${d.submission_id}, this.value)">
+    document.getElementById('dancer-grid').innerHTML = group.map(d => dancerCardHtml(d)).join('');
+  }
+
+  function dancerCardHtml(d) {
+    const r    = myRatings[d.submission_id] || {};
+    const num  = d.audition_number ? `#${d.audition_number}` : '';
+    const name = dancerDisplayName(d);
+    return `
+      <div class="col-6 col-md-4">
+        <div class="dancer-card">
+          <div>
+            ${num ? `<div class="dancer-card-num">${escHtml(num)}</div>` : ''}
+            <div class="dancer-card-name">${escHtml(name)}</div>
           </div>
+          <button class="btn-priority${r.priority ? ' active' : ''}"
+                  onclick="togglePriority(${d.submission_id}, this)">
+            ★ High Priority
+          </button>
+          <button class="btn-callback${r.callback ? ' active' : ''}"
+                  onclick="toggleCallback(${d.submission_id}, this)">
+            ↩ Callback
+          </button>
+          <input class="dancer-note-input"
+                 type="text"
+                 maxlength="200"
+                 placeholder="Note (optional)"
+                 value="${escAttr(r.note || '')}"
+                 onblur="saveNote(${d.submission_id}, this.value)">
         </div>
-      `;
-    }).join('');
+      </div>
+    `;
   }
 
   function prevGroup() { if (currentGroup > 0) { currentGroup--; renderGroup(); } }
@@ -431,15 +462,89 @@
     saveTimer = setTimeout(() => el.classList.remove('show'), 1400);
   }
 
-  // ── Review tab ────────────────────────────────────────────────────────────
+  // ── Callbacks tab ─────────────────────────────────────────────────────────
+
+  let callbackDancers = [];
+  let callbackGroups  = [];
+  let currentCallbackGroup = 0;
+  let cbSaveTimer = null;
+
+  function openCallbackTab() {
+    callbackDancers = allDancers.filter(d => (myRatings[d.submission_id] || {}).callback);
+    const n      = callbackDancers.length;
+    const textEl = document.getElementById('callback-dancer-count-text');
+    const cfgEl  = document.getElementById('callback-config');
+    const gsEl   = document.getElementById('callback-group-size');
+
+    document.getElementById('callback-setup').style.display     = '';
+    document.getElementById('callback-groups-panel').style.display = 'none';
+
+    if (n === 0) {
+      textEl.textContent = 'No dancers marked for callback yet. Use the Live tab to mark dancers with the Callback button.';
+      cfgEl.style.display = 'none';
+    } else {
+      textEl.textContent = `You have ${n} dancer${n !== 1 ? 's' : ''} marked for callback.`;
+      cfgEl.style.display = '';
+      gsEl.max = n;
+      if (parseInt(gsEl.value) > n) gsEl.value = n;
+      updateCallbackPreview();
+    }
+  }
+
+  function updateCallbackPreview() {
+    const n  = callbackDancers.length;
+    const gs = parseInt(document.getElementById('callback-group-size').value) || 0;
+    const el = document.getElementById('callback-group-preview');
+    if (!gs || !n) { el.textContent = ''; return; }
+    if (gs > n) {
+      el.textContent = `Group size cannot exceed the number of callback dancers (${n}).`;
+      el.style.color = '#c0392b'; return;
+    }
+    el.style.color = '#8a6820';
+    const g = Math.ceil(n / gs);
+    el.textContent = `${gs} per group = ${g} group${g !== 1 ? 's' : ''}.`;
+  }
+
+  function startCallbackRound() {
+    const n  = callbackDancers.length;
+    const gs = Math.max(1, Math.min(n, parseInt(document.getElementById('callback-group-size').value) || 1));
+    callbackGroups       = makeGroups(callbackDancers, gs);
+    currentCallbackGroup = 0;
+    document.getElementById('callback-setup').style.display     = 'none';
+    document.getElementById('callback-groups-panel').style.display = '';
+    renderCallbackGroup();
+  }
+
+  function resetCallbackSetup() {
+    document.getElementById('callback-setup').style.display     = '';
+    document.getElementById('callback-groups-panel').style.display = 'none';
+  }
+
+  function prevCallbackGroup() {
+    if (currentCallbackGroup > 0) { currentCallbackGroup--; renderCallbackGroup(); }
+  }
+  function nextCallbackGroup() {
+    if (currentCallbackGroup < callbackGroups.length - 1) { currentCallbackGroup++; renderCallbackGroup(); }
+  }
+
+  function renderCallbackGroup() {
+    const group = callbackGroups[currentCallbackGroup] || [];
+    const total = callbackGroups.length;
+    document.getElementById('callback-group-label').textContent = `Callback Group ${currentCallbackGroup + 1} of ${total}`;
+    document.getElementById('btn-cb-prev').disabled = currentCallbackGroup === 0;
+    document.getElementById('btn-cb-next').disabled = currentCallbackGroup >= total - 1;
+    document.getElementById('callback-dancer-grid').innerHTML = group.map(d => dancerCardHtml(d)).join('');
+  }
+
+  // ── Review tab ─────────────────────────────────────────────────────────────
 
   function switchTab(tab) {
-    const isLive = tab === 'live';
-    document.getElementById('panel-live').style.display   = isLive ? '' : 'none';
-    document.getElementById('panel-review').style.display = isLive ? 'none' : '';
-    document.getElementById('tab-live').classList.toggle('active', isLive);
-    document.getElementById('tab-review').classList.toggle('active', !isLive);
-    if (!isLive) loadReview();
+    ['live','callbacks','review'].forEach(t => {
+      document.getElementById(`panel-${t}`).style.display = t === tab ? '' : 'none';
+      document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
+    });
+    if (tab === 'review')   loadReview();
+    if (tab === 'callbacks') openCallbackTab();
   }
 
   async function loadReview() {
