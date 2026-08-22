@@ -195,7 +195,7 @@
     </div>
 
     <!-- Primary workflow bar -->
-    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4 p-3 border rounded" style="background:#fafafa;">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-2 p-3 border rounded" style="background:#fafafa;">
       <div class="d-flex align-items-center gap-3">
         <div class="form-check form-switch mb-0">
           <input class="form-check-input" type="checkbox" id="publish-toggle" role="switch"
@@ -211,6 +211,17 @@
         <button id="email-cast-btn" class="btn btn-outline-dark btn-sm" type="button">Email Cast</button>
         <a href="publish.html" class="btn btn-dark btn-sm">Design &amp; Export</a>
       </div>
+    </div>
+
+    <!-- Display settings row -->
+    <div class="d-flex align-items-center gap-3 mb-4 px-3 py-2 border rounded" style="background:#fafafa;border-top:none !important;border-top-left-radius:0;border-top-right-radius:0;border-top:0 !important;">
+      <div class="form-check form-switch mb-0">
+        <input class="form-check-input" type="checkbox" id="piece-names-toggle" role="switch"
+          style="width:1.8em;height:.9em;cursor:pointer;">
+        <label class="form-check-label" for="piece-names-toggle"
+          style="font-size:13px;color:#374151;cursor:pointer;">Show piece names</label>
+      </div>
+      <span style="font-size:12px;color:#9ca3af;">When off, the choreographer's name is the section header</span>
     </div>
 
     <div id="loading-msg" class="text-muted" style="font-size:14px;">Loading...</div>
@@ -819,9 +830,14 @@
 
         html += `<div style="border-top:1px solid #e8e8e8;padding-top:14px;margin-bottom:20px;">`;
 
+        if (showPieceNames) {
+          html += `<div style="font-size:16px;font-weight:700;color:#1f2937;margin-bottom:6px;">${piece.name}</div>`;
+        }
+
+        const choSize = showPieceNames ? '13' : '15';
         const choName = piece.choreographer_name
-          ? `<strong style="font-size:14px;">${piece.choreographer_name}</strong>`
-          : `<strong style="font-size:14px;color:#aaa;font-style:italic;">No choreographer listed</strong>`;
+          ? `<strong style="font-size:${choSize}px;">${piece.choreographer_name}</strong>`
+          : `<strong style="font-size:${choSize}px;color:#aaa;font-style:italic;">No choreographer listed</strong>`;
         html += `<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;">
           <span>${choName}</span>
           <span style="font-size:12px;color:#6b7280;">${rehearsalStr}</span>
@@ -853,11 +869,13 @@
       new bootstrap.Modal(document.getElementById('previewModal')).show();
     }
 
-    // ── Publish toggle ────────────────────────────────────────────────────────
+    // ── Publish toggle + display settings ────────────────────────────────────
     let isPublished     = false;
+    let showPieceNames  = false;
     let auditioneeCount = 0;
-    const toggleEl      = document.getElementById('publish-toggle');
-    const labelEl       = document.getElementById('publish-status-label');
+    const toggleEl         = document.getElementById('publish-toggle');
+    const labelEl          = document.getElementById('publish-status-label');
+    const pieceNamesToggle = document.getElementById('piece-names-toggle');
 
     async function loadPublishStatus() {
       try {
@@ -867,6 +885,8 @@
         ]);
         const data = await statusRes.json();
         setPublishUI(data.published);
+        showPieceNames = data.showPieceNames || false;
+        pieceNamesToggle.checked = showPieceNames;
         toggleEl.disabled = false;
         if (publishRes.ok) {
           const pd = await publishRes.json();
@@ -874,6 +894,19 @@
         }
       } catch (e) { labelEl.textContent = 'Could not load status.'; }
     }
+
+    pieceNamesToggle.addEventListener('change', async function () {
+      showPieceNames = this.checked;
+      try {
+        await fetch('/api/publish/settings', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ show_piece_names: showPieceNames }),
+        });
+      } catch (e) {
+        showPieceNames = !showPieceNames;
+        this.checked = showPieceNames;
+      }
+    });
 
     function setPublishUI(published) {
       isPublished          = published;

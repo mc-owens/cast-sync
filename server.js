@@ -2281,15 +2281,32 @@ app.post('/api/publish/toggle', requireAuth('master'), async (req, res) => {
   }
 });
 
-// GET /api/publish/status — director checks current published state
+// GET /api/publish/status — director checks current published state + display settings
 app.get('/api/publish/status', requireAuth('master'), async (req, res) => {
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
-    const result = await pool.query('SELECT casting_published FROM seasons WHERE id=$1', [seasonId]);
-    res.json({ published: result.rows[0]?.casting_published || false });
+    const result = await pool.query('SELECT casting_published, show_piece_names FROM seasons WHERE id=$1', [seasonId]);
+    res.json({
+      published:      result.rows[0]?.casting_published || false,
+      showPieceNames: result.rows[0]?.show_piece_names  || false,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch publish state.' });
+  }
+});
+
+// POST /api/publish/settings — update cast display settings for current season
+app.post('/api/publish/settings', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  if (!seasonId) return res.status(400).json({ error: 'No active season.' });
+  const { show_piece_names } = req.body;
+  try {
+    await pool.query('UPDATE seasons SET show_piece_names=$1 WHERE id=$2', [!!show_piece_names, seasonId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to update settings.' });
   }
 });
 
@@ -2305,7 +2322,7 @@ app.get('/api/my-casting', requireAuth('auditionee'), async (req, res) => {
 
     // All seasons the auditionee submitted to
     const subsResult = await pool.query(
-      `SELECT sub.season_id, sub.org_id, o.name AS org_name, s.name AS season_name, s.casting_published
+      `SELECT sub.season_id, sub.org_id, o.name AS org_name, s.name AS season_name, s.casting_published, s.show_piece_names
        FROM submissions sub
        JOIN seasons s ON s.id = sub.season_id
        JOIN orgs o ON o.id = sub.org_id
@@ -2329,10 +2346,11 @@ app.get('/api/my-casting', requireAuth('auditionee'), async (req, res) => {
         [row.season_id, req.session.userId]
       );
       results.push({
-        org_name: row.org_name,
-        season_name: row.season_name,
+        org_name:          row.org_name,
+        season_name:       row.season_name,
         casting_published: row.casting_published,
-        pieces: piecesResult.rows,
+        show_piece_names:  row.show_piece_names || false,
+        pieces:            piecesResult.rows,
       });
     }
     res.json({ viewer, orgs: results });
@@ -7494,6 +7512,14 @@ async function runMigrations() {
     `);
     console.log('Migration step 44 (per-combo ratings) complete.');
   } catch (err) { console.error('Migration step 44 error:', err.message); }
+
+  // ── Step 45: show_piece_names display setting ─────────────────────────────
+  try {
+    await pool.query(`
+      ALTER TABLE seasons ADD COLUMN IF NOT EXISTS show_piece_names BOOLEAN NOT NULL DEFAULT FALSE;
+    `);
+    console.log('Migration step 45 (show_piece_names) complete.');
+  } catch (err) { console.error('Migration step 45 error:', err.message); }
 
   console.log('All migrations complete.');
 }
