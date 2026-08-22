@@ -256,7 +256,9 @@
     el.style.color = '#8a6820';
     if (n === 0) { el.textContent = 'No auditionees yet.'; return; }
     const g = Math.ceil(n / gs);
-    el.textContent = `You have ${n} auditionee${n !== 1 ? 's' : ''}. ${gs} per group = ${g} group${g !== 1 ? 's' : ''}.`;
+    const rem = n % gs;
+    const lastNote = rem > 0 ? ` Last group has ${rem}.` : '';
+    el.textContent = `You have ${n} auditionee${n !== 1 ? 's' : ''}. ${gs} per group = ${g} group${g !== 1 ? 's' : ''}.${lastNote}`;
   }
 
   document.getElementById('new-day-groupsize').addEventListener('input', updateGroupPreview);

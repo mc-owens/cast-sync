@@ -14,10 +14,10 @@
   <style>
     .page-back{font-size:13px;color:#888;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-bottom:8px;}
     .page-back:hover{color:#555;}
-    .page-title-bar{border-left:3px solid #c9a84c;padding-left:12px;margin-bottom:4px;}
+    .page-title-bar{border-left:3px solid #c9a84c;padding-left:12px;}
 
-    /* ── Tab bar ── */
-    .tab-bar{display:flex;align-items:stretch;border-bottom:2px solid #e8dfc8;margin-bottom:20px;gap:0;}
+    /* ── Top combo tab bar ── */
+    .combo-tabbar{display:flex;align-items:stretch;border-bottom:2px solid #e8dfc8;margin-bottom:0;}
     .combo-tabs{display:flex;gap:0;overflow-x:auto;flex:1;scrollbar-width:none;}
     .combo-tabs::-webkit-scrollbar{display:none;}
     .combo-tab{font-size:13px;font-weight:600;color:#aaa;padding:8px 16px;border:none;background:none;
@@ -25,15 +25,17 @@
     .combo-tab.active{color:#8a6820;border-bottom-color:#c9a84c;}
     .btn-add-combo{font-size:12px;font-weight:600;color:#c9a84c;background:none;
       border:1px dashed rgba(201,168,76,.45);border-radius:20px;padding:3px 11px;cursor:pointer;
-      white-space:nowrap;align-self:center;margin:0 8px;flex-shrink:0;}
+      white-space:nowrap;align-self:center;margin:0 10px;flex-shrink:0;}
     .btn-add-combo:hover{background:rgba(201,168,76,.08);}
-    .right-tabs{display:flex;gap:0;flex-shrink:0;}
-    .right-tab{font-size:13px;font-weight:600;color:#aaa;padding:8px 14px;border:none;background:none;
-      border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;white-space:nowrap;}
-    .right-tab.active{color:#3d6080;border-bottom-color:#5a7fa0;}
+
+    /* ── Sub-nav (Groups / Callbacks / Review within a combo) ── */
+    .sub-nav{display:flex;gap:0;padding:8px 0 0;margin-bottom:16px;border-bottom:1px solid #f0e8d5;}
+    .sub-tab{font-size:13px;font-weight:600;color:#aaa;padding:6px 14px;border:none;background:none;
+      border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer;white-space:nowrap;}
+    .sub-tab.active{color:#2d2512;border-bottom-color:#2d2512;}
 
     /* ── Combo info bar ── */
-    .combo-info-bar{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:12px;color:#999;flex-wrap:wrap;}
+    .combo-info-bar{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12px;color:#999;flex-wrap:wrap;}
     .combo-info-bar strong{color:#444;}
     .btn-combo-edit{font-size:11px;color:#c9a84c;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;}
     .btn-combo-delete{font-size:13px;color:#ddd;background:none;border:none;cursor:pointer;padding:0 2px;line-height:1;}
@@ -86,8 +88,7 @@
     .spider-close:hover{color:#555;}
     .spider-hint{font-size:11px;color:#aaa;padding:8px 18px 4px;}
     .spider-pieces-list{overflow-y:auto;padding-bottom:8px;}
-    .spider-piece-row{display:flex;align-items:center;justify-content:space-between;
-      padding:10px 18px;gap:12px;}
+    .spider-piece-row{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;gap:12px;}
     .spider-piece-row:hover{background:#fdfaf4;}
     .spider-piece-name{font-size:13px;font-weight:600;color:#333;flex:1;min-width:0;word-break:break-word;}
     .yours-tag{font-size:10px;font-weight:600;background:rgba(201,168,76,.15);color:#8a6820;
@@ -119,8 +120,7 @@
     .review-piece-label{font-size:11px;font-weight:700;color:#8a6820;text-transform:uppercase;
       letter-spacing:.04em;margin-bottom:3px;}
     .review-piece-row{font-size:12px;color:#555;display:flex;align-items:center;gap:6px;margin-bottom:2px;}
-    .review-level-badge{font-size:10px;font-weight:700;border-radius:4px;padding:1px 6px;
-      background:#a06e10;color:#fff;}
+    .review-level-badge{font-size:10px;font-weight:700;border-radius:4px;padding:1px 6px;background:#a06e10;color:#fff;}
     .review-level-badge.p{background:rgba(201,168,76,.2);color:#8a6820;}
     .review-note-row{font-size:12px;color:#777;font-style:italic;margin-top:5px;}
   </style>
@@ -136,61 +136,67 @@
       <a href="audition-day.html" class="page-back">← Audition Day</a>
       <h4 class="fw-semibold page-title-bar mb-3" id="page-heading">Loading…</h4>
 
-      <!-- Tab bar -->
-      <div class="tab-bar">
+      <!-- Top combo tab bar -->
+      <div class="combo-tabbar">
         <div class="combo-tabs" id="combo-tabs"></div>
         <button class="btn-add-combo" id="add-combo-btn">+ Combo</button>
-        <div class="right-tabs">
-          <button class="right-tab" id="tab-callbacks" onclick="switchPanel('callbacks')">↩ Callbacks</button>
-          <button class="right-tab" id="tab-review" onclick="switchPanel('review')">Review</button>
-        </div>
       </div>
 
-      <!-- Combo panel -->
+      <!-- Main panel (always visible; sub-nav switches content) -->
       <div id="panel-combo">
+        <div class="sub-nav">
+          <button class="sub-tab active" onclick="switchSubTab('groups')">Groups</button>
+          <button class="sub-tab" onclick="switchSubTab('callbacks')">↩ Callbacks</button>
+          <button class="sub-tab" onclick="switchSubTab('review')">Review</button>
+        </div>
+
         <div class="combo-info-bar" id="combo-info-bar"></div>
-        <div class="group-nav">
-          <button class="btn-group-nav" id="btn-prev" onclick="prevGroup()">‹</button>
-          <div class="group-label" id="group-label">Group 1 of 1</div>
-          <button class="btn-group-nav" id="btn-next" onclick="nextGroup()">›</button>
-        </div>
-        <div class="row g-3" id="dancer-grid"></div>
-        <div class="save-indicator mt-2" id="save-indicator">Saved</div>
-      </div>
 
-      <!-- Callbacks panel -->
-      <div id="panel-callbacks" style="display:none;">
-        <div id="callback-setup">
-          <p id="callback-count-text" style="font-size:14px;color:#555;margin-bottom:12px;"></p>
-          <div id="callback-config" style="display:none;">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-              <input type="number" id="callback-group-size" class="form-control" style="width:80px;" value="5" min="1" oninput="updateCallbackPreview()">
-              <span style="font-size:13px;color:#555;">per group</span>
-            </div>
-            <div id="callback-preview" style="font-size:12px;color:#8a6820;margin-bottom:16px;min-height:18px;"></div>
-            <button class="btn btn-dark btn-sm" onclick="startCallbackRound()">Start Callback Round</button>
-          </div>
-        </div>
-        <div id="callback-groups-panel" style="display:none;">
-          <button class="btn btn-link btn-sm p-0 mb-3" style="font-size:12px;color:#999;" onclick="resetCallbackSetup()">← Change group size</button>
+        <!-- Groups sub-panel -->
+        <div id="sub-groups">
           <div class="group-nav">
-            <button class="btn-group-nav" id="btn-cb-prev" onclick="prevCallbackGroup()">‹</button>
-            <div class="group-label" id="cb-group-label">Callback Group 1 of 1</div>
-            <button class="btn-group-nav" id="btn-cb-next" onclick="nextCallbackGroup()">›</button>
+            <button class="btn-group-nav" id="btn-prev" onclick="prevGroup()">‹</button>
+            <div class="group-label" id="group-label">Group 1 of 1</div>
+            <button class="btn-group-nav" id="btn-next" onclick="nextGroup()">›</button>
           </div>
-          <div class="row g-3" id="callback-dancer-grid"></div>
-          <div class="save-indicator mt-2" id="save-indicator-cb">Saved</div>
+          <div class="row g-3" id="dancer-grid"></div>
+          <div class="save-indicator mt-2" id="save-indicator">Saved</div>
         </div>
-      </div>
 
-      <!-- Review panel -->
-      <div id="panel-review" style="display:none;">
-        <div class="review-filter-bar">
-          <button class="review-pill active" onclick="setReviewFilter('all')">All</button>
-          <button class="review-pill" onclick="setReviewFilter('rated')">Has Ratings</button>
-          <button class="review-pill cb" onclick="setReviewFilter('callback')">↩ Callback</button>
+        <!-- Callbacks sub-panel -->
+        <div id="sub-callbacks" style="display:none;">
+          <div id="callback-setup">
+            <p id="callback-count-text" style="font-size:14px;color:#555;margin-bottom:12px;"></p>
+            <div id="callback-config" style="display:none;">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+                <input type="number" id="callback-group-size" class="form-control" style="width:80px;" value="5" min="1" oninput="updateCallbackPreview()">
+                <span style="font-size:13px;color:#555;">per group</span>
+              </div>
+              <div id="callback-preview" style="font-size:12px;color:#8a6820;margin-bottom:16px;min-height:34px;line-height:1.6;"></div>
+              <button class="btn btn-dark btn-sm" onclick="startCallbackRound()">Start Callback Round</button>
+            </div>
+          </div>
+          <div id="callback-groups-panel" style="display:none;">
+            <button class="btn btn-link btn-sm p-0 mb-3" style="font-size:12px;color:#999;" onclick="resetCallbackSetup()">← Change group size</button>
+            <div class="group-nav">
+              <button class="btn-group-nav" id="btn-cb-prev" onclick="prevCBGroup()">‹</button>
+              <div class="group-label" id="cb-group-label">Callback Group 1 of 1</div>
+              <button class="btn-group-nav" id="btn-cb-next" onclick="nextCBGroup()">›</button>
+            </div>
+            <div class="row g-3" id="callback-dancer-grid"></div>
+            <div class="save-indicator mt-2" id="save-indicator-cb">Saved</div>
+          </div>
         </div>
-        <div id="review-list"></div>
+
+        <!-- Review sub-panel -->
+        <div id="sub-review" style="display:none;">
+          <div class="review-filter-bar">
+            <button class="review-pill active" onclick="setReviewFilter('all')">All</button>
+            <button class="review-pill" onclick="setReviewFilter('rated')">Has Ratings</button>
+            <button class="review-pill cb" onclick="setReviewFilter('callback')">↩ Callback</button>
+          </div>
+          <div id="review-list"></div>
+        </div>
       </div>
 
     </div>
@@ -203,7 +209,7 @@
         <div class="spider-dancer-name" id="spider-name"></div>
         <button class="spider-close" onclick="closeSpider()">×</button>
       </div>
-      <div class="spider-hint">P = Priority &nbsp;·&nbsp; HP = High Priority &nbsp;·&nbsp; tap again to remove</div>
+      <div class="spider-hint">P = Priority · HP = High Priority · tap again to remove</div>
       <div class="spider-pieces-list" id="spider-pieces"></div>
     </div>
   </div>
@@ -224,7 +230,7 @@
           <div class="row g-2">
             <div class="col-6">
               <label class="form-label" style="font-size:13px;font-weight:600;">Group Size</label>
-              <input type="number" id="new-combo-gs" class="form-control" value="8" min="1" max="500" oninput="updateNewComboPreview()">
+              <input type="number" id="new-combo-gs" class="form-control" min="1" max="500" oninput="updateNewComboPreview()">
             </div>
             <div class="col-6">
               <label class="form-label" style="font-size:13px;font-weight:600;">Sort By</label>
@@ -235,7 +241,7 @@
               </select>
             </div>
           </div>
-          <div id="new-combo-preview" style="font-size:12px;color:#8a6820;margin-top:8px;min-height:18px;"></div>
+          <div id="new-combo-preview" style="font-size:12px;color:#8a6820;margin-top:8px;min-height:34px;line-height:1.6;"></div>
         </div>
         <div class="modal-footer border-0 pt-0">
           <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
@@ -272,7 +278,7 @@
               </select>
             </div>
           </div>
-          <div id="edit-combo-preview" style="font-size:12px;color:#8a6820;margin-top:8px;min-height:18px;"></div>
+          <div id="edit-combo-preview" style="font-size:12px;color:#8a6820;margin-top:8px;min-height:34px;line-height:1.6;"></div>
         </div>
         <div class="modal-footer border-0 pt-0">
           <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
@@ -289,16 +295,28 @@
   if (!dayId) { window.location.href = 'audition-day.html'; }
 
   let day, allDancers, allPieces, allCombos;
-  let myGeneralRatings = {}, myPieceRatings = {};
-  let currentUserId = null, activeComboId = null;
-  let currentGroup = 0, activeGroups = [];
-  let saveTimer = null;
-  let reviewData = null, reviewFilter = 'all';
+  // myComboRatings: { comboId: { general: { subId: {callback,note} }, piece: { subId: { pieceId: level } } } }
+  let myComboRatings = {};
+  let currentUserId  = null;
+  let activeComboId  = null;
+  let activeSubTab   = 'groups';
+  let currentGroup   = 0;
+  let activeGroups   = [];
+  let saveTimer      = null;
+  let reviewData     = null;
+  let reviewFilter   = 'all';
   let callbackDancers = [], callbackGroups = [], currentCBGroup = 0;
-  let spiderSubId = null;
+  let spiderSubId    = null;
 
   const getModal = id => bootstrap.Modal.getOrCreateInstance(document.getElementById(id));
 
+  function comboGeneral(cid) { return ((myComboRatings[cid] || {}).general) || {}; }
+  function comboPiece(cid)   { return ((myComboRatings[cid] || {}).piece)   || {}; }
+  function ensureCombo(cid)  {
+    if (!myComboRatings[cid]) myComboRatings[cid] = { general: {}, piece: {} };
+  }
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
   (async () => {
     const authRes = await fetch('/api/auth/me');
     const user    = await authRes.json();
@@ -306,7 +324,6 @@
       window.location.href = 'login.html'; return;
     }
     currentUserId = user.id;
-
     document.getElementById('right-nav').innerHTML =
       `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
     document.getElementById('logout-btn').addEventListener('click', async () => {
@@ -318,12 +335,11 @@
     const data = r.ok ? await r.json() : null;
     if (!data) { window.location.href = 'audition-day.html'; return; }
 
-    day              = data.day;
-    allCombos        = data.combos;
-    allPieces        = data.pieces;
-    allDancers       = data.dancers;
-    myGeneralRatings = data.myGeneralRatings || {};
-    myPieceRatings   = data.myPieceRatings   || {};
+    day            = data.day;
+    allCombos      = data.combos;
+    allPieces      = data.pieces;
+    allDancers     = data.dancers;
+    myComboRatings = data.myComboRatings || {};
 
     document.getElementById('page-heading').textContent = day.name;
     document.title = `${day.name} | CastSync`;
@@ -333,7 +349,7 @@
     if (allCombos.length > 0) selectCombo(allCombos[0].id);
   })();
 
-  // ── Combos ────────────────────────────────────────────────────────────────
+  // ── Combo tabs ────────────────────────────────────────────────────────────
 
   function renderComboTabs() {
     document.getElementById('combo-tabs').innerHTML = allCombos.map(c =>
@@ -345,12 +361,14 @@
   function selectCombo(id) {
     activeComboId = id;
     currentGroup  = 0;
+    activeSubTab  = 'groups';
+    reviewData    = null;
     const combo   = allCombos.find(c => c.id === id);
     activeGroups  = makeGroups(sortDancers(allDancers, combo.sort_order), combo.group_size);
-
     renderComboTabs();
-    showPanel('combo');
+    renderSubNav();
     renderComboInfoBar(combo);
+    showSubPanel('groups');
     renderGroup();
   }
 
@@ -365,6 +383,31 @@
        ${canDelete ? `<button class="btn-combo-delete" onclick="confirmDeleteCombo(${combo.id})" title="Delete">✕</button>` : ''}`;
   }
 
+  // ── Sub-nav ───────────────────────────────────────────────────────────────
+
+  function renderSubNav() {
+    const tabs = ['groups','callbacks','review'];
+    document.querySelectorAll('.sub-tab').forEach((btn, i) => {
+      btn.classList.toggle('active', tabs[i] === activeSubTab);
+    });
+  }
+
+  function switchSubTab(name) {
+    activeSubTab = name;
+    renderSubNav();
+    showSubPanel(name);
+    if (name === 'callbacks') openCallbackPanel();
+    if (name === 'review')    loadReview();
+  }
+
+  function showSubPanel(name) {
+    document.getElementById('sub-groups').style.display    = name === 'groups'    ? '' : 'none';
+    document.getElementById('sub-callbacks').style.display = name === 'callbacks' ? '' : 'none';
+    document.getElementById('sub-review').style.display    = name === 'review'    ? '' : 'none';
+  }
+
+  // ── Combo edit / delete ───────────────────────────────────────────────────
+
   function openEditCombo(id) {
     const c = allCombos.find(c => c.id === id);
     document.getElementById('edit-combo-name').value = c.name;
@@ -376,11 +419,8 @@
   }
 
   function updateEditComboPreview() {
-    const gs = parseInt(document.getElementById('edit-combo-gs').value)||0;
-    const n  = allDancers.length;
-    const el = document.getElementById('edit-combo-preview');
-    if (!gs||!n){el.textContent='';return;}
-    el.textContent = `${n} dancers · ${gs} per group = ${Math.ceil(n/gs)} group${Math.ceil(n/gs)!==1?'s':''}`;
+    document.getElementById('edit-combo-preview').innerHTML =
+      groupPreviewHtml(parseInt(document.getElementById('edit-combo-gs').value)||0);
   }
 
   async function saveEditCombo(id) {
@@ -398,7 +438,7 @@
   }
 
   function confirmDeleteCombo(id) {
-    if (!confirm('Delete this combo?')) return;
+    if (!confirm('Delete this combo? Its ratings will also be deleted.')) return;
     deleteCombo(id);
   }
 
@@ -406,26 +446,26 @@
     const r = await fetch(`/api/audition-days/${dayId}/combos/${id}`, { method:'DELETE' });
     if (!r.ok) { alert((await r.json()).error||'Could not delete.'); return; }
     allCombos = allCombos.filter(c => c.id !== id);
+    delete myComboRatings[id];
     renderComboTabs();
     selectCombo(allCombos[0].id);
   }
 
+  // ── Add Combo modal ───────────────────────────────────────────────────────
+
   document.getElementById('add-combo-btn').addEventListener('click', () => {
-    const nextNum = allCombos.length + 1;
-    document.getElementById('new-combo-name').value = `Combo ${nextNum}`;
-    document.getElementById('new-combo-gs').value   = '8';
-    document.getElementById('new-combo-sort').value = 'number';
+    const last = allCombos[allCombos.length - 1];
+    document.getElementById('new-combo-name').value = `Combo ${allCombos.length + 1}`;
+    document.getElementById('new-combo-gs').value   = last ? String(last.group_size) : '8';
+    document.getElementById('new-combo-sort').value = last ? last.sort_order : 'number';
     updateNewComboPreview();
     getModal('addComboModal').show();
-    setTimeout(()=>document.getElementById('new-combo-name').focus(), 300);
+    setTimeout(() => document.getElementById('new-combo-name').focus(), 300);
   });
 
   function updateNewComboPreview() {
-    const gs = parseInt(document.getElementById('new-combo-gs').value)||0;
-    const n  = allDancers.length;
-    const el = document.getElementById('new-combo-preview');
-    if (!gs||!n){el.textContent='';return;}
-    el.textContent = `${n} dancers · ${gs} per group = ${Math.ceil(n/gs)} group${Math.ceil(n/gs)!==1?'s':''}`;
+    document.getElementById('new-combo-preview').innerHTML =
+      groupPreviewHtml(parseInt(document.getElementById('new-combo-gs').value)||0);
   }
 
   document.getElementById('save-new-combo-btn').addEventListener('click', async () => {
@@ -452,7 +492,7 @@
     document.getElementById('btn-prev').disabled = currentGroup === 0;
     document.getElementById('btn-next').disabled = currentGroup >= total-1;
     document.getElementById('dancer-grid').innerHTML = group.length
-      ? group.map(d => dancerCardHtml(d)).join('')
+      ? group.map(d => dancerCardHtml(d, activeComboId)).join('')
       : `<div class="col-12"><div class="empty-state">No dancers.</div></div>`;
   }
 
@@ -461,11 +501,11 @@
 
   // ── Dancer card ───────────────────────────────────────────────────────────
 
-  function dancerCardHtml(d) {
-    const g    = myGeneralRatings[d.submission_id] || {};
+  function dancerCardHtml(d, cid) {
+    const g    = comboGeneral(cid)[d.submission_id] || {};
     const num  = d.audition_number ? `#${d.audition_number}` : '';
     const name = dancerDisplayName(d);
-    const chips = buildChipsHtml(d.submission_id);
+    const chips = buildChipsHtml(d.submission_id, cid);
     return `
       <div class="col-6 col-md-4">
         <div class="dancer-card">
@@ -473,7 +513,7 @@
             ${num ? `<div class="dancer-card-num">${escHtml(num)}</div>` : ''}
             <div class="dancer-card-name">${escHtml(name)}</div>
           </div>
-          <div class="piece-chips" id="chips-${d.submission_id}"${chips?'':' style="display:none;"'}>${chips}</div>
+          <div class="piece-chips" id="chips-${cid}-${d.submission_id}"${chips?'':' style="display:none;"'}>${chips}</div>
           <button class="btn-piece-rate" onclick="openSpider(${d.submission_id})">
             ★ Priority / High Priority
           </button>
@@ -487,47 +527,49 @@
       </div>`;
   }
 
-  function buildChipsHtml(subId) {
-    return Object.entries(myPieceRatings[subId]||{}).map(([pid, level]) => {
+  function buildChipsHtml(subId, cid) {
+    return Object.entries(comboPiece(cid)[subId]||{}).map(([pid, level]) => {
       const piece = allPieces.find(p => p.id == pid);
       if (!piece) return '';
-      const cls = level==='high_priority' ? 'high-priority' : 'priority';
-      const lbl = level==='high_priority' ? 'HP' : 'P';
+      const cls   = level==='high_priority' ? 'high-priority' : 'priority';
+      const lbl   = level==='high_priority' ? 'HP' : 'P';
       const short = piece.name.length > 14 ? piece.name.slice(0,14)+'…' : piece.name;
       return `<span class="piece-chip ${cls}" onclick="openSpider(${subId})" title="${escAttr(piece.name)}">${escHtml(short)} ${lbl}</span>`;
     }).join('');
   }
 
-  function updateCardChips(subId) {
-    const el = document.getElementById(`chips-${subId}`);
+  function updateCardChips(subId, cid) {
+    const el = document.getElementById(`chips-${cid}-${subId}`);
     if (!el) return;
-    const html = buildChipsHtml(subId);
+    const html = buildChipsHtml(subId, cid);
     el.innerHTML = html;
     el.style.display = html ? '' : 'none';
   }
 
-  // ── Callback + Note ────────────────────────────────────────────────────────
+  // ── Callback + Note (per combo) ────────────────────────────────────────────
 
   async function toggleCallback(subId, btn) {
-    const g = myGeneralRatings[subId] || {};
+    ensureCombo(activeComboId);
+    if (!myComboRatings[activeComboId].general[subId]) myComboRatings[activeComboId].general[subId] = {};
+    const g = myComboRatings[activeComboId].general[subId];
     g.callback = !g.callback;
-    myGeneralRatings[subId] = g;
     btn.classList.toggle('active', g.callback);
     showSaved('save-indicator');
     await fetch(`/api/audition-days/${dayId}/ratings/${subId}`, {
       method:'PUT', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ callback: g.callback, note: g.note||null })
+      body: JSON.stringify({ combo_id: activeComboId, callback: g.callback, note: g.note||null })
     });
   }
 
   async function saveNote(subId, value) {
-    const g = myGeneralRatings[subId] || {};
+    ensureCombo(activeComboId);
+    if (!myComboRatings[activeComboId].general[subId]) myComboRatings[activeComboId].general[subId] = {};
+    const g = myComboRatings[activeComboId].general[subId];
     g.note = value.trim() || null;
-    myGeneralRatings[subId] = g;
     showSaved('save-indicator');
     await fetch(`/api/audition-days/${dayId}/ratings/${subId}`, {
       method:'PUT', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ callback: g.callback||false, note: g.note })
+      body: JSON.stringify({ combo_id: activeComboId, callback: g.callback||false, note: g.note })
     });
   }
 
@@ -551,7 +593,7 @@
   }
 
   function renderSpider(subId) {
-    const ratings = myPieceRatings[subId] || {};
+    const ratings = comboPiece(activeComboId)[subId] || {};
     if (allPieces.length === 0) {
       document.getElementById('spider-pieces').innerHTML =
         `<div class="empty-state" style="padding:24px;">No pieces in this production yet.</div>`;
@@ -577,50 +619,33 @@
   }
 
   async function setPieceRating(subId, pieceId, level) {
-    if (!myPieceRatings[subId]) myPieceRatings[subId] = {};
-    const current  = myPieceRatings[subId][pieceId];
+    ensureCombo(activeComboId);
+    if (!myComboRatings[activeComboId].piece[subId]) myComboRatings[activeComboId].piece[subId] = {};
+    const current  = myComboRatings[activeComboId].piece[subId][pieceId];
     const newLevel = current === level ? null : level;
-    if (newLevel) myPieceRatings[subId][pieceId] = newLevel;
-    else          delete myPieceRatings[subId][pieceId];
+    if (newLevel) myComboRatings[activeComboId].piece[subId][pieceId] = newLevel;
+    else          delete myComboRatings[activeComboId].piece[subId][pieceId];
     renderSpider(subId);
-    updateCardChips(subId);
+    updateCardChips(subId, activeComboId);
     showSaved('save-indicator');
     await fetch(`/api/audition-days/${dayId}/piece-ratings`, {
       method:'PUT', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ submission_id: subId, piece_id: pieceId, level: newLevel })
+      body: JSON.stringify({ combo_id: activeComboId, submission_id: subId, piece_id: pieceId, level: newLevel })
     });
   }
 
-  // ── Panel switching ────────────────────────────────────────────────────────
-
-  function showPanel(name) {
-    ['combo','callbacks','review'].forEach(p => {
-      document.getElementById(`panel-${p}`).style.display = p===name ? '' : 'none';
-    });
-    document.getElementById('tab-callbacks').classList.toggle('active', name==='callbacks');
-    document.getElementById('tab-review').classList.toggle('active', name==='review');
-    if (name !== 'combo') {
-      document.querySelectorAll('.combo-tab').forEach(t => t.classList.remove('active'));
-    }
-  }
-
-  function switchPanel(name) {
-    showPanel(name);
-    if (name === 'callbacks') openCallbackPanel();
-    if (name === 'review')    loadReview();
-  }
-
-  // ── Callbacks ─────────────────────────────────────────────────────────────
+  // ── Callbacks sub-panel ───────────────────────────────────────────────────
 
   function openCallbackPanel() {
-    callbackDancers = allDancers.filter(d => (myGeneralRatings[d.submission_id]||{}).callback);
+    callbackDancers = allDancers.filter(d => (comboGeneral(activeComboId)[d.submission_id]||{}).callback);
     const n   = callbackDancers.length;
     const gsEl = document.getElementById('callback-group-size');
-    document.getElementById('callback-setup').style.display      = '';
+    document.getElementById('callback-setup').style.display        = '';
     document.getElementById('callback-groups-panel').style.display = 'none';
     document.getElementById('callback-count-text').textContent =
-      n === 0 ? 'No dancers marked for callback yet. Use the ↩ Callback button on dancer cards.'
-              : `You have ${n} dancer${n!==1?'s':''} marked for callback.`;
+      n === 0
+        ? 'No dancers marked for callback in this combo yet. Use ↩ Callback on dancer cards.'
+        : `You have ${n} dancer${n!==1?'s':''} marked for callback in this combo.`;
     document.getElementById('callback-config').style.display = n > 0 ? '' : 'none';
     if (n > 0) {
       gsEl.max = n;
@@ -632,12 +657,7 @@
   function updateCallbackPreview() {
     const n  = callbackDancers.length;
     const gs = parseInt(document.getElementById('callback-group-size').value)||0;
-    const el = document.getElementById('callback-preview');
-    if (!gs||!n){el.textContent='';return;}
-    if (gs>n){el.textContent=`Max is ${n}.`;el.style.color='#c0392b';return;}
-    el.style.color='#8a6820';
-    const g = Math.ceil(n/gs);
-    el.textContent = `${gs} per group = ${g} group${g!==1?'s':''}`;
+    document.getElementById('callback-preview').innerHTML = groupPreviewHtml(gs, n);
   }
 
   function startCallbackRound() {
@@ -645,32 +665,33 @@
     const gs = Math.max(1, Math.min(n, parseInt(document.getElementById('callback-group-size').value)||1));
     callbackGroups = makeGroups(callbackDancers, gs);
     currentCBGroup = 0;
-    document.getElementById('callback-setup').style.display      = 'none';
+    document.getElementById('callback-setup').style.display        = 'none';
     document.getElementById('callback-groups-panel').style.display = '';
-    renderCallbackGroup();
+    renderCBGroup();
   }
 
   function resetCallbackSetup() {
-    document.getElementById('callback-setup').style.display      = '';
+    document.getElementById('callback-setup').style.display        = '';
     document.getElementById('callback-groups-panel').style.display = 'none';
   }
 
-  function prevCallbackGroup() { if(currentCBGroup>0){currentCBGroup--;renderCallbackGroup();} }
-  function nextCallbackGroup() { if(currentCBGroup<callbackGroups.length-1){currentCBGroup++;renderCallbackGroup();} }
+  function prevCBGroup() { if(currentCBGroup>0){currentCBGroup--;renderCBGroup();} }
+  function nextCBGroup() { if(currentCBGroup<callbackGroups.length-1){currentCBGroup++;renderCBGroup();} }
 
-  function renderCallbackGroup() {
+  function renderCBGroup() {
     const group = callbackGroups[currentCBGroup]||[];
     const total = callbackGroups.length;
     document.getElementById('cb-group-label').textContent = `Callback Group ${currentCBGroup+1} of ${total}`;
     document.getElementById('btn-cb-prev').disabled = currentCBGroup===0;
     document.getElementById('btn-cb-next').disabled = currentCBGroup>=total-1;
-    document.getElementById('callback-dancer-grid').innerHTML = group.map(d => dancerCardHtml(d)).join('');
+    document.getElementById('callback-dancer-grid').innerHTML = group.map(d => dancerCardHtml(d, activeComboId)).join('');
   }
 
-  // ── Review ────────────────────────────────────────────────────────────────
+  // ── Review sub-panel ──────────────────────────────────────────────────────
 
   async function loadReview() {
-    const r    = await fetch(`/api/audition-days/${dayId}/review`);
+    if (reviewData) { renderReview(); return; }
+    const r    = await fetch(`/api/audition-days/${dayId}/review?combo_id=${activeComboId}`);
     const data = r.ok ? await r.json() : null;
     if (!data) return;
     const combo = allCombos.find(c=>c.id===activeComboId)||allCombos[0];
@@ -731,6 +752,16 @@
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function groupPreviewHtml(gs, total) {
+    const n = total !== undefined ? total : allDancers.length;
+    if (!gs || !n) return '';
+    if (gs > n) return `<span style="color:#c0392b;">Max is ${n}.</span>`;
+    const numGroups = Math.ceil(n / gs);
+    const remainder = n % gs;
+    const lastNote  = remainder > 0 ? `<br><span style="color:#999;">Last group has ${remainder} dancer${remainder!==1?'s':''}.</span>` : '';
+    return `${n} dancers · ${gs} per group = ${numGroups} group${numGroups!==1?'s':''}${lastNote}`;
+  }
 
   function sortDancers(dancers, order) {
     return [...dancers].sort((a,b) => {

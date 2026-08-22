@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let _gridReady          = false;
   let _liveCastMembers    = new Map(); // userId -> display name
   let _liveCastUnderstudies = new Map();
+  let _auditData          = {};  // userId -> { hasNote, pieceRatings: [{level, rater, raterId, isChoreographer}] }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -99,6 +100,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       _availPieceId = pieceId;
 
       initLiveCast([..._availFull, ..._availPartial, ..._availNone]);
+
+      // Fetch audition day data (note dots + P/HP ratings) in background — non-blocking
+      _auditData = {};
+      fetch(`/api/audition-casting/${pieceId}`)
+        .then(r => r.ok ? r.json() : {})
+        .then(d => { _auditData = d || {}; renderDancerSections(); })
+        .catch(() => {});
+
       setSortMode('abc');
       contentEl.style.display = '';
     } catch (err) {
@@ -260,6 +269,31 @@ document.addEventListener('DOMContentLoaded', async () => {
       : 'Click to view schedule';
     nameSpan.addEventListener('click', () => openDancerModal(dancer.id));
     nameDiv.appendChild(nameSpan);
+
+    // Audition day indicators
+    const audit = _auditData[dancer.id];
+    if (audit) {
+      const auditRow = document.createElement('div');
+      auditRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap;';
+      if (audit.hasNote) {
+        const dot = document.createElement('span');
+        dot.title = 'Has audition note';
+        dot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:#aaa;flex-shrink:0;display:inline-block;';
+        auditRow.appendChild(dot);
+      }
+      (audit.pieceRatings || []).forEach(r => {
+        const chip = document.createElement('span');
+        chip.textContent = r.level === 'high_priority' ? 'HP' : 'P';
+        const isHP = r.level === 'high_priority';
+        chip.style.cssText = `font-size:10px;font-weight:700;border-radius:4px;padding:1px 5px;` +
+          (isHP
+            ? 'background:#c9a84c;color:#fff;'
+            : 'background:rgba(201,168,76,.18);color:#8a6820;border:1px solid rgba(201,168,76,.35);');
+        chip.title = `${r.level === 'high_priority' ? 'High Priority' : 'Priority'}${r.isChoreographer ? ' · Choreographer' : ''}: ${r.rater}`;
+        auditRow.appendChild(chip);
+      });
+      if (auditRow.children.length > 0) nameDiv.appendChild(auditRow);
+    }
 
     // Conflict detail line for partial / not available
     if (scheduleConflicts && scheduleConflicts.length > 0) {
