@@ -13,7 +13,7 @@
       // (scope=org) instead of a specific season's form -- keep this id stable.
       { label: 'Audition Form', href: 'form-builder.html?scope=season', matchHref: 'form-builder.html', id: 'form-nav-link' },
       { label: 'Auditionees',   href: 'dancers.html' },
-      { label: 'Audition Day',  href: null },
+      { label: 'Audition Day',  href: 'audition-day.html' },
     ]},
     { section: 'Production', items: [
       { label: 'Production Timeline', href: 'master.html' },
