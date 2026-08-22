@@ -121,14 +121,18 @@
     .group-nav-btn:disabled { opacity: .35; cursor: default; }
 
     /* ── Dancer cards ── */
-    #dancer-list { padding: 12px 16px; }
+    #dancer-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      padding: 10px 12px;
+    }
     .dancer-card {
       background: #fff;
       border: 1px solid #e8dfc8;
       border-left: 3px solid #e8dfc8;
       border-radius: 8px;
-      padding: 11px 14px;
-      margin-bottom: 8px;
+      padding: 8px 10px;
       transition: border-left-color .1s;
     }
     .dancer-card.has-hp  { border-left-color: #c9a84c; }
@@ -136,20 +140,23 @@
     .dancer-card.has-note { background: #faf8f2; }
 
     .dancer-name {
-      font-size: 14px;
+      font-size: 12px;
       font-weight: 600;
       color: #2d2512;
-      margin-bottom: 6px;
+      margin-bottom: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .dancer-num { color: #aaa; font-weight: 400; font-size: 13px; margin-right: 4px; }
+    .dancer-num { color: #aaa; font-weight: 400; margin-right: 3px; }
 
-    .obs-btns { display: flex; gap: 8px; align-items: center; }
+    .obs-btns { display: flex; gap: 5px; align-items: center; }
     .obs-btn {
-      padding: 4px 14px;
+      padding: 3px 10px;
       border-radius: 6px;
       border: 1.5px solid #ddd;
       background: #fff;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       cursor: pointer;
       color: #888;
@@ -162,19 +169,38 @@
       background: none;
       border: none;
       cursor: pointer;
-      font-size: 15px;
+      font-size: 13px;
       color: #bbb;
-      padding: 2px 4px;
-      margin-left: 4px;
+      padding: 2px 3px;
+      margin-left: 2px;
     }
     .note-btn.has-note { color: #c9a84c; }
 
-    .prior-context {
+    .quick-cb-btn {
+      display: block;
+      width: 100%;
+      margin-top: 6px;
+      padding: 3px 0;
+      border-radius: 5px;
+      border: 1px solid #ddd;
+      background: #fff;
       font-size: 11px;
+      font-weight: 600;
       color: #aaa;
-      margin-top: 5px;
+      cursor: pointer;
+      text-align: center;
     }
-    .prior-context span { margin-right: 10px; }
+    .quick-cb-btn.active { background: rgba(201,168,76,.12); border-color: #c9a84c; color: #8a6820; }
+
+    .prior-context {
+      font-size: 10px;
+      color: #aaa;
+      margin-top: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .prior-context span { margin-right: 8px; }
     .prior-hp { color: #b8973d; font-weight: 600; }
     .prior-p  { color: #a08030; }
 
@@ -332,6 +358,9 @@
           <button class="group-nav-btn" id="prev-group">‹</button>
           <span id="group-label" style="font-size:13px;"></span>
           <button class="group-nav-btn" id="next-group">›</button>
+        </div>
+        <div id="cb-round-label" style="font-size:11px;color:#aaa;white-space:nowrap;display:none;">
+          Callbacks: <span id="cb-round-name" style="color:#8a6820;font-weight:600;"></span>
         </div>
       </div>
       <div id="dancer-list"></div>
@@ -613,6 +642,8 @@
       const note     = myNotes[sid] || '';
       const prior    = priorContext(sid, pid);
       const hasNote  = !!note;
+      const activeRound = cbRounds.find(r => r.id === activeRoundId);
+      const isCb    = !!(activeRound?.callbacks || []).find(c => String(c.submission_id) === sid);
 
       const card = document.createElement('div');
       card.className = 'dancer-card' +
@@ -620,7 +651,7 @@
         (hasNote ? ' has-note' : '');
       card.dataset.sid = sid;
 
-      const numStr = d.audition_number != null ? `<span class="dancer-num">#${d.audition_number}</span>` : '';
+      const numStr  = d.audition_number != null ? `<span class="dancer-num">#${d.audition_number}</span>` : '';
       const nameStr = `${escHtml(d.first_name)} ${escHtml(d.last_name)}`;
 
       // Prior context line
@@ -637,6 +668,8 @@
       const noteId  = `note-${sid}`;
       const noteHtml = `<textarea id="${noteId}" class="note-field" placeholder="Add a note…" rows="2">${escHtml(note)}</textarea>`;
 
+      const cbLabel = isCb ? '✓ Called Back' : '+ Callback';
+
       card.innerHTML = `
         <div class="dancer-name">${numStr}${nameStr}</div>
         <div class="obs-btns">
@@ -644,6 +677,7 @@
           <button class="obs-btn${level === 'high_priority' ? ' active-hp' : ''}" data-level="high_priority">HP</button>
           <button class="note-btn${hasNote ? ' has-note' : ''}" data-note-toggle="${sid}" title="Note">✏</button>
         </div>
+        ${activeRoundId ? `<button class="quick-cb-btn${isCb ? ' active' : ''}" data-sid="${sid}">${cbLabel}</button>` : ''}
         ${priorHtml}
         <div id="note-area-${sid}" style="display:${hasNote ? '' : 'none'};">${noteHtml}</div>
       `;
@@ -654,7 +688,7 @@
       });
 
       // Note toggle
-      card.querySelector(`[data-note-toggle="${sid}"]`).addEventListener('click', () => {
+      card.querySelector(`[data-note-toggle="${sid}"]`)?.addEventListener('click', () => {
         const area = document.getElementById(`note-area-${sid}`);
         area.style.display = area.style.display === 'none' ? '' : 'none';
         if (area.style.display !== 'none') area.querySelector('textarea').focus();
@@ -666,6 +700,11 @@
         clearTimeout(noteTimers[sid]);
         noteTimers[sid] = setTimeout(() => saveNote(d.submission_id, ta.value), 1200);
       });
+
+      // Quick callback toggle
+      card.querySelector('.quick-cb-btn')?.addEventListener('click', () =>
+        toggleCallback(d.submission_id, activeRoundId)
+      );
 
       container.appendChild(card);
     }
@@ -733,6 +772,8 @@
           activeRoundId = r.id;
           renderRoundTabs();
           renderCallbackContent();
+          updateQuickCbButtons();
+          updateCbRoundLabel();
         });
         bar.appendChild(btn);
       });
@@ -808,10 +849,37 @@
       const r = await fetch(`/api/audition-days/${dayId}/callback-rounds`).catch(() => null);
       if (r?.ok) {
         cbRounds = await r.json();
+        if (!activeRoundId && cbRounds.length) activeRoundId = cbRounds[0].id;
         if (activeTab === 'callbacks') {
           renderRoundTabs();
           renderCallbackContent();
         }
+        updateQuickCbButtons();
+        updateCbRoundLabel();
+      }
+    }
+
+    function updateQuickCbButtons() {
+      const round = cbRounds.find(r => r.id === activeRoundId);
+      const calledBackIds = new Set((round?.callbacks || []).map(c => String(c.submission_id)));
+      document.querySelectorAll('.quick-cb-btn').forEach(btn => {
+        const sid  = btn.dataset.sid;
+        const isIn = calledBackIds.has(sid);
+        btn.className = 'quick-cb-btn' + (isIn ? ' active' : '');
+        btn.textContent = isIn ? '✓ Called Back' : '+ Callback';
+      });
+    }
+
+    function updateCbRoundLabel() {
+      const label = document.getElementById('cb-round-label');
+      const name  = document.getElementById('cb-round-name');
+      if (!label || !name) return;
+      const round = cbRounds.find(r => r.id === activeRoundId);
+      if (round && cbRounds.length > 1) {
+        name.textContent = round.name;
+        label.style.display = '';
+      } else {
+        label.style.display = 'none';
       }
     }
 
@@ -1023,6 +1091,7 @@
     renderGroupNav();
     renderDancerList();
     renderRoundTabs();
+    updateCbRoundLabel();
 
   })();
   </script>
