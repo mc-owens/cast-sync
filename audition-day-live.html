@@ -2,127 +2,297 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Audition Day | CastSync</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>Audition Day Live | CastSync</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="app-shell.css">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <style>
-    .page-back{font-size:13px;color:#888;text-decoration:none;display:inline-flex;align-items:center;gap:4px;margin-bottom:8px;}
-    .page-back:hover{color:#555;}
-    .page-title-bar{border-left:3px solid #c9a84c;padding-left:12px;}
+    body { background: #fffdf7; }
 
-    /* ── Top combo tab bar ── */
-    .combo-tabbar{display:flex;align-items:stretch;border-bottom:2px solid #e8dfc8;margin-bottom:0;}
-    .combo-tabs{display:flex;gap:0;overflow-x:auto;flex:1;scrollbar-width:none;}
-    .combo-tabs::-webkit-scrollbar{display:none;}
-    .combo-tab{font-size:13px;font-weight:600;color:#aaa;padding:8px 16px;border:none;background:none;
-      border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;white-space:nowrap;flex-shrink:0;}
-    .combo-tab.active{color:#8a6820;border-bottom-color:#c9a84c;}
-    .btn-add-combo{font-size:12px;font-weight:600;color:#c9a84c;background:none;
-      border:1px dashed rgba(201,168,76,.45);border-radius:20px;padding:3px 11px;cursor:pointer;
-      white-space:nowrap;align-self:center;margin:0 10px;flex-shrink:0;}
-    .btn-add-combo:hover{background:rgba(201,168,76,.08);}
+    /* ── Top strips ── */
+    #day-header {
+      background: #fff;
+      border-bottom: 1px solid #e8dfc8;
+      padding: 10px 16px 0;
+    }
+    #day-title { font-size: 15px; font-weight: 700; color: #2d2512; }
+    #day-date  { font-size: 12px; color: #aaa; margin-left: 8px; }
 
-    /* ── Sub-nav (Groups / Callbacks / Review within a combo) ── */
-    .sub-nav{display:flex;gap:0;padding:8px 0 0;margin-bottom:16px;border-bottom:1px solid #f0e8d5;}
-    .sub-tab{font-size:13px;font-weight:600;color:#aaa;padding:6px 14px;border:none;background:none;
-      border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer;white-space:nowrap;}
-    .sub-tab.active{color:#2d2512;border-bottom-color:#2d2512;}
+    /* ── Combo tabs ── */
+    #combo-tabbar {
+      display: flex;
+      gap: 4px;
+      padding: 8px 16px 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    #combo-tabbar::-webkit-scrollbar { display: none; }
+    .combo-tab {
+      flex-shrink: 0;
+      padding: 5px 14px;
+      border-radius: 20px 20px 0 0;
+      border: 1px solid #e8dfc8;
+      border-bottom: none;
+      background: #f5f0e8;
+      font-size: 13px;
+      font-weight: 600;
+      color: #888;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .combo-tab.active { background: #fff; color: #2d2512; }
+    #add-combo-btn {
+      flex-shrink: 0;
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1px dashed #c9a84c;
+      background: transparent;
+      font-size: 12px;
+      color: #c9a84c;
+      cursor: pointer;
+      align-self: center;
+      margin-bottom: 4px;
+      margin-left: 4px;
+    }
 
-    /* ── Combo info bar ── */
-    .combo-info-bar{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12px;color:#999;flex-wrap:wrap;}
-    .combo-info-bar strong{color:#444;}
-    .btn-combo-edit{font-size:11px;color:#c9a84c;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;}
-    .btn-combo-delete{font-size:13px;color:#ddd;background:none;border:none;cursor:pointer;padding:0 2px;line-height:1;}
-    .btn-combo-delete:hover{color:#c0392b;}
+    /* ── Main tabs ── */
+    #main-tabs {
+      display: flex;
+      border-bottom: 2px solid #e8dfc8;
+      background: #fff;
+      padding: 0 16px;
+    }
+    .main-tab {
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #aaa;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      cursor: pointer;
+    }
+    .main-tab.active { color: #2d2512; border-bottom-color: #c9a84c; }
 
-    /* ── Group nav ── */
-    .group-nav{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
-    .group-label{font-size:15px;font-weight:600;color:#2d2512;flex:1;text-align:center;}
-    .btn-group-nav{background:#fff;border:1px solid #e0d5b8;border-radius:6px;color:#8a6820;
-      font-size:18px;line-height:1;width:38px;height:38px;display:flex;align-items:center;
-      justify-content:center;cursor:pointer;flex-shrink:0;}
-    .btn-group-nav:disabled{color:#ccc;border-color:#eee;cursor:default;}
-    .btn-group-nav:not(:disabled):hover{background:#fdf8ee;border-color:#c9a84c;}
+    /* ── Observe controls bar ── */
+    #observe-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 16px;
+      background: #fff;
+      border-bottom: 1px solid #e8dfc8;
+      flex-wrap: wrap;
+    }
+    #piece-select {
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid #e8dfc8;
+      border-radius: 6px;
+      padding: 4px 10px;
+      background: #fffdf7;
+      color: #2d2512;
+      max-width: 220px;
+    }
+    #group-nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #555;
+      white-space: nowrap;
+    }
+    .group-nav-btn {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 1px solid #e8dfc8;
+      background: #fff;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .group-nav-btn:disabled { opacity: .35; cursor: default; }
 
-    /* ── Dancer card ── */
-    .dancer-card{background:#fffdf7;border:1px solid #e8dfc8;border-radius:10px;
-      padding:14px 14px 12px;height:100%;display:flex;flex-direction:column;gap:7px;}
-    .dancer-card-num{font-size:11px;font-weight:700;color:#b08a3a;text-transform:uppercase;letter-spacing:.04em;}
-    .dancer-card-name{font-size:14px;font-weight:600;color:#2d2512;line-height:1.3;}
-    .piece-chips{display:flex;flex-wrap:wrap;gap:4px;}
-    .piece-chip{font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px;cursor:pointer;white-space:nowrap;}
-    .piece-chip.priority{background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.4);color:#8a6820;}
-    .piece-chip.high-priority{background:#c9a84c;border:1px solid #c9a84c;color:#fff;}
-    .btn-piece-rate{width:100%;padding:9px 12px;border-radius:7px;border:1.5px solid rgba(201,168,76,.4);
-      background:transparent;color:#8a6820;font-size:13px;font-weight:600;cursor:pointer;text-align:left;
-      transition:background .12s,border-color .12s;}
-    .btn-piece-rate:hover{background:rgba(201,168,76,.08);}
-    .btn-callback{width:100%;padding:9px 12px;border-radius:7px;border:1.5px solid rgba(90,127,160,.35);
-      background:transparent;color:#3d6080;font-size:13px;font-weight:600;cursor:pointer;text-align:left;
-      transition:background .12s,border-color .12s,color .12s;}
-    .btn-callback.active{background:#5a7fa0;border-color:#5a7fa0;color:#fff;}
-    .dancer-note-input{width:100%;font-size:12px;border:1px solid #e0d5b8;border-radius:6px;
-      padding:6px 10px;background:#fff;color:#444;outline:none;}
-    .dancer-note-input:focus{border-color:#c9a84c;}
-    .dancer-note-input::placeholder{color:#bbb;}
+    /* ── Dancer cards ── */
+    #dancer-list { padding: 12px 16px; }
+    .dancer-card {
+      background: #fff;
+      border: 1px solid #e8dfc8;
+      border-left: 3px solid #e8dfc8;
+      border-radius: 8px;
+      padding: 11px 14px;
+      margin-bottom: 8px;
+      transition: border-left-color .1s;
+    }
+    .dancer-card.has-hp  { border-left-color: #c9a84c; }
+    .dancer-card.has-p   { border-left-color: rgba(201,168,76,.45); }
+    .dancer-card.has-note { background: #faf8f2; }
 
-    .save-indicator{font-size:11px;color:#b08a3a;opacity:0;transition:opacity .2s;text-align:right;min-height:16px;margin-top:4px;}
-    .save-indicator.show{opacity:1;}
-    .empty-state{text-align:center;padding:40px 20px;color:#aaa;font-size:13px;}
+    .dancer-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #2d2512;
+      margin-bottom: 6px;
+    }
+    .dancer-num { color: #aaa; font-weight: 400; font-size: 13px; margin-right: 4px; }
 
-    /* ── Spider ── */
-    .spider-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;
-      display:flex;align-items:center;justify-content:center;padding:16px;}
-    .spider-modal{background:#fff;border-radius:14px;width:100%;max-width:380px;
-      max-height:80vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.18);}
-    .spider-header{display:flex;align-items:center;justify-content:space-between;
-      padding:16px 18px 12px;border-bottom:1px solid #f0e8d5;}
-    .spider-dancer-name{font-size:15px;font-weight:700;color:#2d2512;}
-    .spider-close{background:none;border:none;font-size:22px;color:#aaa;cursor:pointer;line-height:1;padding:0;}
-    .spider-close:hover{color:#555;}
-    .spider-hint{font-size:11px;color:#aaa;padding:8px 18px 4px;}
-    .spider-pieces-list{overflow-y:auto;padding-bottom:8px;}
-    .spider-piece-row{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;gap:12px;}
-    .spider-piece-row:hover{background:#fdfaf4;}
-    .spider-piece-name{font-size:13px;font-weight:600;color:#333;flex:1;min-width:0;word-break:break-word;}
-    .yours-tag{font-size:10px;font-weight:600;background:rgba(201,168,76,.15);color:#8a6820;
-      border:1px solid rgba(201,168,76,.3);border-radius:20px;padding:1px 6px;margin-left:6px;display:inline-block;}
-    .spider-level-btns{display:flex;gap:6px;flex-shrink:0;}
-    .spi-btn{font-size:11px;font-weight:700;border-radius:6px;padding:5px 10px;cursor:pointer;
-      border:1.5px solid rgba(201,168,76,.4);background:transparent;color:#8a6820;transition:all .12s;}
-    .spi-btn:hover{background:rgba(201,168,76,.1);}
-    .spi-btn.active{background:#c9a84c;border-color:#c9a84c;color:#fff;}
-    .spi-btn.hp{border-color:rgba(180,120,30,.5);color:#7a5510;}
-    .spi-btn.hp:hover{background:rgba(180,120,30,.08);}
-    .spi-btn.hp.active{background:#a06e10;border-color:#a06e10;color:#fff;}
+    .obs-btns { display: flex; gap: 8px; align-items: center; }
+    .obs-btn {
+      padding: 4px 14px;
+      border-radius: 6px;
+      border: 1.5px solid #ddd;
+      background: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      color: #888;
+      transition: all .1s;
+    }
+    .obs-btn.active-p  { background: rgba(201,168,76,.15); border-color: #c9a84c; color: #8a6820; }
+    .obs-btn.active-hp { background: #c9a84c; border-color: #b8973d; color: #fff; }
 
-    /* ── Review ── */
-    .review-filter-bar{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
-    .review-pill{font-size:12px;font-weight:600;border-radius:20px;padding:4px 14px;
-      border:1px solid rgba(201,168,76,.4);background:transparent;color:#8a6820;cursor:pointer;}
-    .review-pill.active{background:#c9a84c;border-color:#c9a84c;color:#fff;}
-    .review-pill.cb{border-color:rgba(90,127,160,.35);color:#3d6080;}
-    .review-pill.cb.active{background:#5a7fa0;border-color:#5a7fa0;color:#fff;}
-    .review-row{border:1px solid #e8dfc8;border-left:3px solid #c9a84c;border-radius:8px;
-      background:#fffdf7;padding:12px 14px;margin-bottom:8px;}
-    .review-row-header{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
-    .review-row-num{font-size:11px;font-weight:700;color:#b08a3a;}
-    .review-row-name{font-size:14px;font-weight:700;color:#2d2512;flex:1;}
-    .review-badge-cb{font-size:11px;font-weight:600;border-radius:20px;padding:2px 10px;
-      background:rgba(90,127,160,.12);color:#3d6080;border:1px solid rgba(90,127,160,.3);}
-    .review-piece-section{margin-top:6px;}
-    .review-piece-label{font-size:11px;font-weight:700;color:#8a6820;text-transform:uppercase;
-      letter-spacing:.04em;margin-bottom:3px;}
-    .review-piece-row{font-size:12px;color:#555;display:flex;align-items:center;gap:6px;margin-bottom:2px;}
-    .review-level-badge{font-size:10px;font-weight:700;border-radius:4px;padding:1px 6px;background:#a06e10;color:#fff;}
-    .review-level-badge.p{background:rgba(201,168,76,.2);color:#8a6820;}
-    .review-note-row{font-size:12px;color:#777;font-style:italic;margin-top:5px;}
+    .note-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 15px;
+      color: #bbb;
+      padding: 2px 4px;
+      margin-left: 4px;
+    }
+    .note-btn.has-note { color: #c9a84c; }
+
+    .prior-context {
+      font-size: 11px;
+      color: #aaa;
+      margin-top: 5px;
+    }
+    .prior-context span { margin-right: 10px; }
+    .prior-hp { color: #b8973d; font-weight: 600; }
+    .prior-p  { color: #a08030; }
+
+    .note-field {
+      width: 100%;
+      margin-top: 8px;
+      font-size: 12px;
+      border: 1px solid #e8dfc8;
+      border-radius: 6px;
+      padding: 6px 8px;
+      background: #fffdf7;
+      resize: vertical;
+      min-height: 52px;
+      font-family: inherit;
+    }
+
+    /* ── Callback panel ── */
+    #round-tabbar {
+      display: flex;
+      gap: 4px;
+      padding: 10px 16px 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      background: #fff;
+      border-bottom: 1px solid #e8dfc8;
+    }
+    #round-tabbar::-webkit-scrollbar { display: none; }
+    .round-tab {
+      flex-shrink: 0;
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: 1px solid #e8dfc8;
+      background: #f5f0e8;
+      font-size: 12px;
+      font-weight: 600;
+      color: #888;
+      cursor: pointer;
+    }
+    .round-tab.active { background: #2d2512; color: #fff; border-color: #2d2512; }
+    #add-round-btn {
+      flex-shrink: 0;
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1px dashed #c9a84c;
+      background: transparent;
+      font-size: 12px;
+      color: #c9a84c;
+      cursor: pointer;
+      align-self: center;
+      margin-bottom: 0;
+    }
+
+    #callback-content { padding: 12px 16px; }
+    .callback-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 12px;
+      background: #fff;
+      border: 1px solid #e8dfc8;
+      border-radius: 7px;
+      margin-bottom: 6px;
+    }
+    .callback-row.is-callback { background: rgba(201,168,76,.07); border-color: rgba(201,168,76,.4); }
+    .callback-name { font-size: 14px; color: #2d2512; }
+    .callback-name .cb-num { color: #aaa; font-size: 12px; margin-right: 4px; }
+    .callback-attribution { font-size: 11px; color: #aaa; margin-top: 2px; }
+    .cb-toggle {
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1.5px solid #ddd;
+      background: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #888;
+      flex-shrink: 0;
+    }
+    .cb-toggle.active { background: #c9a84c; border-color: #b8973d; color: #fff; }
+
+    /* ── Review panel ── */
+    #panel-review { padding: 12px 16px; }
+    .review-card {
+      background: #fff;
+      border: 1px solid #e8dfc8;
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .review-dancer-name { font-size: 14px; font-weight: 700; color: #2d2512; margin-bottom: 8px; }
+    .review-obs-row { font-size: 12px; color: #555; margin-bottom: 4px; }
+    .review-obs-piece { font-weight: 600; color: #2d2512; }
+    .review-combo-item { display: inline-block; margin-right: 10px; }
+    .review-note { font-size: 12px; color: #777; font-style: italic; margin: 6px 0; padding: 6px 8px; background: #faf8f2; border-radius: 5px; border-left: 2px solid #c9a84c; }
+    .review-final-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid #f0ede5; }
+    .review-final-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #aaa; margin-bottom: 6px; }
+    .final-piece-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .final-piece-name { font-size: 12px; color: #555; flex: 1; }
+    .final-btns { display: flex; gap: 6px; }
+    .final-btn {
+      padding: 3px 10px;
+      border-radius: 5px;
+      border: 1.5px solid #ddd;
+      background: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      color: #888;
+    }
+    .final-btn.active-p  { background: rgba(201,168,76,.15); border-color: #c9a84c; color: #8a6820; }
+    .final-btn.active-hp { background: #c9a84c; border-color: #b8973d; color: #fff; }
+    .final-btn.active-nc { background: #f3f4f6; border-color: #9ca3af; color: #555; }
+
+    /* ── Add combo modal ── */
+    .modal-content { border-radius: 12px; }
+
+    /* ── Empty states ── */
+    .empty-msg { color: #aaa; font-size: 13px; padding: 20px 0; text-align: center; }
   </style>
 </head>
 <body style="visibility:hidden">
@@ -130,88 +300,55 @@
   <div id="app-shell-root"></div>
   <script src="app-shell.js"></script>
 
-  <div class="app-main">
-    <div class="container mt-4" style="max-width:720px;">
+  <div class="app-main" style="padding:0;max-width:680px;margin:0 auto;">
 
-      <a href="audition-day.html" class="page-back">← Audition Day</a>
-      <h4 class="fw-semibold page-title-bar mb-3" id="page-heading">Loading…</h4>
-
-      <!-- Top combo tab bar -->
-      <div class="combo-tabbar">
-        <div class="combo-tabs" id="combo-tabs"></div>
-        <button class="btn-add-combo" id="add-combo-btn">+ Combo</button>
+    <!-- Day header + combo tabs + main tabs -->
+    <div id="day-header">
+      <div class="d-flex align-items-center mb-1">
+        <a href="audition-day.html" style="color:#aaa;font-size:13px;margin-right:12px;text-decoration:none;">← Back</a>
+        <span id="day-title"></span>
+        <span id="day-date"></span>
       </div>
-
-      <!-- Main panel (always visible; sub-nav switches content) -->
-      <div id="panel-combo">
-        <div class="sub-nav">
-          <button class="sub-tab active" onclick="switchSubTab('groups')">Groups</button>
-          <button class="sub-tab" onclick="switchSubTab('callbacks')">↩ Callbacks</button>
-          <button class="sub-tab" onclick="switchSubTab('review')">Review</button>
-        </div>
-
-        <div class="combo-info-bar" id="combo-info-bar"></div>
-
-        <!-- Groups sub-panel -->
-        <div id="sub-groups">
-          <div class="group-nav">
-            <button class="btn-group-nav" id="btn-prev" onclick="prevGroup()">‹</button>
-            <div class="group-label" id="group-label">Group 1 of 1</div>
-            <button class="btn-group-nav" id="btn-next" onclick="nextGroup()">›</button>
-          </div>
-          <div class="row g-3" id="dancer-grid"></div>
-          <div class="save-indicator mt-2" id="save-indicator">Saved</div>
-        </div>
-
-        <!-- Callbacks sub-panel -->
-        <div id="sub-callbacks" style="display:none;">
-          <div id="callback-setup">
-            <p id="callback-count-text" style="font-size:14px;color:#555;margin-bottom:12px;"></p>
-            <div id="callback-config" style="display:none;">
-              <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-                <input type="number" id="callback-group-size" class="form-control" style="width:80px;" value="5" min="1" oninput="updateCallbackPreview()">
-                <span style="font-size:13px;color:#555;">per group</span>
-              </div>
-              <div id="callback-preview" style="font-size:12px;color:#8a6820;margin-bottom:16px;min-height:34px;line-height:1.6;"></div>
-              <button class="btn btn-dark btn-sm" onclick="startCallbackRound()">Start Callback Round</button>
-            </div>
-          </div>
-          <div id="callback-groups-panel" style="display:none;">
-            <button class="btn btn-link btn-sm p-0 mb-3" style="font-size:12px;color:#999;" onclick="resetCallbackSetup()">← Change group size</button>
-            <div class="group-nav">
-              <button class="btn-group-nav" id="btn-cb-prev" onclick="prevCBGroup()">‹</button>
-              <div class="group-label" id="cb-group-label">Callback Group 1 of 1</div>
-              <button class="btn-group-nav" id="btn-cb-next" onclick="nextCBGroup()">›</button>
-            </div>
-            <div class="row g-3" id="callback-dancer-grid"></div>
-            <div class="save-indicator mt-2" id="save-indicator-cb">Saved</div>
-          </div>
-        </div>
-
-        <!-- Review sub-panel -->
-        <div id="sub-review" style="display:none;">
-          <div class="review-filter-bar">
-            <button class="review-pill active" onclick="setReviewFilter('all')">All</button>
-            <button class="review-pill" onclick="setReviewFilter('rated')">Has Ratings</button>
-            <button class="review-pill cb" onclick="setReviewFilter('callback')">↩ Callback</button>
-          </div>
-          <div id="review-list"></div>
-        </div>
+      <div id="combo-tabbar">
+        <!-- filled by renderComboTabs() -->
       </div>
-
     </div>
-  </div>
 
-  <!-- Spider overlay -->
-  <div class="spider-overlay" id="spider-overlay" style="display:none;" onclick="handleOverlayClick(event)">
-    <div class="spider-modal">
-      <div class="spider-header">
-        <div class="spider-dancer-name" id="spider-name"></div>
-        <button class="spider-close" onclick="closeSpider()">×</button>
-      </div>
-      <div class="spider-hint">P = Priority · HP = High Priority · tap again to remove</div>
-      <div class="spider-pieces-list" id="spider-pieces"></div>
+    <div id="main-tabs">
+      <button class="main-tab active" data-tab="observe">Observe</button>
+      <button class="main-tab" data-tab="callbacks">Callbacks</button>
+      <button class="main-tab" data-tab="review">Review</button>
     </div>
+
+    <!-- ── Observe panel ── -->
+    <div id="panel-observe">
+      <div id="observe-controls">
+        <div class="d-flex align-items-center gap-2">
+          <span style="font-size:12px;color:#888;white-space:nowrap;">For:</span>
+          <select id="piece-select" class="form-select form-select-sm" style="max-width:220px;font-weight:600;"></select>
+        </div>
+        <div id="group-nav">
+          <button class="group-nav-btn" id="prev-group">‹</button>
+          <span id="group-label" style="font-size:13px;"></span>
+          <button class="group-nav-btn" id="next-group">›</button>
+        </div>
+      </div>
+      <div id="dancer-list"></div>
+    </div>
+
+    <!-- ── Callbacks panel ── -->
+    <div id="panel-callbacks" style="display:none;">
+      <div id="round-tabbar">
+        <!-- filled by renderRoundTabs() -->
+      </div>
+      <div id="callback-content"></div>
+    </div>
+
+    <!-- ── Review & Finalize panel ── -->
+    <div id="panel-review" style="display:none;">
+      <div id="review-content"><p class="empty-msg">Switch to this tab to load your review.</p></div>
+    </div>
+
   </div>
 
   <!-- Add Combo modal -->
@@ -225,105 +362,62 @@
         <div class="modal-body pt-3">
           <div class="mb-3">
             <label class="form-label" style="font-size:13px;font-weight:600;">Name</label>
-            <input type="text" id="new-combo-name" class="form-control" autocomplete="off">
+            <input type="text" id="new-combo-name" class="form-control form-control-sm" maxlength="60" autocomplete="off">
           </div>
           <div class="row g-2">
             <div class="col-6">
               <label class="form-label" style="font-size:13px;font-weight:600;">Group Size</label>
-              <input type="number" id="new-combo-gs" class="form-control" min="1" max="500" oninput="updateNewComboPreview()">
+              <input type="number" id="new-combo-gs" class="form-control form-control-sm" min="1" max="200">
             </div>
             <div class="col-6">
               <label class="form-label" style="font-size:13px;font-weight:600;">Sort By</label>
-              <select id="new-combo-sort" class="form-select">
+              <select id="new-combo-sort" class="form-select form-select-sm">
                 <option value="number">Audition #</option>
                 <option value="last_name">Last Name</option>
                 <option value="first_name">First Name</option>
               </select>
             </div>
           </div>
-          <div id="new-combo-preview" style="font-size:12px;color:#8a6820;margin-top:8px;min-height:34px;line-height:1.6;"></div>
+          <div id="combo-preview" style="font-size:12px;color:#8a6820;margin-top:8px;min-height:16px;"></div>
         </div>
         <div class="modal-footer border-0 pt-0">
           <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-          <button class="btn btn-dark btn-sm" id="save-new-combo-btn">Add</button>
+          <button class="btn btn-dark btn-sm" id="save-combo-btn">Add Combo</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Edit Combo modal -->
-  <div class="modal fade" id="editComboModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width:380px;">
+  <!-- Add Callback Round modal -->
+  <div class="modal fade" id="addRoundModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:340px;">
       <div class="modal-content">
         <div class="modal-header border-0 pb-0">
-          <h5 class="modal-title fw-semibold" style="font-size:15px;">Edit Combo</h5>
+          <h5 class="modal-title fw-semibold" style="font-size:15px;">New Callback Round</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body pt-3">
-          <div class="mb-3">
-            <label class="form-label" style="font-size:13px;font-weight:600;">Name</label>
-            <input type="text" id="edit-combo-name" class="form-control" autocomplete="off">
-          </div>
-          <div class="row g-2">
-            <div class="col-6">
-              <label class="form-label" style="font-size:13px;font-weight:600;">Group Size</label>
-              <input type="number" id="edit-combo-gs" class="form-control" min="1" max="500" oninput="updateEditComboPreview()">
-            </div>
-            <div class="col-6">
-              <label class="form-label" style="font-size:13px;font-weight:600;">Sort By</label>
-              <select id="edit-combo-sort" class="form-select">
-                <option value="number">Audition #</option>
-                <option value="last_name">Last Name</option>
-                <option value="first_name">First Name</option>
-              </select>
-            </div>
-          </div>
-          <div id="edit-combo-preview" style="font-size:12px;color:#8a6820;margin-top:8px;min-height:34px;line-height:1.6;"></div>
+          <input type="text" id="new-round-name" class="form-control form-control-sm"
+            placeholder="e.g. Ballet Callback, Round 2" maxlength="60" autocomplete="off">
         </div>
         <div class="modal-footer border-0 pt-0">
           <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-          <button class="btn btn-dark btn-sm" id="save-edit-combo-btn">Save</button>
+          <button class="btn btn-dark btn-sm" id="save-round-btn">Create</button>
         </div>
       </div>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="help-content.js"></script>
   <script>
-  const params = new URLSearchParams(location.search);
-  const dayId  = params.get('id');
-  if (!dayId) { window.location.href = 'audition-day.html'; }
-
-  let day, allDancers, allPieces, allCombos;
-  // myComboRatings: { comboId: { general: { subId: {callback,note} }, piece: { subId: { pieceId: level } } } }
-  let myComboRatings = {};
-  let currentUserId  = null;
-  let activeComboId  = null;
-  let activeSubTab   = 'groups';
-  let currentGroup   = 0;
-  let activeGroups   = [];
-  let saveTimer      = null;
-  let reviewData     = null;
-  let reviewFilter   = 'all';
-  let callbackDancers = [], callbackGroups = [], currentCBGroup = 0;
-  let spiderSubId    = null;
-
-  const getModal = id => bootstrap.Modal.getOrCreateInstance(document.getElementById(id));
-
-  function comboGeneral(cid) { return ((myComboRatings[cid] || {}).general) || {}; }
-  function comboPiece(cid)   { return ((myComboRatings[cid] || {}).piece)   || {}; }
-  function ensureCombo(cid)  {
-    if (!myComboRatings[cid]) myComboRatings[cid] = { general: {}, piece: {} };
-  }
-
-  // ── Boot ──────────────────────────────────────────────────────────────────
   (async () => {
-    const authRes = await fetch('/api/auth/me');
-    const user    = await authRes.json();
-    if (!authRes.ok || (user.mode !== 'director' && user.role !== 'master')) {
+    // ── Auth ──────────────────────────────────────────────────────────────────
+    const authRes  = await fetch('/api/auth/me');
+    const authUser = await authRes.json();
+    if (!authRes.ok || (authUser.mode !== 'director' && authUser.role !== 'master')) {
       window.location.href = 'login.html'; return;
     }
-    currentUserId = user.id;
     document.getElementById('right-nav').innerHTML =
       `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
     document.getElementById('logout-btn').addEventListener('click', async () => {
@@ -331,471 +425,605 @@
       window.location.href = 'login.html';
     });
 
-    const r    = await fetch(`/api/audition-days/${dayId}`);
-    const data = r.ok ? await r.json() : null;
-    if (!data) { window.location.href = 'audition-day.html'; return; }
+    // ── Load ─────────────────────────────────────────────────────────────────
+    const params = new URLSearchParams(location.search);
+    const dayId  = params.get('id');
+    if (!dayId) { window.location.href = 'audition-day.html'; return; }
 
-    day            = data.day;
-    allCombos      = data.combos;
-    allPieces      = data.pieces;
-    allDancers     = data.dancers;
-    myComboRatings = data.myComboRatings || {};
+    const res  = await fetch(`/api/audition-days/${dayId}`);
+    if (!res.ok) { alert('Could not load audition day.'); window.location.href = 'audition-day.html'; return; }
+    const data = await res.json();
 
-    document.getElementById('page-heading').textContent = day.name;
-    document.title = `${day.name} | CastSync`;
+    // ── State ────────────────────────────────────────────────────────────────
+    let allCombos    = data.combos;
+    let allDancers   = data.dancers;
+    let allPieces    = data.pieces;
+    let myObs        = data.myObservations;        // { comboId: { subId: { pieceId: level } } }
+    let myNotes      = data.myNotes;               // { subId: body }
+    let myFinal      = data.myFinalConsiderations; // { subId: { pieceId: level } }
+    let cbRounds     = data.callbackRounds;        // [{ id, name, callbacks: [...] }]
+
+    let activeComboId  = allCombos[0]?.id ?? null;
+    let activePieceId  = (allPieces.find(p => p.is_mine) || allPieces[0])?.id ?? null;
+    let activeTab      = 'observe';
+    let activeGroupIdx = 0;
+    let activeRoundId  = cbRounds[0]?.id ?? null;
+    let reviewLoaded   = false;
+    let cbPollTimer    = null;
+    let noteTimers     = {};
+
+    // ── Header ───────────────────────────────────────────────────────────────
+    document.getElementById('day-title').textContent = data.day.name;
+    if (data.day.audition_date) {
+      const d = new Date(data.day.audition_date + 'T12:00:00');
+      document.getElementById('day-date').textContent =
+        ' · ' + d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+    }
     document.body.style.visibility = 'visible';
 
-    renderComboTabs();
-    if (allCombos.length > 0) selectCombo(allCombos[0].id);
-  })();
-
-  // ── Combo tabs ────────────────────────────────────────────────────────────
-
-  function renderComboTabs() {
-    document.getElementById('combo-tabs').innerHTML = allCombos.map(c =>
-      `<button class="combo-tab${c.id === activeComboId ? ' active' : ''}"
-               onclick="selectCombo(${c.id})">${escHtml(c.name)}</button>`
-    ).join('');
-  }
-
-  function selectCombo(id) {
-    activeComboId = id;
-    currentGroup  = 0;
-    activeSubTab  = 'groups';
-    reviewData    = null;
-    const combo   = allCombos.find(c => c.id === id);
-    activeGroups  = makeGroups(sortDancers(allDancers, combo.sort_order), combo.group_size);
-    renderComboTabs();
-    renderSubNav();
-    renderComboInfoBar(combo);
-    showSubPanel('groups');
-    renderGroup();
-  }
-
-  function renderComboInfoBar(combo) {
-    const sortLabel = { number:'audition #', first_name:'first name', last_name:'last name' }[combo.sort_order] || combo.sort_order;
-    const canDelete = allCombos.length > 1;
-    document.getElementById('combo-info-bar').innerHTML =
-      `<strong>${escHtml(combo.name)}</strong>
-       <span>·</span>
-       <span>${combo.group_size} per group · by ${sortLabel}</span>
-       <button class="btn-combo-edit" onclick="openEditCombo(${combo.id})">Edit</button>
-       ${canDelete ? `<button class="btn-combo-delete" onclick="confirmDeleteCombo(${combo.id})" title="Delete">✕</button>` : ''}`;
-  }
-
-  // ── Sub-nav ───────────────────────────────────────────────────────────────
-
-  function renderSubNav() {
-    const tabs = ['groups','callbacks','review'];
-    document.querySelectorAll('.sub-tab').forEach((btn, i) => {
-      btn.classList.toggle('active', tabs[i] === activeSubTab);
-    });
-  }
-
-  function switchSubTab(name) {
-    activeSubTab = name;
-    renderSubNav();
-    showSubPanel(name);
-    if (name === 'callbacks') openCallbackPanel();
-    if (name === 'review')    loadReview();
-  }
-
-  function showSubPanel(name) {
-    document.getElementById('sub-groups').style.display    = name === 'groups'    ? '' : 'none';
-    document.getElementById('sub-callbacks').style.display = name === 'callbacks' ? '' : 'none';
-    document.getElementById('sub-review').style.display    = name === 'review'    ? '' : 'none';
-  }
-
-  // ── Combo edit / delete ───────────────────────────────────────────────────
-
-  function openEditCombo(id) {
-    const c = allCombos.find(c => c.id === id);
-    document.getElementById('edit-combo-name').value = c.name;
-    document.getElementById('edit-combo-gs').value   = c.group_size;
-    document.getElementById('edit-combo-sort').value = c.sort_order;
-    updateEditComboPreview();
-    document.getElementById('save-edit-combo-btn').onclick = () => saveEditCombo(id);
-    getModal('editComboModal').show();
-  }
-
-  function updateEditComboPreview() {
-    document.getElementById('edit-combo-preview').innerHTML =
-      groupPreviewHtml(parseInt(document.getElementById('edit-combo-gs').value)||0);
-  }
-
-  async function saveEditCombo(id) {
-    const name       = document.getElementById('edit-combo-name').value.trim();
-    const group_size = parseInt(document.getElementById('edit-combo-gs').value)||8;
-    const sort_order = document.getElementById('edit-combo-sort').value;
-    await fetch(`/api/audition-days/${dayId}/combos/${id}`, {
-      method:'PATCH', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ name, group_size, sort_order })
-    });
-    const idx = allCombos.findIndex(c => c.id === id);
-    if (idx >= 0) allCombos[idx] = { ...allCombos[idx], name, group_size, sort_order };
-    getModal('editComboModal').hide();
-    selectCombo(id);
-  }
-
-  function confirmDeleteCombo(id) {
-    if (!confirm('Delete this combo? Its ratings will also be deleted.')) return;
-    deleteCombo(id);
-  }
-
-  async function deleteCombo(id) {
-    const r = await fetch(`/api/audition-days/${dayId}/combos/${id}`, { method:'DELETE' });
-    if (!r.ok) { alert((await r.json()).error||'Could not delete.'); return; }
-    allCombos = allCombos.filter(c => c.id !== id);
-    delete myComboRatings[id];
-    renderComboTabs();
-    selectCombo(allCombos[0].id);
-  }
-
-  // ── Add Combo modal ───────────────────────────────────────────────────────
-
-  document.getElementById('add-combo-btn').addEventListener('click', () => {
-    const last = allCombos[allCombos.length - 1];
-    document.getElementById('new-combo-name').value = `Combo ${allCombos.length + 1}`;
-    document.getElementById('new-combo-gs').value   = last ? String(last.group_size) : '8';
-    document.getElementById('new-combo-sort').value = last ? last.sort_order : 'number';
-    updateNewComboPreview();
-    getModal('addComboModal').show();
-    setTimeout(() => document.getElementById('new-combo-name').focus(), 300);
-  });
-
-  function updateNewComboPreview() {
-    document.getElementById('new-combo-preview').innerHTML =
-      groupPreviewHtml(parseInt(document.getElementById('new-combo-gs').value)||0);
-  }
-
-  document.getElementById('save-new-combo-btn').addEventListener('click', async () => {
-    const name       = document.getElementById('new-combo-name').value.trim() || `Combo ${allCombos.length+1}`;
-    const group_size = parseInt(document.getElementById('new-combo-gs').value)||8;
-    const sort_order = document.getElementById('new-combo-sort').value;
-    const r = await fetch(`/api/audition-days/${dayId}/combos`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ name, group_size, sort_order })
-    });
-    const combo = await r.json();
-    allCombos.push(combo);
-    getModal('addComboModal').hide();
-    renderComboTabs();
-    selectCombo(combo.id);
-  });
-
-  // ── Group navigation ───────────────────────────────────────────────────────
-
-  function renderGroup() {
-    const group = activeGroups[currentGroup] || [];
-    const total = activeGroups.length || 1;
-    document.getElementById('group-label').textContent = `Group ${currentGroup+1} of ${total}`;
-    document.getElementById('btn-prev').disabled = currentGroup === 0;
-    document.getElementById('btn-next').disabled = currentGroup >= total-1;
-    document.getElementById('dancer-grid').innerHTML = group.length
-      ? group.map(d => dancerCardHtml(d, activeComboId)).join('')
-      : `<div class="col-12"><div class="empty-state">No dancers.</div></div>`;
-  }
-
-  function prevGroup() { if (currentGroup>0){currentGroup--;renderGroup();} }
-  function nextGroup() { if (currentGroup<activeGroups.length-1){currentGroup++;renderGroup();} }
-
-  // ── Dancer card ───────────────────────────────────────────────────────────
-
-  function dancerCardHtml(d, cid) {
-    const g    = comboGeneral(cid)[d.submission_id] || {};
-    const num  = d.audition_number ? `#${d.audition_number}` : '';
-    const name = dancerDisplayName(d);
-    const chips = buildChipsHtml(d.submission_id, cid);
-    return `
-      <div class="col-6 col-md-4">
-        <div class="dancer-card">
-          <div>
-            ${num ? `<div class="dancer-card-num">${escHtml(num)}</div>` : ''}
-            <div class="dancer-card-name">${escHtml(name)}</div>
-          </div>
-          <div class="piece-chips" id="chips-${cid}-${d.submission_id}"${chips?'':' style="display:none;"'}>${chips}</div>
-          <button class="btn-piece-rate" onclick="openSpider(${d.submission_id})">
-            ★ Priority / High Priority
-          </button>
-          <button class="btn-callback${g.callback?' active':''}"
-                  onclick="toggleCallback(${d.submission_id}, this)">↩ Callback</button>
-          <input class="dancer-note-input" type="text" maxlength="200"
-                 placeholder="Note (optional)"
-                 value="${escAttr(g.note||'')}"
-                 onblur="saveNote(${d.submission_id}, this.value)">
-        </div>
-      </div>`;
-  }
-
-  function buildChipsHtml(subId, cid) {
-    return Object.entries(comboPiece(cid)[subId]||{}).map(([pid, level]) => {
-      const piece = allPieces.find(p => p.id == pid);
-      if (!piece) return '';
-      const cls   = level==='high_priority' ? 'high-priority' : 'priority';
-      const lbl   = level==='high_priority' ? 'HP' : 'P';
-      const short = piece.name.length > 14 ? piece.name.slice(0,14)+'…' : piece.name;
-      return `<span class="piece-chip ${cls}" onclick="openSpider(${subId})" title="${escAttr(piece.name)}">${escHtml(short)} ${lbl}</span>`;
-    }).join('');
-  }
-
-  function updateCardChips(subId, cid) {
-    const el = document.getElementById(`chips-${cid}-${subId}`);
-    if (!el) return;
-    const html = buildChipsHtml(subId, cid);
-    el.innerHTML = html;
-    el.style.display = html ? '' : 'none';
-  }
-
-  // ── Callback + Note (per combo) ────────────────────────────────────────────
-
-  async function toggleCallback(subId, btn) {
-    ensureCombo(activeComboId);
-    if (!myComboRatings[activeComboId].general[subId]) myComboRatings[activeComboId].general[subId] = {};
-    const g = myComboRatings[activeComboId].general[subId];
-    g.callback = !g.callback;
-    btn.classList.toggle('active', g.callback);
-    showSaved('save-indicator');
-    await fetch(`/api/audition-days/${dayId}/ratings/${subId}`, {
-      method:'PUT', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ combo_id: activeComboId, callback: g.callback, note: g.note||null })
-    });
-  }
-
-  async function saveNote(subId, value) {
-    ensureCombo(activeComboId);
-    if (!myComboRatings[activeComboId].general[subId]) myComboRatings[activeComboId].general[subId] = {};
-    const g = myComboRatings[activeComboId].general[subId];
-    g.note = value.trim() || null;
-    showSaved('save-indicator');
-    await fetch(`/api/audition-days/${dayId}/ratings/${subId}`, {
-      method:'PUT', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ combo_id: activeComboId, callback: g.callback||false, note: g.note })
-    });
-  }
-
-  // ── Spider ────────────────────────────────────────────────────────────────
-
-  function openSpider(subId) {
-    spiderSubId = subId;
-    const dancer = allDancers.find(d => d.submission_id === subId);
-    document.getElementById('spider-name').textContent = dancerDisplayName(dancer);
-    renderSpider(subId);
-    document.getElementById('spider-overlay').style.display = 'flex';
-  }
-
-  function closeSpider() {
-    document.getElementById('spider-overlay').style.display = 'none';
-    spiderSubId = null;
-  }
-
-  function handleOverlayClick(e) {
-    if (e.target === document.getElementById('spider-overlay')) closeSpider();
-  }
-
-  function renderSpider(subId) {
-    const ratings = comboPiece(activeComboId)[subId] || {};
-    if (allPieces.length === 0) {
-      document.getElementById('spider-pieces').innerHTML =
-        `<div class="empty-state" style="padding:24px;">No pieces in this production yet.</div>`;
-      return;
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function escHtml(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
-    document.getElementById('spider-pieces').innerHTML = allPieces.map(p => {
-      const current = ratings[p.id] || null;
-      const isYours = p.master_id == currentUserId;
-      return `
-        <div class="spider-piece-row">
-          <div class="spider-piece-name">
-            ${escHtml(p.name)}
-            ${isYours ? `<span class="yours-tag">yours</span>` : ''}
-          </div>
-          <div class="spider-level-btns">
-            <button class="spi-btn${current==='priority'?' active':''}"
-                    onclick="setPieceRating(${subId},${p.id},'priority')">P</button>
-            <button class="spi-btn hp${current==='high_priority'?' active':''}"
-                    onclick="setPieceRating(${subId},${p.id},'high_priority')">HP</button>
-          </div>
-        </div>`;
-    }).join('');
-  }
 
-  async function setPieceRating(subId, pieceId, level) {
-    ensureCombo(activeComboId);
-    if (!myComboRatings[activeComboId].piece[subId]) myComboRatings[activeComboId].piece[subId] = {};
-    const current  = myComboRatings[activeComboId].piece[subId][pieceId];
-    const newLevel = current === level ? null : level;
-    if (newLevel) myComboRatings[activeComboId].piece[subId][pieceId] = newLevel;
-    else          delete myComboRatings[activeComboId].piece[subId][pieceId];
-    renderSpider(subId);
-    updateCardChips(subId, activeComboId);
-    showSaved('save-indicator');
-    await fetch(`/api/audition-days/${dayId}/piece-ratings`, {
-      method:'PUT', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ combo_id: activeComboId, submission_id: subId, piece_id: pieceId, level: newLevel })
-    });
-  }
+    function currentCombo() { return allCombos.find(c => c.id === activeComboId) || allCombos[0]; }
 
-  // ── Callbacks sub-panel ───────────────────────────────────────────────────
-
-  function openCallbackPanel() {
-    callbackDancers = allDancers.filter(d => (comboGeneral(activeComboId)[d.submission_id]||{}).callback);
-    const n   = callbackDancers.length;
-    const gsEl = document.getElementById('callback-group-size');
-    document.getElementById('callback-setup').style.display        = '';
-    document.getElementById('callback-groups-panel').style.display = 'none';
-    document.getElementById('callback-count-text').textContent =
-      n === 0
-        ? 'No dancers marked for callback in this combo yet. Use ↩ Callback on dancer cards.'
-        : `You have ${n} dancer${n!==1?'s':''} marked for callback in this combo.`;
-    document.getElementById('callback-config').style.display = n > 0 ? '' : 'none';
-    if (n > 0) {
-      gsEl.max = n;
-      if (parseInt(gsEl.value) > n) gsEl.value = n;
-      updateCallbackPreview();
+    function sortedDancers() {
+      const combo = currentCombo();
+      if (!combo) return [];
+      return [...allDancers].sort((a, b) => {
+        if (combo.sort_order === 'number') {
+          const an = a.audition_number != null ? Number(a.audition_number) : Infinity;
+          const bn = b.audition_number != null ? Number(b.audition_number) : Infinity;
+          if (an !== bn) return an - bn;
+        } else if (combo.sort_order === 'last_name') {
+          const lc = (a.last_name || '').localeCompare(b.last_name || '');
+          if (lc !== 0) return lc;
+        } else {
+          const fc = (a.first_name || '').localeCompare(b.first_name || '');
+          if (fc !== 0) return fc;
+        }
+        return (a.last_name || '').localeCompare(b.last_name || '');
+      });
     }
-  }
 
-  function updateCallbackPreview() {
-    const n  = callbackDancers.length;
-    const gs = parseInt(document.getElementById('callback-group-size').value)||0;
-    document.getElementById('callback-preview').innerHTML = groupPreviewHtml(gs, n);
-  }
-
-  function startCallbackRound() {
-    const n  = callbackDancers.length;
-    const gs = Math.max(1, Math.min(n, parseInt(document.getElementById('callback-group-size').value)||1));
-    callbackGroups = makeGroups(callbackDancers, gs);
-    currentCBGroup = 0;
-    document.getElementById('callback-setup').style.display        = 'none';
-    document.getElementById('callback-groups-panel').style.display = '';
-    renderCBGroup();
-  }
-
-  function resetCallbackSetup() {
-    document.getElementById('callback-setup').style.display        = '';
-    document.getElementById('callback-groups-panel').style.display = 'none';
-  }
-
-  function prevCBGroup() { if(currentCBGroup>0){currentCBGroup--;renderCBGroup();} }
-  function nextCBGroup() { if(currentCBGroup<callbackGroups.length-1){currentCBGroup++;renderCBGroup();} }
-
-  function renderCBGroup() {
-    const group = callbackGroups[currentCBGroup]||[];
-    const total = callbackGroups.length;
-    document.getElementById('cb-group-label').textContent = `Callback Group ${currentCBGroup+1} of ${total}`;
-    document.getElementById('btn-cb-prev').disabled = currentCBGroup===0;
-    document.getElementById('btn-cb-next').disabled = currentCBGroup>=total-1;
-    document.getElementById('callback-dancer-grid').innerHTML = group.map(d => dancerCardHtml(d, activeComboId)).join('');
-  }
-
-  // ── Review sub-panel ──────────────────────────────────────────────────────
-
-  async function loadReview() {
-    if (reviewData) { renderReview(); return; }
-    const r    = await fetch(`/api/audition-days/${dayId}/review?combo_id=${activeComboId}`);
-    const data = r.ok ? await r.json() : null;
-    if (!data) return;
-    const combo = allCombos.find(c=>c.id===activeComboId)||allCombos[0];
-    reviewData = sortDancers(data.dancers, combo?.sort_order||'last_name');
-    renderReview();
-  }
-
-  function setReviewFilter(f) {
-    reviewFilter = f;
-    document.querySelectorAll('.review-pill').forEach(p => {
-      const pf = p.textContent.includes('Ratings')?'rated':p.textContent.includes('Callback')?'callback':'all';
-      p.classList.toggle('active', pf===f);
-    });
-    renderReview();
-  }
-
-  function renderReview() {
-    if (!reviewData) return;
-    const el = document.getElementById('review-list');
-    const filtered = reviewData.filter(d => {
-      if (reviewFilter==='all') return true;
-      if (reviewFilter==='rated') return Object.keys(d.piece_ratings||{}).length>0;
-      if (reviewFilter==='callback') return d.callback;
-      return true;
-    });
-    if (filtered.length===0) {
-      el.innerHTML=`<div class="empty-state">No dancers match this filter.</div>`; return;
+    function groupDancers() {
+      const combo = currentCombo();
+      const gs    = combo?.group_size || 8;
+      const all   = sortedDancers();
+      const start = activeGroupIdx * gs;
+      return all.slice(start, start + gs);
     }
-    el.innerHTML = filtered.map(d => {
-      const num  = d.audition_number ? `#${d.audition_number}` : '';
-      const name = dancerDisplayName(d);
-      const pieceSections = Object.values(d.piece_ratings||{}).map(pe => {
-        const rows = pe.ratings.map(r => {
-          const isOwner = r.rater_id == pe.piece_master_id;
-          const lvlCls  = r.level==='high_priority' ? '' : ' p';
-          const lvlLbl  = r.level==='high_priority' ? 'HP' : 'P';
-          const rLabel  = isOwner
-            ? `${escHtml(r.rater)} <em style="font-size:10px;color:#aaa;">· Choreographer</em>`
-            : escHtml(r.rater);
-          return `<div class="review-piece-row"><span class="review-level-badge${lvlCls}">${lvlLbl}</span> ${rLabel}</div>`;
-        }).join('');
-        return `<div class="review-piece-section"><div class="review-piece-label">${escHtml(pe.piece_name)}</div>${rows}</div>`;
-      }).join('');
-      const notes = (d.notes||[]).map(n =>
-        `<div class="review-note-row">"${escHtml(n.note)}" <span style="font-size:11px;color:#bbb;">— ${escHtml(n.rater)}</span></div>`
-      ).join('');
-      return `
-        <div class="review-row">
-          <div class="review-row-header">
-            ${num?`<span class="review-row-num">${escHtml(num)}</span>`:''}
-            <span class="review-row-name">${escHtml(name)}</span>
-            ${d.callback?`<span class="review-badge-cb">↩ Callback</span>`:''}
-          </div>
-          ${pieceSections}
-          ${notes}
-        </div>`;
-    }).join('');
-  }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+    function totalGroups() {
+      const combo = currentCombo();
+      const gs    = combo?.group_size || 8;
+      return Math.ceil(allDancers.length / gs) || 1;
+    }
 
-  function groupPreviewHtml(gs, total) {
-    const n = total !== undefined ? total : allDancers.length;
-    if (!gs || !n) return '';
-    if (gs > n) return `<span style="color:#c0392b;">Max is ${n}.</span>`;
-    const numGroups = Math.ceil(n / gs);
-    const remainder = n % gs;
-    const lastNote  = remainder > 0 ? `<br><span style="color:#999;">Last group has ${remainder} dancer${remainder!==1?'s':''}.</span>` : '';
-    return `${n} dancers · ${gs} per group = ${numGroups} group${numGroups!==1?'s':''}${lastNote}`;
-  }
+    function getObs(comboId, subId, pieceId) {
+      return myObs[String(comboId)]?.[String(subId)]?.[String(pieceId)] || null;
+    }
 
-  function sortDancers(dancers, order) {
-    return [...dancers].sort((a,b) => {
-      if (order==='number') {
-        const na=parseInt(a.audition_number)||99999,nb=parseInt(b.audition_number)||99999;
-        return na-nb||(a.last_name||'').localeCompare(b.last_name||'');
+    function priorContext(subId, pieceId) {
+      const results = [];
+      for (const combo of allCombos) {
+        if (combo.id === activeComboId) continue;
+        const level = getObs(combo.id, subId, pieceId);
+        if (level) results.push({ combo, level });
       }
-      if (order==='first_name')
-        return (a.first_name||'').localeCompare(b.first_name||'')||(a.last_name||'').localeCompare(b.last_name||'');
-      return (a.last_name||'').localeCompare(b.last_name||'')||(a.first_name||'').localeCompare(b.first_name||'');
+      return results;
+    }
+
+    function levelLabel(level) {
+      return level === 'high_priority' ? 'HP' : 'P';
+    }
+
+    // ── Combo tabs ───────────────────────────────────────────────────────────
+    function renderComboTabs() {
+      const bar = document.getElementById('combo-tabbar');
+      bar.innerHTML = '';
+      allCombos.forEach(c => {
+        const btn = document.createElement('button');
+        btn.className = 'combo-tab' + (c.id === activeComboId ? ' active' : '');
+        btn.textContent = c.name;
+        btn.addEventListener('click', () => {
+          activeComboId  = c.id;
+          activeGroupIdx = 0;
+          renderComboTabs();
+          renderGroupNav();
+          renderDancerList();
+        });
+        bar.appendChild(btn);
+      });
+      const addBtn = document.createElement('button');
+      addBtn.id = 'add-combo-btn';
+      addBtn.textContent = '+ Combo';
+      addBtn.addEventListener('click', openAddComboModal);
+      bar.appendChild(addBtn);
+    }
+
+    // ── Group nav ────────────────────────────────────────────────────────────
+    function renderGroupNav() {
+      const total = totalGroups();
+      document.getElementById('group-label').textContent =
+        `Group ${activeGroupIdx + 1} of ${total}`;
+      document.getElementById('prev-group').disabled = activeGroupIdx === 0;
+      document.getElementById('next-group').disabled = activeGroupIdx >= total - 1;
+    }
+
+    document.getElementById('prev-group').addEventListener('click', () => {
+      if (activeGroupIdx > 0) { activeGroupIdx--; renderGroupNav(); renderDancerList(); }
     });
-  }
+    document.getElementById('next-group').addEventListener('click', () => {
+      if (activeGroupIdx < totalGroups() - 1) { activeGroupIdx++; renderGroupNav(); renderDancerList(); }
+    });
 
-  function makeGroups(dancers, size) {
-    const out=[];
-    for (let i=0;i<dancers.length;i+=size) out.push(dancers.slice(i,i+size));
-    return out.length ? out : [[]];
-  }
+    // ── Piece selector ───────────────────────────────────────────────────────
+    function buildPieceSelector() {
+      const sel = document.getElementById('piece-select');
+      sel.innerHTML = '';
+      const myPieces    = allPieces.filter(p => p.is_mine);
+      const otherPieces = allPieces.filter(p => !p.is_mine);
 
-  function dancerDisplayName(d) {
-    if (d?.first_name||d?.last_name) return [d.last_name,d.first_name].filter(Boolean).join(', ');
-    return d?.email||'—';
-  }
+      if (myPieces.length && otherPieces.length) {
+        const g1 = document.createElement('optgroup');
+        g1.label = 'Your Pieces';
+        myPieces.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; g1.appendChild(o); });
+        sel.appendChild(g1);
+        const g2 = document.createElement('optgroup');
+        g2.label = 'Other Pieces';
+        otherPieces.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; g2.appendChild(o); });
+        sel.appendChild(g2);
+      } else {
+        allPieces.forEach(p => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; sel.appendChild(o); });
+      }
 
-  function showSaved(id) {
-    const el=document.getElementById(id);
-    if(!el)return;
-    el.classList.add('show');
-    clearTimeout(saveTimer);
-    saveTimer=setTimeout(()=>el.classList.remove('show'),1400);
-  }
+      if (activePieceId) sel.value = String(activePieceId);
+      sel.addEventListener('change', () => {
+        activePieceId = parseInt(sel.value);
+        renderDancerList();
+      });
+    }
 
-  function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-  function escAttr(s){return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');}
+    // ── Dancer list ───────────────────────────────────────────────────────────
+    function renderDancerList() {
+      const list    = document.getElementById('dancer-list');
+      const dancers = groupDancers();
+
+      if (!activePieceId) {
+        list.innerHTML = '<p class="empty-msg">Select a piece above to start rating.</p>';
+        return;
+      }
+      if (!dancers.length) {
+        list.innerHTML = '<p class="empty-msg">No dancers yet. Add auditionees from the Auditionees page.</p>';
+        return;
+      }
+
+      list.innerHTML = '';
+      dancers.forEach(d => renderDancerCard(list, d));
+    }
+
+    function renderDancerCard(container, d) {
+      const sid      = String(d.submission_id);
+      const pid      = String(activePieceId);
+      const cid      = String(activeComboId);
+      const level    = getObs(activeComboId, sid, pid);
+      const note     = myNotes[sid] || '';
+      const prior    = priorContext(sid, pid);
+      const hasNote  = !!note;
+
+      const card = document.createElement('div');
+      card.className = 'dancer-card' +
+        (level === 'high_priority' ? ' has-hp' : level === 'priority' ? ' has-p' : '') +
+        (hasNote ? ' has-note' : '');
+      card.dataset.sid = sid;
+
+      const numStr = d.audition_number != null ? `<span class="dancer-num">#${d.audition_number}</span>` : '';
+      const nameStr = `${escHtml(d.first_name)} ${escHtml(d.last_name)}`;
+
+      // Prior context line
+      let priorHtml = '';
+      if (prior.length) {
+        const parts = prior.map(r => {
+          const cls = r.level === 'high_priority' ? 'prior-hp' : 'prior-p';
+          return `<span><span class="text-muted">${escHtml(r.combo.name)}:</span> <span class="${cls}">${levelLabel(r.level)}</span></span>`;
+        });
+        priorHtml = `<div class="prior-context">${parts.join('')}</div>`;
+      }
+
+      // Note textarea (hidden unless has note or user opens it)
+      const noteId  = `note-${sid}`;
+      const noteHtml = `<textarea id="${noteId}" class="note-field" placeholder="Add a note…" rows="2">${escHtml(note)}</textarea>`;
+
+      card.innerHTML = `
+        <div class="dancer-name">${numStr}${nameStr}</div>
+        <div class="obs-btns">
+          <button class="obs-btn${level === 'priority' ? ' active-p' : ''}" data-level="priority">P</button>
+          <button class="obs-btn${level === 'high_priority' ? ' active-hp' : ''}" data-level="high_priority">HP</button>
+          <button class="note-btn${hasNote ? ' has-note' : ''}" data-note-toggle="${sid}" title="Note">✏</button>
+        </div>
+        ${priorHtml}
+        <div id="note-area-${sid}" style="display:${hasNote ? '' : 'none'};">${noteHtml}</div>
+      `;
+
+      // P / HP tap
+      card.querySelectorAll('.obs-btn').forEach(btn => {
+        btn.addEventListener('click', () => toggleObs(d.submission_id, btn.dataset.level, card));
+      });
+
+      // Note toggle
+      card.querySelector(`[data-note-toggle="${sid}"]`).addEventListener('click', () => {
+        const area = document.getElementById(`note-area-${sid}`);
+        area.style.display = area.style.display === 'none' ? '' : 'none';
+        if (area.style.display !== 'none') area.querySelector('textarea').focus();
+      });
+
+      // Note autosave
+      const ta = card.querySelector(`#${noteId}`);
+      ta.addEventListener('input', () => {
+        clearTimeout(noteTimers[sid]);
+        noteTimers[sid] = setTimeout(() => saveNote(d.submission_id, ta.value), 1200);
+      });
+
+      container.appendChild(card);
+    }
+
+    async function toggleObs(submissionId, level, card) {
+      const sid  = String(submissionId);
+      const pid  = String(activePieceId);
+      const cid  = String(activeComboId);
+      const cur  = getObs(activeComboId, sid, pid);
+      const next = cur === level ? null : level;
+
+      // Update local state
+      if (!myObs[cid]) myObs[cid] = {};
+      if (!myObs[cid][sid]) myObs[cid][sid] = {};
+      if (next) myObs[cid][sid][pid] = next;
+      else delete myObs[cid][sid][pid];
+
+      // Update card UI without full re-render
+      card.querySelectorAll('.obs-btn').forEach(btn => {
+        btn.className = 'obs-btn' +
+          (btn.dataset.level === 'priority' && next === 'priority' ? ' active-p' : '') +
+          (btn.dataset.level === 'high_priority' && next === 'high_priority' ? ' active-hp' : '');
+      });
+      card.className = 'dancer-card' +
+        (next === 'high_priority' ? ' has-hp' : next === 'priority' ? ' has-p' : '') +
+        (card.classList.contains('has-note') ? ' has-note' : '');
+
+      await fetch(`/api/audition-days/${dayId}/observations`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ combo_id: activeComboId, submission_id: submissionId, piece_id: activePieceId, level: next }),
+      }).catch(() => {});
+    }
+
+    async function saveNote(submissionId, body) {
+      const sid = String(submissionId);
+      const trimmed = body.trim();
+      if (trimmed) myNotes[sid] = trimmed; else delete myNotes[sid];
+
+      // Update note button icon
+      const btn = document.querySelector(`[data-note-toggle="${sid}"]`);
+      if (btn) btn.className = 'note-btn' + (trimmed ? ' has-note' : '');
+      // Update card style
+      const card = document.querySelector(`.dancer-card[data-sid="${sid}"]`);
+      if (card) {
+        if (trimmed) card.classList.add('has-note'); else card.classList.remove('has-note');
+      }
+
+      await fetch(`/api/audition-days/${dayId}/notes/${submissionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body }),
+      }).catch(() => {});
+    }
+
+    // ── Callback rounds ────────────────────────────────────────────────────────
+    function renderRoundTabs() {
+      const bar = document.getElementById('round-tabbar');
+      bar.innerHTML = '';
+      cbRounds.forEach(r => {
+        const btn = document.createElement('button');
+        btn.className = 'round-tab' + (r.id === activeRoundId ? ' active' : '');
+        btn.textContent = r.name;
+        btn.addEventListener('click', () => {
+          activeRoundId = r.id;
+          renderRoundTabs();
+          renderCallbackContent();
+        });
+        bar.appendChild(btn);
+      });
+      const addBtn = document.createElement('button');
+      addBtn.id = 'add-round-btn';
+      addBtn.textContent = '+ Round';
+      addBtn.addEventListener('click', () =>
+        new bootstrap.Modal(document.getElementById('addRoundModal')).show()
+      );
+      bar.appendChild(addBtn);
+    }
+
+    function renderCallbackContent() {
+      const round   = cbRounds.find(r => r.id === activeRoundId);
+      const content = document.getElementById('callback-content');
+      if (!round) { content.innerHTML = '<p class="empty-msg">No callback rounds yet.</p>'; return; }
+
+      const calledBackIds = new Set((round.callbacks || []).map(c => String(c.submission_id)));
+      const attrMap = {};
+      (round.callbacks || []).forEach(c => { attrMap[String(c.submission_id)] = c.added_by_name; });
+
+      // Called-back dancers first, then rest
+      const sorted = sortedDancers();
+      const calledBack = sorted.filter(d => calledBackIds.has(String(d.submission_id)));
+      const others     = sorted.filter(d => !calledBackIds.has(String(d.submission_id)));
+
+      content.innerHTML = '';
+
+      if (calledBack.length) {
+        const hdr = document.createElement('div');
+        hdr.style.cssText = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#c9a84c;margin-bottom:6px;';
+        hdr.textContent = `Called Back (${calledBack.length})`;
+        content.appendChild(hdr);
+        calledBack.forEach(d => appendCallbackRow(content, d, true, attrMap[String(d.submission_id)], round.id));
+        const sep = document.createElement('div');
+        sep.style.cssText = 'margin:12px 0 8px;border-top:1px solid #e8dfc8;';
+        content.appendChild(sep);
+      }
+
+      others.forEach(d => appendCallbackRow(content, d, false, null, round.id));
+    }
+
+    function appendCallbackRow(container, d, isCallback, attr, roundId) {
+      const row = document.createElement('div');
+      row.className = 'callback-row' + (isCallback ? ' is-callback' : '');
+      row.dataset.sid = String(d.submission_id);
+
+      const numStr  = d.audition_number != null ? `<span class="cb-num">#${d.audition_number}</span>` : '';
+      const attrStr = isCallback && attr ? `<div class="callback-attribution">Added by ${escHtml(attr)}</div>` : '';
+
+      row.innerHTML = `
+        <div>
+          <div class="callback-name">${numStr}${escHtml(d.first_name)} ${escHtml(d.last_name)}</div>
+          ${attrStr}
+        </div>
+        <button class="cb-toggle${isCallback ? ' active' : ''}">${isCallback ? '✓ Called Back' : '+ Callback'}</button>
+      `;
+
+      row.querySelector('.cb-toggle').addEventListener('click', () => toggleCallback(d.submission_id, roundId));
+      container.appendChild(row);
+    }
+
+    async function toggleCallback(submissionId, roundId) {
+      const res = await fetch(
+        `/api/audition-days/${dayId}/callback-rounds/${roundId}/callbacks/${submissionId}`,
+        { method: 'POST' }
+      ).catch(() => null);
+      if (!res?.ok) return;
+      await refreshCallbackRounds();
+    }
+
+    async function refreshCallbackRounds() {
+      const r = await fetch(`/api/audition-days/${dayId}/callback-rounds`).catch(() => null);
+      if (r?.ok) {
+        cbRounds = await r.json();
+        if (activeTab === 'callbacks') {
+          renderRoundTabs();
+          renderCallbackContent();
+        }
+      }
+    }
+
+    function startCallbackPoll() {
+      if (cbPollTimer) return;
+      cbPollTimer = setInterval(() => {
+        if (activeTab === 'callbacks') refreshCallbackRounds();
+      }, 8000);
+    }
+
+    // ── Review & Finalize ──────────────────────────────────────────────────────
+    async function loadReview() {
+      const el = document.getElementById('review-content');
+      el.innerHTML = '<p class="empty-msg">Loading…</p>';
+      const r   = await fetch(`/api/audition-days/${dayId}/review`).catch(() => null);
+      if (!r?.ok) { el.innerHTML = '<p class="empty-msg">Could not load review.</p>'; return; }
+      const rv = await r.json();
+      reviewLoaded = true;
+
+      if (!rv.dancers.length) {
+        el.innerHTML = '<p class="empty-msg">No dancers flagged yet. Rate dancers in the Observe tab first.</p>';
+        return;
+      }
+
+      el.innerHTML = '';
+      const combos = rv.combos;
+
+      rv.dancers.forEach(d => {
+        const card = document.createElement('div');
+        card.className = 'review-card';
+        card.dataset.sid = String(d.submission_id);
+
+        const numStr = d.audition_number != null ? `<span style="color:#aaa;font-weight:400;font-size:13px;">#${d.audition_number} </span>` : '';
+
+        let obsHtml = '';
+        const obsByPiece = d.observations || {};
+        for (const [pid, obsData] of Object.entries(obsByPiece)) {
+          const comboItems = combos.map(c => {
+            const level = obsData.byCombo?.[String(c.id)];
+            if (!level) return '';
+            const cls = level === 'high_priority' ? 'prior-hp' : 'prior-p';
+            return `<span class="review-combo-item"><span class="text-muted">${escHtml(c.name)}:</span> <span class="${cls}">${levelLabel(level)}</span></span>`;
+          }).filter(Boolean).join('');
+          if (comboItems) {
+            obsHtml += `<div class="review-obs-row"><span class="review-obs-piece">${escHtml(obsData.piece_name)}</span><br>${comboItems}</div>`;
+          }
+        }
+
+        const noteHtml = d.note ? `<div class="review-note">${escHtml(d.note)}</div>` : '';
+
+        // Final consideration rows — one per piece that has any observation
+        const relevantPieces = [...new Set([
+          ...Object.keys(obsByPiece).map(Number),
+          ...Object.keys(d.finalConsiderations || {}).map(Number),
+        ])];
+
+        let finalHtml = '';
+        if (relevantPieces.length) {
+          const rows = relevantPieces.map(pid => {
+            const piece    = allPieces.find(p => p.id === pid);
+            const pName    = piece?.name || '(Piece)';
+            const current  = (d.finalConsiderations || {})[String(pid)]?.level || null;
+            return `
+              <div class="final-piece-row">
+                <span class="final-piece-name">${escHtml(pName)}</span>
+                <div class="final-btns">
+                  <button class="final-btn${current === 'priority' ? ' active-p' : ''}" data-sub="${d.submission_id}" data-piece="${pid}" data-level="priority">P</button>
+                  <button class="final-btn${current === 'high_priority' ? ' active-hp' : ''}" data-sub="${d.submission_id}" data-piece="${pid}" data-level="high_priority">HP</button>
+                  <button class="final-btn${current === 'not_considering' ? ' active-nc' : ''}" data-sub="${d.submission_id}" data-piece="${pid}" data-level="not_considering">Not considering</button>
+                </div>
+              </div>`;
+          }).join('');
+          finalHtml = `<div class="review-final-row"><div class="review-final-label">Final Consideration</div>${rows}</div>`;
+        }
+
+        card.innerHTML = `
+          <div class="review-dancer-name">${numStr}${escHtml(d.first_name)} ${escHtml(d.last_name)}</div>
+          ${obsHtml}${noteHtml}${finalHtml}
+        `;
+
+        // Wire final consideration buttons
+        card.querySelectorAll('.final-btn').forEach(btn => {
+          btn.addEventListener('click', () => saveFinal(
+            parseInt(btn.dataset.sub),
+            parseInt(btn.dataset.piece),
+            btn.dataset.level,
+            btn,
+            card
+          ));
+        });
+
+        el.appendChild(card);
+      });
+    }
+
+    async function saveFinal(submissionId, pieceId, level, clickedBtn, card) {
+      const sid = String(submissionId);
+      const pid = String(pieceId);
+
+      // Toggle off if same
+      const current = myFinal[sid]?.[pid];
+      const next    = current === level ? null : level;
+
+      if (!myFinal[sid]) myFinal[sid] = {};
+      if (next) myFinal[sid][pid] = next; else delete myFinal[sid][pid];
+
+      // Update button states in review card
+      card.querySelectorAll(`.final-btn[data-sub="${submissionId}"][data-piece="${pieceId}"]`).forEach(btn => {
+        btn.className = 'final-btn' +
+          (btn.dataset.level === 'priority' && next === 'priority' ? ' active-p' : '') +
+          (btn.dataset.level === 'high_priority' && next === 'high_priority' ? ' active-hp' : '') +
+          (btn.dataset.level === 'not_considering' && next === 'not_considering' ? ' active-nc' : '');
+      });
+
+      await fetch(`/api/audition-days/${dayId}/final-considerations`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submission_id: submissionId, piece_id: pieceId, level: next }),
+      }).catch(() => {});
+    }
+
+    // ── Tab switching ─────────────────────────────────────────────────────────
+    document.querySelectorAll('.main-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeTab = btn.dataset.tab;
+        document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('panel-observe').style.display    = activeTab === 'observe'    ? '' : 'none';
+        document.getElementById('panel-callbacks').style.display  = activeTab === 'callbacks'  ? '' : 'none';
+        document.getElementById('panel-review').style.display     = activeTab === 'review'     ? '' : 'none';
+
+        if (activeTab === 'callbacks') { startCallbackPoll(); renderRoundTabs(); renderCallbackContent(); }
+        if (activeTab === 'review' && !reviewLoaded) loadReview();
+      });
+    });
+
+    // ── Add Combo modal ───────────────────────────────────────────────────────
+    function openAddComboModal() {
+      const last = allCombos[allCombos.length - 1];
+      document.getElementById('new-combo-name').value  = `Combo ${allCombos.length + 1}`;
+      document.getElementById('new-combo-gs').value    = last ? String(last.group_size) : '8';
+      document.getElementById('new-combo-sort').value  = last ? last.sort_order : 'number';
+      updateComboPreview();
+      new bootstrap.Modal(document.getElementById('addComboModal')).show();
+    }
+
+    function updateComboPreview() {
+      const gs = parseInt(document.getElementById('new-combo-gs').value) || 0;
+      const n  = allDancers.length;
+      const el = document.getElementById('combo-preview');
+      if (!gs || !n) { el.textContent = ''; return; }
+      if (gs > n) { el.textContent = `Max group size is ${n}.`; el.style.color = '#c0392b'; return; }
+      el.style.color = '#8a6820';
+      const g   = Math.ceil(n / gs);
+      const rem = n % gs;
+      const last = rem > 0 ? ` Last group has ${rem} dancer${rem !== 1 ? 's' : ''}.` : '';
+      el.textContent = `${n} dancers · ${gs} per group = ${g} group${g !== 1 ? 's' : ''}.${last}`;
+    }
+    document.getElementById('new-combo-gs').addEventListener('input', updateComboPreview);
+
+    document.getElementById('save-combo-btn').addEventListener('click', async () => {
+      const btn  = document.getElementById('save-combo-btn');
+      const name = document.getElementById('new-combo-name').value.trim();
+      const gs   = parseInt(document.getElementById('new-combo-gs').value) || 8;
+      const so   = document.getElementById('new-combo-sort').value;
+      btn.disabled = true;
+      try {
+        const r   = await fetch(`/api/audition-days/${dayId}/combos`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name || `Combo ${allCombos.length + 1}`, group_size: gs, sort_order: so }),
+        });
+        if (!r.ok) { alert('Could not add combo.'); return; }
+        const combo = await r.json();
+        allCombos.push(combo);
+        activeComboId  = combo.id;
+        activeGroupIdx = 0;
+        bootstrap.Modal.getInstance(document.getElementById('addComboModal')).hide();
+        renderComboTabs();
+        renderGroupNav();
+        renderDancerList();
+      } finally { btn.disabled = false; }
+    });
+
+    // ── Add Round modal ───────────────────────────────────────────────────────
+    document.getElementById('save-round-btn').addEventListener('click', async () => {
+      const btn  = document.getElementById('save-round-btn');
+      const name = document.getElementById('new-round-name').value.trim();
+      if (!name) return;
+      btn.disabled = true;
+      try {
+        const r = await fetch(`/api/audition-days/${dayId}/callback-rounds`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        if (!r.ok) { alert('Could not create round.'); return; }
+        const round = await r.json();
+        cbRounds.push(round);
+        activeRoundId = round.id;
+        bootstrap.Modal.getInstance(document.getElementById('addRoundModal')).hide();
+        document.getElementById('new-round-name').value = '';
+        renderRoundTabs();
+        renderCallbackContent();
+      } finally { btn.disabled = false; }
+    });
+
+    // ── Initial render ────────────────────────────────────────────────────────
+    buildPieceSelector();
+    renderComboTabs();
+    renderGroupNav();
+    renderDancerList();
+    renderRoundTabs();
+
+  })();
   </script>
 </body>
 </html>

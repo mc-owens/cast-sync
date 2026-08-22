@@ -7521,6 +7521,82 @@ async function runMigrations() {
     console.log('Migration step 45 (show_piece_names) complete.');
   } catch (err) { console.error('Migration step 45 error:', err.message); }
 
+  // ── Step 46: new audition day schema ─────────────────────────────────────
+  try {
+    // Add callback_permission to audition_days
+    await pool.query(`
+      ALTER TABLE audition_days ADD COLUMN IF NOT EXISTS
+        callback_permission VARCHAR(20) NOT NULL DEFAULT 'all';
+    `);
+    // New tables
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audition_observations (
+        id               SERIAL PRIMARY KEY,
+        audition_day_id  INTEGER NOT NULL REFERENCES audition_days(id) ON DELETE CASCADE,
+        combo_id         INTEGER NOT NULL REFERENCES audition_combos(id) ON DELETE CASCADE,
+        submission_id    INTEGER NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+        rater_user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        piece_id         INTEGER NOT NULL REFERENCES pieces(id) ON DELETE CASCADE,
+        level            VARCHAR(20) NOT NULL CHECK (level IN ('priority','high_priority')),
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (combo_id, submission_id, rater_user_id, piece_id)
+      );
+      CREATE TABLE IF NOT EXISTS audition_notes (
+        id               SERIAL PRIMARY KEY,
+        audition_day_id  INTEGER NOT NULL REFERENCES audition_days(id) ON DELETE CASCADE,
+        submission_id    INTEGER NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+        rater_user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        body             TEXT NOT NULL DEFAULT '',
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (audition_day_id, submission_id, rater_user_id)
+      );
+      CREATE TABLE IF NOT EXISTS audition_final_considerations (
+        id               SERIAL PRIMARY KEY,
+        audition_day_id  INTEGER NOT NULL REFERENCES audition_days(id) ON DELETE CASCADE,
+        submission_id    INTEGER NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+        rater_user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        piece_id         INTEGER NOT NULL REFERENCES pieces(id) ON DELETE CASCADE,
+        level            VARCHAR(20) NOT NULL CHECK (level IN ('priority','high_priority','not_considering')),
+        updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (audition_day_id, submission_id, rater_user_id, piece_id)
+      );
+      CREATE TABLE IF NOT EXISTS audition_callback_rounds (
+        id               SERIAL PRIMARY KEY,
+        audition_day_id  INTEGER NOT NULL REFERENCES audition_days(id) ON DELETE CASCADE,
+        name             VARCHAR(100) NOT NULL,
+        sort_order       INTEGER NOT NULL DEFAULT 0,
+        combo_id         INTEGER REFERENCES audition_combos(id) ON DELETE SET NULL,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS audition_callbacks (
+        id                  SERIAL PRIMARY KEY,
+        callback_round_id   INTEGER NOT NULL REFERENCES audition_callback_rounds(id) ON DELETE CASCADE,
+        submission_id       INTEGER NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+        added_by_user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        added_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (callback_round_id, submission_id)
+      );
+      CREATE TABLE IF NOT EXISTS audition_callback_log (
+        id                  SERIAL PRIMARY KEY,
+        callback_round_id   INTEGER NOT NULL REFERENCES audition_callback_rounds(id) ON DELETE CASCADE,
+        submission_id       INTEGER NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+        action              VARCHAR(10) NOT NULL CHECK (action IN ('added','removed')),
+        user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    // Create default callback round for existing audition days that don't have one
+    await pool.query(`
+      INSERT INTO audition_callback_rounds (audition_day_id, name, sort_order)
+      SELECT id, 'Callbacks', 0 FROM audition_days
+      WHERE id NOT IN (SELECT DISTINCT audition_day_id FROM audition_callback_rounds);
+    `);
+    // Drop old conflated tables
+    await pool.query(`DROP TABLE IF EXISTS audition_day_piece_ratings;`);
+    await pool.query(`DROP TABLE IF EXISTS audition_day_ratings;`);
+    console.log('Migration step 46 (new audition day schema) complete.');
+  } catch (err) { console.error('Migration step 46 error:', err.message); }
+
   console.log('All migrations complete.');
 }
 
@@ -7640,9 +7716,9 @@ app.get('/api/audition-days', requireAuth('master'), async (req, res) => {
     const result = await pool.query(`
       SELECT ad.id, ad.name, ad.audition_date, ad.created_at,
         (SELECT COUNT(*) FROM submissions s WHERE s.org_id = ad.org_id AND s.season_id = ad.season_id) AS dancer_count,
-        (SELECT COUNT(DISTINCT adpr.submission_id) FROM audition_day_piece_ratings adpr WHERE adpr.audition_day_id = ad.id) AS rated_count,
-        (SELECT COUNT(DISTINCT adr.submission_id) FROM audition_day_ratings adr WHERE adr.audition_day_id = ad.id AND adr.callback = TRUE) AS callback_count,
-        (SELECT COUNT(*) FROM audition_combos ac WHERE ac.audition_day_id = ad.id) AS combo_count
+        (SELECT COUNT(DISTINCT ao.submission_id) FROM audition_observations ao WHERE ao.audition_day_id = ad.id) AS rated_count,
+        (SELECT COUNT(DISTINCT ac.submission_id) FROM audition_callbacks ac JOIN audition_callback_rounds acr ON acr.id = ac.callback_round_id WHERE acr.audition_day_id = ad.id) AS callback_count,
+        (SELECT COUNT(*) FROM audition_combos ac2 WHERE ac2.audition_day_id = ad.id) AS combo_count
       FROM audition_days ad
       WHERE ad.season_id = $1 AND ad.org_id = $2
       ORDER BY ad.created_at DESC
@@ -7674,6 +7750,10 @@ app.post('/api/audition-days', requireAuth('master'), async (req, res) => {
        VALUES ($1, 'Combo 1', $2, $3, 1)`,
       [dayId, gs, so]
     );
+    await pool.query(
+      `INSERT INTO audition_callback_rounds (audition_day_id, name, sort_order) VALUES ($1, 'Callbacks', 0)`,
+      [dayId]
+    );
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err.message);
@@ -7697,30 +7777,32 @@ app.delete('/api/audition-days/:id', requireAuth('master'), async (req, res) => 
   }
 });
 
-// GET /api/audition-casting/:pieceId — notes + piece ratings for Casting Availability
+// GET /api/audition-casting/:pieceId — final considerations + notes for Casting Availability
 app.get('/api/audition-casting/:pieceId', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
-    const [notesRes, ratingsRes] = await Promise.all([
+    const [notesRes, finalRes] = await Promise.all([
       pool.query(`
         SELECT DISTINCT s.user_id
-        FROM audition_day_ratings adr
-        JOIN audition_days ad ON ad.id = adr.audition_day_id
-        JOIN submissions s ON s.id = adr.submission_id
+        FROM audition_notes an
+        JOIN audition_days ad ON ad.id = an.audition_day_id
+        JOIN submissions s ON s.id = an.submission_id
         WHERE ad.season_id = $1 AND ad.org_id = $2
-          AND adr.note IS NOT NULL AND adr.note != ''
+          AND an.body IS NOT NULL AND an.body != ''
       `, [seasonId, orgId]),
       pool.query(`
-        SELECT s.user_id, adpr.level,
+        SELECT s.user_id, afc.level,
                COALESCE(u.name, u.email) AS rater_name, u.id AS rater_id,
                p.master_id AS piece_master_id
-        FROM audition_day_piece_ratings adpr
-        JOIN audition_days ad ON ad.id = adpr.audition_day_id
-        JOIN submissions s ON s.id = adpr.submission_id
-        JOIN users u ON u.id = adpr.rater_user_id
-        JOIN pieces p ON p.id = adpr.piece_id
-        WHERE ad.season_id = $1 AND ad.org_id = $2 AND adpr.piece_id = $3
+        FROM audition_final_considerations afc
+        JOIN audition_days ad ON ad.id = afc.audition_day_id
+        JOIN submissions s ON s.id = afc.submission_id
+        JOIN users u ON u.id = afc.rater_user_id
+        JOIN pieces p ON p.id = afc.piece_id
+        WHERE ad.season_id = $1 AND ad.org_id = $2
+          AND afc.piece_id = $3
+          AND afc.level != 'not_considering'
       `, [seasonId, orgId, req.params.pieceId]),
     ]);
     const result = {};
@@ -7728,7 +7810,7 @@ app.get('/api/audition-casting/:pieceId', requireAuth('master'), async (req, res
       if (!result[r.user_id]) result[r.user_id] = { hasNote: false, pieceRatings: [] };
       result[r.user_id].hasNote = true;
     }
-    for (const r of ratingsRes.rows) {
+    for (const r of finalRes.rows) {
       if (!result[r.user_id]) result[r.user_id] = { hasNote: false, pieceRatings: [] };
       result[r.user_id].pieceRatings.push({
         level: r.level,
@@ -7744,60 +7826,88 @@ app.get('/api/audition-casting/:pieceId', requireAuth('master'), async (req, res
   }
 });
 
-// GET /api/audition-days/:id — combos + pieces + dancers + current user's ratings
+// GET /api/audition-days/:id
 app.get('/api/audition-days/:id', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
     const dayRes = await pool.query(
-      `SELECT * FROM audition_days WHERE id = $1 AND season_id = $2 AND org_id = $3`,
+      `SELECT * FROM audition_days WHERE id=$1 AND season_id=$2 AND org_id=$3`,
       [req.params.id, seasonId, orgId]
     );
-    if (dayRes.rows.length === 0) return res.status(404).json({ error: 'Not found.' });
+    if (!dayRes.rows.length) return res.status(404).json({ error: 'Not found.' });
 
-    const [combosRes, piecesRes, dancersRes, generalRes, pieceRatRes] = await Promise.all([
+    const [combosRes, piecesRes, dancersRes, obsRes, notesRes, finalRes, roundsRes] = await Promise.all([
       pool.query(
         `SELECT id, name, group_size, sort_order, position FROM audition_combos
-         WHERE audition_day_id = $1 ORDER BY position ASC`, [req.params.id]
+         WHERE audition_day_id=$1 ORDER BY position ASC`, [req.params.id]
       ),
       pool.query(
-        `SELECT p.id, p.name, p.master_id, u.email AS master_email,
-                COALESCE(u.name, u.email) AS master_display_name
-         FROM pieces p LEFT JOIN users u ON u.id = p.master_id
-         WHERE p.season_id = $1 ORDER BY p.name ASC`, [seasonId]
+        `SELECT p.id, p.name, (p.master_id = $2) AS is_mine
+         FROM pieces p WHERE p.season_id=$1
+         ORDER BY (p.master_id = $2) DESC, p.name ASC`,
+        [seasonId, req.session.userId]
       ),
       pool.query(
         `SELECT sub.id AS submission_id, u.id AS user_id,
-                dp.first_name, dp.last_name, sub.audition_number, u.email
+                COALESCE(dp.first_name,'') AS first_name, COALESCE(dp.last_name,'') AS last_name,
+                sub.audition_number
          FROM submissions sub
          JOIN users u ON u.id = sub.user_id
          LEFT JOIN dancer_profiles dp ON dp.user_id = sub.user_id
-         WHERE sub.org_id = $1 AND sub.season_id = $2`, [orgId, seasonId]
+         WHERE sub.org_id=$1 AND sub.season_id=$2
+         ORDER BY sub.audition_number ASC NULLS LAST, dp.last_name ASC`,
+        [orgId, seasonId]
       ),
       pool.query(
-        `SELECT combo_id, submission_id, callback, note FROM audition_day_ratings
-         WHERE audition_day_id = $1 AND rater_user_id = $2`,
+        `SELECT combo_id, submission_id, piece_id, level FROM audition_observations
+         WHERE audition_day_id=$1 AND rater_user_id=$2`,
         [req.params.id, req.session.userId]
       ),
       pool.query(
-        `SELECT combo_id, submission_id, piece_id, level FROM audition_day_piece_ratings
-         WHERE audition_day_id = $1 AND rater_user_id = $2`,
+        `SELECT submission_id, body FROM audition_notes
+         WHERE audition_day_id=$1 AND rater_user_id=$2`,
         [req.params.id, req.session.userId]
+      ),
+      pool.query(
+        `SELECT submission_id, piece_id, level FROM audition_final_considerations
+         WHERE audition_day_id=$1 AND rater_user_id=$2`,
+        [req.params.id, req.session.userId]
+      ),
+      pool.query(`
+        SELECT acr.id, acr.name, acr.sort_order, acr.combo_id,
+               COALESCE(json_agg(jsonb_build_object(
+                 'submission_id', ac.submission_id,
+                 'added_by_user_id', ac.added_by_user_id,
+                 'added_by_name', COALESCE(u.name, u.email)
+               )) FILTER (WHERE ac.submission_id IS NOT NULL), '[]') AS callbacks
+        FROM audition_callback_rounds acr
+        LEFT JOIN audition_callbacks ac ON ac.callback_round_id = acr.id
+        LEFT JOIN users u ON u.id = ac.added_by_user_id
+        WHERE acr.audition_day_id=$1
+        GROUP BY acr.id ORDER BY acr.sort_order ASC, acr.created_at ASC`,
+        [req.params.id]
       ),
     ]);
 
-    // myComboRatings: { comboId: { general: { subId: {callback,note} }, piece: { subId: { pieceId: level } } } }
-    const myComboRatings = {};
-    for (const r of generalRes.rows) {
-      const cid = String(r.combo_id);
-      if (!myComboRatings[cid]) myComboRatings[cid] = { general: {}, piece: {} };
-      myComboRatings[cid].general[r.submission_id] = { callback: r.callback, note: r.note };
+    // myObservations: { comboId: { submissionId: { pieceId: level } } }
+    const myObservations = {};
+    for (const r of obsRes.rows) {
+      const cid = String(r.combo_id), sid = String(r.submission_id), pid = String(r.piece_id);
+      if (!myObservations[cid]) myObservations[cid] = {};
+      if (!myObservations[cid][sid]) myObservations[cid][sid] = {};
+      myObservations[cid][sid][pid] = r.level;
     }
-    for (const r of pieceRatRes.rows) {
-      const cid = String(r.combo_id);
-      if (!myComboRatings[cid]) myComboRatings[cid] = { general: {}, piece: {} };
-      if (!myComboRatings[cid].piece[r.submission_id]) myComboRatings[cid].piece[r.submission_id] = {};
-      myComboRatings[cid].piece[r.submission_id][r.piece_id] = r.level;
+
+    const myNotes = {};
+    for (const r of notesRes.rows) myNotes[String(r.submission_id)] = r.body;
+
+    // myFinalConsiderations: { submissionId: { pieceId: level } }
+    const myFinalConsiderations = {};
+    for (const r of finalRes.rows) {
+      const sid = String(r.submission_id), pid = String(r.piece_id);
+      if (!myFinalConsiderations[sid]) myFinalConsiderations[sid] = {};
+      myFinalConsiderations[sid][pid] = r.level;
     }
 
     res.json({
@@ -7805,7 +7915,10 @@ app.get('/api/audition-days/:id', requireAuth('master'), async (req, res) => {
       combos: combosRes.rows,
       pieces: piecesRes.rows,
       dancers: dancersRes.rows,
-      myComboRatings,
+      myObservations,
+      myNotes,
+      myFinalConsiderations,
+      callbackRounds: roundsRes.rows,
     });
   } catch (err) {
     console.error(err.message);
@@ -7813,64 +7926,232 @@ app.get('/api/audition-days/:id', requireAuth('master'), async (req, res) => {
   }
 });
 
-// PUT /api/audition-days/:id/ratings/:submissionId — callback + note (per combo)
-app.put('/api/audition-days/:id/ratings/:submissionId', requireAuth('master'), async (req, res) => {
+// PUT /api/audition-days/:id/observations — upsert or delete a combo observation
+app.put('/api/audition-days/:id/observations', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.session;
-  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
-  const { combo_id, callback, note } = req.body;
-  if (!combo_id) return res.status(400).json({ error: 'combo_id required.' });
-  try {
-    const dayCheck = await pool.query(
-      `SELECT id FROM audition_days WHERE id = $1 AND season_id = $2 AND org_id = $3`,
-      [req.params.id, seasonId, orgId]
-    );
-    if (dayCheck.rows.length === 0) return res.status(404).json({ error: 'Not found.' });
-    await pool.query(
-      `INSERT INTO audition_day_ratings (audition_day_id, combo_id, submission_id, rater_user_id, callback, note, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       ON CONFLICT (combo_id, submission_id, rater_user_id)
-       DO UPDATE SET callback = $5, note = $6, updated_at = NOW()`,
-      [req.params.id, combo_id, req.params.submissionId, req.session.userId,
-       callback === true, (note || '').trim() || null]
-    );
-    res.json({ ok: true });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: 'Failed to save.' });
-  }
-});
-
-// PUT /api/audition-days/:id/piece-ratings — upsert or delete a piece-specific rating (per combo)
-app.put('/api/audition-days/:id/piece-ratings', requireAuth('master'), async (req, res) => {
-  const { orgId, seasonId } = req.session;
-  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   const { combo_id, submission_id, piece_id, level } = req.body;
-  if (!combo_id || !submission_id || !piece_id) return res.status(400).json({ error: 'combo_id, submission_id and piece_id required.' });
+  if (!combo_id || !submission_id || !piece_id) return res.status(400).json({ error: 'combo_id, submission_id, piece_id required.' });
   try {
     const dayCheck = await pool.query(
-      `SELECT id FROM audition_days WHERE id = $1 AND season_id = $2 AND org_id = $3`,
+      `SELECT id FROM audition_days WHERE id=$1 AND season_id=$2 AND org_id=$3`,
       [req.params.id, seasonId, orgId]
     );
-    if (dayCheck.rows.length === 0) return res.status(404).json({ error: 'Not found.' });
+    if (!dayCheck.rows.length) return res.status(404).json({ error: 'Not found.' });
     if (!level) {
       await pool.query(
-        `DELETE FROM audition_day_piece_ratings
+        `DELETE FROM audition_observations
          WHERE combo_id=$1 AND submission_id=$2 AND rater_user_id=$3 AND piece_id=$4`,
         [combo_id, submission_id, req.session.userId, piece_id]
       );
     } else {
       await pool.query(
-        `INSERT INTO audition_day_piece_ratings (audition_day_id, combo_id, submission_id, rater_user_id, piece_id, level, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        `INSERT INTO audition_observations (audition_day_id, combo_id, submission_id, rater_user_id, piece_id, level)
+         VALUES ($1,$2,$3,$4,$5,$6)
          ON CONFLICT (combo_id, submission_id, rater_user_id, piece_id)
-         DO UPDATE SET level = $6, updated_at = NOW()`,
+         DO UPDATE SET level=$6`,
         [req.params.id, combo_id, submission_id, req.session.userId, piece_id, level]
       );
     }
     res.json({ ok: true });
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ error: 'Failed to save piece rating.' });
+    res.status(500).json({ error: 'Failed to save observation.' });
+  }
+});
+
+// PUT /api/audition-days/:id/notes/:submissionId — upsert running note
+app.put('/api/audition-days/:id/notes/:submissionId', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  const { body } = req.body;
+  try {
+    const dayCheck = await pool.query(
+      `SELECT id FROM audition_days WHERE id=$1 AND season_id=$2 AND org_id=$3`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (!dayCheck.rows.length) return res.status(404).json({ error: 'Not found.' });
+    if (!body || !body.trim()) {
+      await pool.query(
+        `DELETE FROM audition_notes WHERE audition_day_id=$1 AND submission_id=$2 AND rater_user_id=$3`,
+        [req.params.id, req.params.submissionId, req.session.userId]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO audition_notes (audition_day_id, submission_id, rater_user_id, body, updated_at)
+         VALUES ($1,$2,$3,$4,NOW())
+         ON CONFLICT (audition_day_id, submission_id, rater_user_id)
+         DO UPDATE SET body=$4, updated_at=NOW()`,
+        [req.params.id, req.params.submissionId, req.session.userId, body.trim()]
+      );
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save note.' });
+  }
+});
+
+// PUT /api/audition-days/:id/final-considerations
+app.put('/api/audition-days/:id/final-considerations', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  const { submission_id, piece_id, level } = req.body;
+  if (!submission_id || !piece_id) return res.status(400).json({ error: 'submission_id and piece_id required.' });
+  try {
+    const dayCheck = await pool.query(
+      `SELECT id FROM audition_days WHERE id=$1 AND season_id=$2 AND org_id=$3`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (!dayCheck.rows.length) return res.status(404).json({ error: 'Not found.' });
+    if (!level) {
+      await pool.query(
+        `DELETE FROM audition_final_considerations
+         WHERE audition_day_id=$1 AND submission_id=$2 AND rater_user_id=$3 AND piece_id=$4`,
+        [req.params.id, submission_id, req.session.userId, piece_id]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO audition_final_considerations (audition_day_id, submission_id, rater_user_id, piece_id, level, updated_at)
+         VALUES ($1,$2,$3,$4,$5,NOW())
+         ON CONFLICT (audition_day_id, submission_id, rater_user_id, piece_id)
+         DO UPDATE SET level=$5, updated_at=NOW()`,
+        [req.params.id, submission_id, req.session.userId, piece_id, level]
+      );
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save consideration.' });
+  }
+});
+
+// GET /api/audition-days/:id/callback-rounds — polled for live sync
+app.get('/api/audition-days/:id/callback-rounds', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  try {
+    const result = await pool.query(`
+      SELECT acr.id, acr.name, acr.sort_order, acr.combo_id,
+             COALESCE(json_agg(jsonb_build_object(
+               'submission_id', ac.submission_id,
+               'added_by_user_id', ac.added_by_user_id,
+               'added_by_name', COALESCE(u.name, u.email)
+             )) FILTER (WHERE ac.submission_id IS NOT NULL), '[]') AS callbacks
+      FROM audition_callback_rounds acr
+      JOIN audition_days ad ON ad.id = acr.audition_day_id
+      LEFT JOIN audition_callbacks ac ON ac.callback_round_id = acr.id
+      LEFT JOIN users u ON u.id = ac.added_by_user_id
+      WHERE acr.audition_day_id=$1 AND ad.season_id=$2 AND ad.org_id=$3
+      GROUP BY acr.id ORDER BY acr.sort_order ASC, acr.created_at ASC
+    `, [req.params.id, seasonId, orgId]);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch callback rounds.' });
+  }
+});
+
+// POST /api/audition-days/:id/callback-rounds
+app.post('/api/audition-days/:id/callback-rounds', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  const { name, combo_id } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Name required.' });
+  try {
+    const dayCheck = await pool.query(
+      `SELECT id FROM audition_days WHERE id=$1 AND season_id=$2 AND org_id=$3`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (!dayCheck.rows.length) return res.status(404).json({ error: 'Not found.' });
+    const posRes = await pool.query(
+      `SELECT COALESCE(MAX(sort_order),0)+1 AS next FROM audition_callback_rounds WHERE audition_day_id=$1`,
+      [req.params.id]
+    );
+    const result = await pool.query(
+      `INSERT INTO audition_callback_rounds (audition_day_id, name, sort_order, combo_id)
+       VALUES ($1,$2,$3,$4) RETURNING *`,
+      [req.params.id, name.trim(), posRes.rows[0].next, combo_id || null]
+    );
+    res.json({ ...result.rows[0], callbacks: [] });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to create callback round.' });
+  }
+});
+
+// PATCH /api/audition-days/:id/callback-rounds/:roundId
+app.patch('/api/audition-days/:id/callback-rounds/:roundId', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  const { name } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Name required.' });
+  try {
+    const result = await pool.query(`
+      UPDATE audition_callback_rounds SET name=$1
+      WHERE id=$2 AND audition_day_id=(SELECT id FROM audition_days WHERE id=$3 AND season_id=$4 AND org_id=$5)
+      RETURNING id`,
+      [name.trim(), req.params.roundId, req.params.id, seasonId, orgId]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Not found.' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to rename.' });
+  }
+});
+
+// DELETE /api/audition-days/:id/callback-rounds/:roundId
+app.delete('/api/audition-days/:id/callback-rounds/:roundId', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  try {
+    const countRes = await pool.query(`
+      SELECT COUNT(*) FROM audition_callback_rounds acr
+      JOIN audition_days ad ON ad.id = acr.audition_day_id
+      WHERE acr.audition_day_id=$1 AND ad.season_id=$2 AND ad.org_id=$3`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (parseInt(countRes.rows[0].count) <= 1) {
+      return res.status(400).json({ error: 'Cannot delete the last callback round.' });
+    }
+    await pool.query(`
+      DELETE FROM audition_callback_rounds
+      WHERE id=$1 AND audition_day_id=(SELECT id FROM audition_days WHERE id=$2 AND season_id=$3 AND org_id=$4)`,
+      [req.params.roundId, req.params.id, seasonId, orgId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete.' });
+  }
+});
+
+// POST /api/audition-days/:id/callback-rounds/:roundId/callbacks/:submissionId — toggle
+app.post('/api/audition-days/:id/callback-rounds/:roundId/callbacks/:submissionId', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  try {
+    const dayCheck = await pool.query(
+      `SELECT id FROM audition_days WHERE id=$1 AND season_id=$2 AND org_id=$3`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (!dayCheck.rows.length) return res.status(404).json({ error: 'Not found.' });
+    const existing = await pool.query(
+      `SELECT id FROM audition_callbacks WHERE callback_round_id=$1 AND submission_id=$2`,
+      [req.params.roundId, req.params.submissionId]
+    );
+    let action;
+    if (existing.rows.length) {
+      await pool.query(
+        `DELETE FROM audition_callbacks WHERE callback_round_id=$1 AND submission_id=$2`,
+        [req.params.roundId, req.params.submissionId]
+      );
+      action = 'removed';
+    } else {
+      await pool.query(
+        `INSERT INTO audition_callbacks (callback_round_id, submission_id, added_by_user_id) VALUES ($1,$2,$3)`,
+        [req.params.roundId, req.params.submissionId, req.session.userId]
+      );
+      action = 'added';
+    }
+    await pool.query(
+      `INSERT INTO audition_callback_log (callback_round_id, submission_id, action, user_id) VALUES ($1,$2,$3,$4)`,
+      [req.params.roundId, req.params.submissionId, action, req.session.userId]
+    );
+    res.json({ ok: true, action });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to toggle callback.' });
   }
 });
 
@@ -7947,65 +8228,80 @@ app.delete('/api/audition-days/:id/combos/:comboId', requireAuth('master'), asyn
   }
 });
 
-// GET /api/audition-days/:id/review — all dancers, all raters, piece ratings + notes (optionally filtered by combo_id)
+// GET /api/audition-days/:id/review — personal review: all dancers I flagged this audition day
 app.get('/api/audition-days/:id/review', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
-  const comboId = req.query.combo_id ? parseInt(req.query.combo_id) : null;
   try {
     const dayRes = await pool.query(
-      `SELECT * FROM audition_days WHERE id = $1 AND season_id = $2 AND org_id = $3`,
+      `SELECT * FROM audition_days WHERE id=$1 AND season_id=$2 AND org_id=$3`,
       [req.params.id, seasonId, orgId]
     );
-    if (dayRes.rows.length === 0) return res.status(404).json({ error: 'Not found.' });
+    if (!dayRes.rows.length) return res.status(404).json({ error: 'Not found.' });
 
-    const pieceParams   = comboId ? [req.params.id, comboId] : [req.params.id];
-    const generalParams = comboId ? [req.params.id, comboId] : [req.params.id];
+    const combosRes = await pool.query(
+      `SELECT id, name, position FROM audition_combos WHERE audition_day_id=$1 ORDER BY position ASC`,
+      [req.params.id]
+    );
 
-    const [pieceRatRes, generalRes, dancersRes] = await Promise.all([
+    const [obsRes, notesRes, finalRes] = await Promise.all([
       pool.query(`
-        SELECT adpr.submission_id, adpr.piece_id, adpr.level,
-               p.name AS piece_name, p.master_id AS piece_master_id,
-               COALESCE(u.name, u.email) AS rater_display, u.id AS rater_id
-        FROM audition_day_piece_ratings adpr
-        JOIN pieces p ON p.id = adpr.piece_id
-        JOIN users u ON u.id = adpr.rater_user_id
-        WHERE adpr.audition_day_id = $1${comboId ? ' AND adpr.combo_id = $2' : ''}`,
-        pieceParams),
+        SELECT ao.combo_id, ao.submission_id, ao.piece_id, ao.level, p.name AS piece_name
+        FROM audition_observations ao
+        JOIN pieces p ON p.id = ao.piece_id
+        WHERE ao.audition_day_id=$1 AND ao.rater_user_id=$2`,
+        [req.params.id, req.session.userId]),
+      pool.query(
+        `SELECT submission_id, body FROM audition_notes WHERE audition_day_id=$1 AND rater_user_id=$2`,
+        [req.params.id, req.session.userId]),
       pool.query(`
-        SELECT adr.submission_id, adr.callback, adr.note,
-               COALESCE(u.name, u.email) AS rater_display
-        FROM audition_day_ratings adr
-        JOIN users u ON u.id = adr.rater_user_id
-        WHERE adr.audition_day_id = $1${comboId ? ' AND adr.combo_id = $2' : ''}`,
-        generalParams),
-      pool.query(`
-        SELECT sub.id AS submission_id, dp.first_name, dp.last_name, sub.audition_number, u.email
-        FROM submissions sub JOIN users u ON u.id = sub.user_id
-        LEFT JOIN dancer_profiles dp ON dp.user_id = sub.user_id
-        WHERE sub.org_id = $1 AND sub.season_id = $2`, [orgId, seasonId]),
+        SELECT afc.submission_id, afc.piece_id, afc.level, p.name AS piece_name
+        FROM audition_final_considerations afc
+        JOIN pieces p ON p.id = afc.piece_id
+        WHERE afc.audition_day_id=$1 AND afc.rater_user_id=$2`,
+        [req.params.id, req.session.userId]),
     ]);
 
-    // Build nested structure: submissionId → { piece_ratings: {pieceId: [...]}, general: [...] }
+    const allSubIds = [...new Set([
+      ...obsRes.rows.map(r => r.submission_id),
+      ...notesRes.rows.map(r => r.submission_id),
+      ...finalRes.rows.map(r => r.submission_id),
+    ])];
+
+    let dancers = [];
+    if (allSubIds.length) {
+      const dr = await pool.query(`
+        SELECT sub.id AS submission_id, COALESCE(dp.first_name,'') AS first_name,
+               COALESCE(dp.last_name,'') AS last_name, sub.audition_number
+        FROM submissions sub
+        LEFT JOIN dancer_profiles dp ON dp.user_id = sub.user_id
+        WHERE sub.id = ANY($1)`, [allSubIds]);
+      dancers = dr.rows;
+    }
+
+    // bySubmission[sid].observations[pieceId] = { piece_name, byCombo: { comboId: level } }
     const bySubmission = {};
-    for (const r of pieceRatRes.rows) {
-      if (!bySubmission[r.submission_id]) bySubmission[r.submission_id] = { piece_ratings: {}, notes: [], callback: false };
-      if (!bySubmission[r.submission_id].piece_ratings[r.piece_id]) {
-        bySubmission[r.submission_id].piece_ratings[r.piece_id] = { piece_name: r.piece_name, piece_master_id: r.piece_master_id, ratings: [] };
-      }
-      bySubmission[r.submission_id].piece_ratings[r.piece_id].ratings.push({ level: r.level, rater: r.rater_display, rater_id: r.rater_id });
+    for (const r of obsRes.rows) {
+      const sid = r.submission_id;
+      if (!bySubmission[sid]) bySubmission[sid] = { observations: {}, note: null, finalConsiderations: {} };
+      const pid = String(r.piece_id);
+      if (!bySubmission[sid].observations[pid]) bySubmission[sid].observations[pid] = { piece_name: r.piece_name, byCombo: {} };
+      bySubmission[sid].observations[pid].byCombo[String(r.combo_id)] = r.level;
     }
-    for (const r of generalRes.rows) {
-      if (!bySubmission[r.submission_id]) bySubmission[r.submission_id] = { piece_ratings: {}, notes: [], callback: false };
-      if (r.callback) bySubmission[r.submission_id].callback = true;
-      if (r.note) bySubmission[r.submission_id].notes.push({ note: r.note, rater: r.rater_display });
+    for (const r of notesRes.rows) {
+      if (!bySubmission[r.submission_id]) bySubmission[r.submission_id] = { observations: {}, note: null, finalConsiderations: {} };
+      bySubmission[r.submission_id].note = r.body;
+    }
+    for (const r of finalRes.rows) {
+      if (!bySubmission[r.submission_id]) bySubmission[r.submission_id] = { observations: {}, note: null, finalConsiderations: {} };
+      bySubmission[r.submission_id].finalConsiderations[String(r.piece_id)] = { level: r.level, piece_name: r.piece_name };
     }
 
-    const dancers = dancersRes.rows.map(d => ({
-      ...d, ...(bySubmission[d.submission_id] || { piece_ratings: {}, notes: [], callback: false })
-    }));
-
-    res.json({ day: dayRes.rows[0], dancers });
+    res.json({
+      day: dayRes.rows[0],
+      combos: combosRes.rows,
+      dancers: dancers.map(d => ({ ...d, ...(bySubmission[d.submission_id] || {}) })),
+    });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to load review.' });
