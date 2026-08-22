@@ -13,7 +13,7 @@
       // (scope=org) instead of a specific season's form -- keep this id stable.
       { label: 'Audition Form', href: 'form-builder.html?scope=season', matchHref: 'form-builder.html', id: 'form-nav-link' },
       { label: 'Auditionees',   href: 'dancers.html' },
-      { label: 'Audition Day',  href: 'audition-day.html' },
+      { label: 'Audition Day',  href: 'audition-day.html', badge: 'New!' },
     ]},
     { section: 'Production', items: [
       { label: 'Production Timeline', href: 'master.html' },
@@ -48,7 +48,10 @@
     }
     const activeClass = isActive(item) ? ' active' : '';
     const idAttr = item.id ? ` id="${item.id}"` : '';
-    return `<a class="app-sidebar-link${activeClass}"${idAttr} href="${item.href}">${item.label}</a>`;
+    const badgeHtml = item.badge
+      ? `<span style="display:inline-block;background:#c9a84c;color:#fff;font-size:7px;font-weight:800;padding:1px 5px;border-radius:3px;margin-left:5px;transform:rotate(-10deg);vertical-align:middle;letter-spacing:.04em;line-height:1.5;">${item.badge}</span>`
+      : '';
+    return `<a class="app-sidebar-link${activeClass}"${idAttr} href="${item.href}">${item.label}${badgeHtml}</a>`;
   }
 
   function renderSidebar() {

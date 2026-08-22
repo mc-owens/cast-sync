@@ -7421,6 +7421,31 @@ async function runMigrations() {
     console.log('Migration step 42 (audition_days) complete.');
   } catch (err) { console.error('Migration step 42 error:', err.message); }
 
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audition_combos (
+        id              SERIAL PRIMARY KEY,
+        audition_day_id INTEGER REFERENCES audition_days(id) ON DELETE CASCADE,
+        name            VARCHAR(255) NOT NULL DEFAULT 'Combo',
+        group_size      INTEGER NOT NULL DEFAULT 8,
+        sort_order      VARCHAR(20) NOT NULL DEFAULT 'number',
+        position        INTEGER NOT NULL DEFAULT 1,
+        created_at      TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS audition_day_piece_ratings (
+        id              SERIAL PRIMARY KEY,
+        audition_day_id INTEGER REFERENCES audition_days(id) ON DELETE CASCADE,
+        submission_id   INTEGER REFERENCES submissions(id)   ON DELETE CASCADE,
+        rater_user_id   INTEGER REFERENCES users(id)         ON DELETE CASCADE,
+        piece_id        INTEGER REFERENCES pieces(id)        ON DELETE CASCADE,
+        level           VARCHAR(20) NOT NULL CHECK (level IN ('priority','high_priority')),
+        updated_at      TIMESTAMP DEFAULT NOW(),
+        UNIQUE(audition_day_id, submission_id, rater_user_id, piece_id)
+      );
+    `);
+    console.log('Migration step 43 (audition_combos + piece_ratings) complete.');
+  } catch (err) { console.error('Migration step 43 error:', err.message); }
+
   console.log('All migrations complete.');
 }
 
@@ -7538,10 +7563,11 @@ app.get('/api/audition-days', requireAuth('master'), async (req, res) => {
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
     const result = await pool.query(`
-      SELECT ad.id, ad.name, ad.audition_date, ad.group_size, ad.sort_order, ad.created_at,
+      SELECT ad.id, ad.name, ad.audition_date, ad.created_at,
         (SELECT COUNT(*) FROM submissions s WHERE s.org_id = ad.org_id AND s.season_id = ad.season_id) AS dancer_count,
-        (SELECT COUNT(DISTINCT adr.submission_id) FROM audition_day_ratings adr WHERE adr.audition_day_id = ad.id AND adr.priority = TRUE) AS priority_count,
-        (SELECT COUNT(DISTINCT adr.submission_id) FROM audition_day_ratings adr WHERE adr.audition_day_id = ad.id AND adr.callback = TRUE) AS callback_count
+        (SELECT COUNT(DISTINCT adpr.submission_id) FROM audition_day_piece_ratings adpr WHERE adpr.audition_day_id = ad.id) AS rated_count,
+        (SELECT COUNT(DISTINCT adr.submission_id) FROM audition_day_ratings adr WHERE adr.audition_day_id = ad.id AND adr.callback = TRUE) AS callback_count,
+        (SELECT COUNT(*) FROM audition_combos ac WHERE ac.audition_day_id = ad.id) AS combo_count
       FROM audition_days ad
       WHERE ad.season_id = $1 AND ad.org_id = $2
       ORDER BY ad.created_at DESC
@@ -7567,6 +7593,12 @@ app.post('/api/audition-days', requireAuth('master'), async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [seasonId, orgId, name.trim(), audition_date || null, gs, so]
     );
+    const dayId = result.rows[0].id;
+    await pool.query(
+      `INSERT INTO audition_combos (audition_day_id, name, group_size, sort_order, position)
+       VALUES ($1, 'Combo 1', $2, $3, 1)`,
+      [dayId, gs, so]
+    );
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err.message);
@@ -7590,7 +7622,7 @@ app.delete('/api/audition-days/:id', requireAuth('master'), async (req, res) => 
   }
 });
 
-// GET /api/audition-days/:id — dancers + current user's ratings
+// GET /api/audition-days/:id — combos + pieces + dancers + current user's ratings
 app.get('/api/audition-days/:id', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
@@ -7600,64 +7632,196 @@ app.get('/api/audition-days/:id', requireAuth('master'), async (req, res) => {
       [req.params.id, seasonId, orgId]
     );
     if (dayRes.rows.length === 0) return res.status(404).json({ error: 'Not found.' });
-    const day = dayRes.rows[0];
 
-    const dancersRes = await pool.query(
-      `SELECT sub.id AS submission_id, u.id AS user_id,
-              dp.first_name, dp.last_name, sub.audition_number, u.email
-       FROM submissions sub
-       JOIN users u ON u.id = sub.user_id
-       LEFT JOIN dancer_profiles dp ON dp.user_id = sub.user_id
-       WHERE sub.org_id = $1 AND sub.season_id = $2`,
-      [orgId, seasonId]
-    );
+    const [combosRes, piecesRes, dancersRes, generalRes, pieceRatRes] = await Promise.all([
+      pool.query(
+        `SELECT id, name, group_size, sort_order, position FROM audition_combos
+         WHERE audition_day_id = $1 ORDER BY position ASC`, [req.params.id]
+      ),
+      pool.query(
+        `SELECT p.id, p.name, p.master_id, u.email AS master_email,
+                COALESCE(u.name, u.email) AS master_display_name
+         FROM pieces p LEFT JOIN users u ON u.id = p.master_id
+         WHERE p.season_id = $1 ORDER BY p.name ASC`, [seasonId]
+      ),
+      pool.query(
+        `SELECT sub.id AS submission_id, u.id AS user_id,
+                dp.first_name, dp.last_name, sub.audition_number, u.email
+         FROM submissions sub
+         JOIN users u ON u.id = sub.user_id
+         LEFT JOIN dancer_profiles dp ON dp.user_id = sub.user_id
+         WHERE sub.org_id = $1 AND sub.season_id = $2`, [orgId, seasonId]
+      ),
+      pool.query(
+        `SELECT submission_id, callback, note FROM audition_day_ratings
+         WHERE audition_day_id = $1 AND rater_user_id = $2`,
+        [req.params.id, req.session.userId]
+      ),
+      pool.query(
+        `SELECT submission_id, piece_id, level FROM audition_day_piece_ratings
+         WHERE audition_day_id = $1 AND rater_user_id = $2`,
+        [req.params.id, req.session.userId]
+      ),
+    ]);
 
-    const ratingsRes = await pool.query(
-      `SELECT submission_id, priority, callback, note
-       FROM audition_day_ratings
-       WHERE audition_day_id = $1 AND rater_user_id = $2`,
-      [req.params.id, req.session.userId]
-    );
-    const myRatings = {};
-    for (const r of ratingsRes.rows) {
-      myRatings[r.submission_id] = { priority: r.priority, callback: r.callback, note: r.note };
+    const myGeneralRatings = {};
+    for (const r of generalRes.rows) {
+      myGeneralRatings[r.submission_id] = { callback: r.callback, note: r.note };
+    }
+    const myPieceRatings = {};
+    for (const r of pieceRatRes.rows) {
+      if (!myPieceRatings[r.submission_id]) myPieceRatings[r.submission_id] = {};
+      myPieceRatings[r.submission_id][r.piece_id] = r.level;
     }
 
-    res.json({ day, dancers: dancersRes.rows, myRatings });
+    res.json({
+      day: dayRes.rows[0],
+      combos: combosRes.rows,
+      pieces: piecesRes.rows,
+      dancers: dancersRes.rows,
+      myGeneralRatings,
+      myPieceRatings,
+    });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to load audition day.' });
   }
 });
 
-// PUT /api/audition-days/:id/ratings/:submissionId — upsert rating
+// PUT /api/audition-days/:id/ratings/:submissionId — callback + note (general)
 app.put('/api/audition-days/:id/ratings/:submissionId', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
-  const { priority, callback, note } = req.body;
+  const { callback, note } = req.body;
   try {
     const dayCheck = await pool.query(
       `SELECT id FROM audition_days WHERE id = $1 AND season_id = $2 AND org_id = $3`,
       [req.params.id, seasonId, orgId]
     );
     if (dayCheck.rows.length === 0) return res.status(404).json({ error: 'Not found.' });
-
     await pool.query(
-      `INSERT INTO audition_day_ratings (audition_day_id, submission_id, rater_user_id, priority, callback, note, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      `INSERT INTO audition_day_ratings (audition_day_id, submission_id, rater_user_id, callback, note, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
        ON CONFLICT (audition_day_id, submission_id, rater_user_id)
-       DO UPDATE SET priority = $4, callback = $5, note = $6, updated_at = NOW()`,
+       DO UPDATE SET callback = $4, note = $5, updated_at = NOW()`,
       [req.params.id, req.params.submissionId, req.session.userId,
-       priority === true, callback === true, (note || '').trim() || null]
+       callback === true, (note || '').trim() || null]
     );
     res.json({ ok: true });
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ error: 'Failed to save rating.' });
+    res.status(500).json({ error: 'Failed to save.' });
   }
 });
 
-// GET /api/audition-days/:id/review — all dancers + all raters' ratings
+// PUT /api/audition-days/:id/piece-ratings — upsert or delete a piece-specific rating
+app.put('/api/audition-days/:id/piece-ratings', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  const { submission_id, piece_id, level } = req.body;
+  if (!submission_id || !piece_id) return res.status(400).json({ error: 'submission_id and piece_id required.' });
+  try {
+    const dayCheck = await pool.query(
+      `SELECT id FROM audition_days WHERE id = $1 AND season_id = $2 AND org_id = $3`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (dayCheck.rows.length === 0) return res.status(404).json({ error: 'Not found.' });
+    if (!level) {
+      await pool.query(
+        `DELETE FROM audition_day_piece_ratings
+         WHERE audition_day_id=$1 AND submission_id=$2 AND rater_user_id=$3 AND piece_id=$4`,
+        [req.params.id, submission_id, req.session.userId, piece_id]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO audition_day_piece_ratings (audition_day_id, submission_id, rater_user_id, piece_id, level, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT (audition_day_id, submission_id, rater_user_id, piece_id)
+         DO UPDATE SET level = $5, updated_at = NOW()`,
+        [req.params.id, submission_id, req.session.userId, piece_id, level]
+      );
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save piece rating.' });
+  }
+});
+
+// POST /api/audition-days/:id/combos
+app.post('/api/audition-days/:id/combos', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const dayCheck = await pool.query(
+      `SELECT id FROM audition_days WHERE id=$1 AND season_id=$2 AND org_id=$3`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (!dayCheck.rows.length) return res.status(404).json({ error: 'Not found.' });
+    const posRes = await pool.query(
+      `SELECT COALESCE(MAX(position),0)+1 AS next FROM audition_combos WHERE audition_day_id=$1`,
+      [req.params.id]
+    );
+    const pos = posRes.rows[0].next;
+    const { name, group_size, sort_order } = req.body;
+    const gs = Math.max(1, Math.min(50, parseInt(group_size) || 8));
+    const so = ['number','first_name','last_name'].includes(sort_order) ? sort_order : 'number';
+    const result = await pool.query(
+      `INSERT INTO audition_combos (audition_day_id, name, group_size, sort_order, position)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [req.params.id, (name || `Combo ${pos}`).trim(), gs, so, pos]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to create combo.' });
+  }
+});
+
+// PATCH /api/audition-days/:id/combos/:comboId
+app.patch('/api/audition-days/:id/combos/:comboId', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const dayCheck = await pool.query(
+      `SELECT id FROM audition_days WHERE id=$1 AND season_id=$2 AND org_id=$3`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (!dayCheck.rows.length) return res.status(404).json({ error: 'Not found.' });
+    const { name, group_size, sort_order } = req.body;
+    const updates = []; const vals = [];
+    if (name !== undefined) { vals.push(name.trim()); updates.push(`name=$${vals.length}`); }
+    if (group_size !== undefined) { vals.push(Math.max(1,Math.min(50,parseInt(group_size)||8))); updates.push(`group_size=$${vals.length}`); }
+    if (sort_order && ['number','first_name','last_name'].includes(sort_order)) { vals.push(sort_order); updates.push(`sort_order=$${vals.length}`); }
+    if (!updates.length) return res.json({ ok: true });
+    vals.push(req.params.comboId, req.params.id);
+    await pool.query(`UPDATE audition_combos SET ${updates.join(',')} WHERE id=$${vals.length-1} AND audition_day_id=$${vals.length}`, vals);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update combo.' });
+  }
+});
+
+// DELETE /api/audition-days/:id/combos/:comboId
+app.delete('/api/audition-days/:id/combos/:comboId', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const dayCheck = await pool.query(
+      `SELECT id FROM audition_days WHERE id=$1 AND season_id=$2 AND org_id=$3`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (!dayCheck.rows.length) return res.status(404).json({ error: 'Not found.' });
+    const countRes = await pool.query(`SELECT COUNT(*) FROM audition_combos WHERE audition_day_id=$1`,[req.params.id]);
+    if (parseInt(countRes.rows[0].count) <= 1) return res.status(400).json({ error: 'Cannot delete the last combo.' });
+    await pool.query(`DELETE FROM audition_combos WHERE id=$1 AND audition_day_id=$2`,[req.params.comboId, req.params.id]);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete combo.' });
+  }
+});
+
+// GET /api/audition-days/:id/review — all dancers, all raters, piece ratings + notes
 app.get('/api/audition-days/:id/review', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
@@ -7668,34 +7832,45 @@ app.get('/api/audition-days/:id/review', requireAuth('master'), async (req, res)
     );
     if (dayRes.rows.length === 0) return res.status(404).json({ error: 'Not found.' });
 
-    const ratingsRes = await pool.query(
-      `SELECT adr.submission_id, adr.priority, adr.callback, adr.note,
-              u.name AS rater_name, u.email AS rater_email
-       FROM audition_day_ratings adr
-       JOIN users u ON u.id = adr.rater_user_id
-       WHERE adr.audition_day_id = $1`,
-      [req.params.id]
-    );
-    const ratingsBySubmission = {};
-    for (const r of ratingsRes.rows) {
-      if (!ratingsBySubmission[r.submission_id]) ratingsBySubmission[r.submission_id] = [];
-      ratingsBySubmission[r.submission_id].push({
-        priority: r.priority, callback: r.callback, note: r.note,
-        rater: r.rater_name || r.rater_email
-      });
+    const [pieceRatRes, generalRes, dancersRes] = await Promise.all([
+      pool.query(`
+        SELECT adpr.submission_id, adpr.piece_id, adpr.level,
+               p.name AS piece_name, p.master_id AS piece_master_id,
+               COALESCE(u.name, u.email) AS rater_display, u.id AS rater_id
+        FROM audition_day_piece_ratings adpr
+        JOIN pieces p ON p.id = adpr.piece_id
+        JOIN users u ON u.id = adpr.rater_user_id
+        WHERE adpr.audition_day_id = $1`, [req.params.id]),
+      pool.query(`
+        SELECT adr.submission_id, adr.callback, adr.note,
+               COALESCE(u.name, u.email) AS rater_display
+        FROM audition_day_ratings adr
+        JOIN users u ON u.id = adr.rater_user_id
+        WHERE adr.audition_day_id = $1`, [req.params.id]),
+      pool.query(`
+        SELECT sub.id AS submission_id, dp.first_name, dp.last_name, sub.audition_number, u.email
+        FROM submissions sub JOIN users u ON u.id = sub.user_id
+        LEFT JOIN dancer_profiles dp ON dp.user_id = sub.user_id
+        WHERE sub.org_id = $1 AND sub.season_id = $2`, [orgId, seasonId]),
+    ]);
+
+    // Build nested structure: submissionId → { piece_ratings: {pieceId: [...]}, general: [...] }
+    const bySubmission = {};
+    for (const r of pieceRatRes.rows) {
+      if (!bySubmission[r.submission_id]) bySubmission[r.submission_id] = { piece_ratings: {}, notes: [], callback: false };
+      if (!bySubmission[r.submission_id].piece_ratings[r.piece_id]) {
+        bySubmission[r.submission_id].piece_ratings[r.piece_id] = { piece_name: r.piece_name, piece_master_id: r.piece_master_id, ratings: [] };
+      }
+      bySubmission[r.submission_id].piece_ratings[r.piece_id].ratings.push({ level: r.level, rater: r.rater_display, rater_id: r.rater_id });
+    }
+    for (const r of generalRes.rows) {
+      if (!bySubmission[r.submission_id]) bySubmission[r.submission_id] = { piece_ratings: {}, notes: [], callback: false };
+      if (r.callback) bySubmission[r.submission_id].callback = true;
+      if (r.note) bySubmission[r.submission_id].notes.push({ note: r.note, rater: r.rater_display });
     }
 
-    const dancersRes = await pool.query(
-      `SELECT sub.id AS submission_id, dp.first_name, dp.last_name, sub.audition_number, u.email
-       FROM submissions sub
-       JOIN users u ON u.id = sub.user_id
-       LEFT JOIN dancer_profiles dp ON dp.user_id = sub.user_id
-       WHERE sub.org_id = $1 AND sub.season_id = $2`,
-      [orgId, seasonId]
-    );
-
     const dancers = dancersRes.rows.map(d => ({
-      ...d, ratings: ratingsBySubmission[d.submission_id] || []
+      ...d, ...(bySubmission[d.submission_id] || { piece_ratings: {}, notes: [], callback: false })
     }));
 
     res.json({ day: dayRes.rows[0], dancers });
