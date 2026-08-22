@@ -7394,6 +7394,33 @@ async function runMigrations() {
     console.log('Migration step 41 (email_logs) complete.');
   } catch (err) { console.error('Migration step 41 error:', err.message); }
 
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audition_days (
+        id            SERIAL PRIMARY KEY,
+        season_id     INTEGER REFERENCES seasons(id)     ON DELETE CASCADE,
+        org_id        INTEGER REFERENCES orgs(id)        ON DELETE CASCADE,
+        name          VARCHAR(255) NOT NULL DEFAULT 'Audition Day',
+        audition_date DATE,
+        group_size    INTEGER NOT NULL DEFAULT 8,
+        sort_order    VARCHAR(20) NOT NULL DEFAULT 'number',
+        created_at    TIMESTAMP DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS audition_day_ratings (
+        id               SERIAL PRIMARY KEY,
+        audition_day_id  INTEGER REFERENCES audition_days(id) ON DELETE CASCADE,
+        submission_id    INTEGER REFERENCES submissions(id)    ON DELETE CASCADE,
+        rater_user_id    INTEGER REFERENCES users(id)          ON DELETE CASCADE,
+        priority         BOOLEAN NOT NULL DEFAULT FALSE,
+        callback         BOOLEAN NOT NULL DEFAULT FALSE,
+        note             TEXT,
+        updated_at       TIMESTAMP DEFAULT NOW(),
+        UNIQUE (audition_day_id, submission_id, rater_user_id)
+      );
+    `);
+    console.log('Migration step 42 (audition_days) complete.');
+  } catch (err) { console.error('Migration step 42 error:', err.message); }
+
   console.log('All migrations complete.');
 }
 
@@ -7500,6 +7527,181 @@ app.get('/api/admin/email-logs', requireAuth('master'), async (req, res) => {
   } catch (err) {
     console.error('Email logs error:', err.message);
     res.status(500).json({ error: 'Could not fetch email logs.' });
+  }
+});
+
+// ── Audition Day ──────────────────────────────────────────────────────────────
+
+// GET /api/audition-days
+app.get('/api/audition-days', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const result = await pool.query(`
+      SELECT ad.id, ad.name, ad.audition_date, ad.group_size, ad.sort_order, ad.created_at,
+        (SELECT COUNT(*) FROM submissions s WHERE s.org_id = ad.org_id AND s.season_id = ad.season_id) AS dancer_count,
+        (SELECT COUNT(DISTINCT adr.submission_id) FROM audition_day_ratings adr WHERE adr.audition_day_id = ad.id AND adr.priority = TRUE) AS priority_count,
+        (SELECT COUNT(DISTINCT adr.submission_id) FROM audition_day_ratings adr WHERE adr.audition_day_id = ad.id AND adr.callback = TRUE) AS callback_count
+      FROM audition_days ad
+      WHERE ad.season_id = $1 AND ad.org_id = $2
+      ORDER BY ad.created_at DESC
+    `, [seasonId, orgId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to fetch audition days.' });
+  }
+});
+
+// POST /api/audition-days
+app.post('/api/audition-days', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  const { name, audition_date, group_size, sort_order } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required.' });
+  const gs = Math.max(1, Math.min(50, parseInt(group_size) || 8));
+  const so = ['number', 'first_name', 'last_name'].includes(sort_order) ? sort_order : 'number';
+  try {
+    const result = await pool.query(
+      `INSERT INTO audition_days (season_id, org_id, name, audition_date, group_size, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [seasonId, orgId, name.trim(), audition_date || null, gs, so]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to create audition day.' });
+  }
+});
+
+// DELETE /api/audition-days/:id
+app.delete('/api/audition-days/:id', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const result = await pool.query(
+      `DELETE FROM audition_days WHERE id = $1 AND season_id = $2 AND org_id = $3 RETURNING id`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Not found.' });
+    res.json({ message: 'Deleted.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete.' });
+  }
+});
+
+// GET /api/audition-days/:id — dancers + current user's ratings
+app.get('/api/audition-days/:id', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const dayRes = await pool.query(
+      `SELECT * FROM audition_days WHERE id = $1 AND season_id = $2 AND org_id = $3`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (dayRes.rows.length === 0) return res.status(404).json({ error: 'Not found.' });
+    const day = dayRes.rows[0];
+
+    const dancersRes = await pool.query(
+      `SELECT sub.id AS submission_id, u.id AS user_id,
+              dp.first_name, dp.last_name, sub.audition_number, u.email
+       FROM submissions sub
+       JOIN users u ON u.id = sub.user_id
+       LEFT JOIN dancer_profiles dp ON dp.user_id = sub.user_id
+       WHERE sub.org_id = $1 AND sub.season_id = $2`,
+      [orgId, seasonId]
+    );
+
+    const ratingsRes = await pool.query(
+      `SELECT submission_id, priority, callback, note
+       FROM audition_day_ratings
+       WHERE audition_day_id = $1 AND rater_user_id = $2`,
+      [req.params.id, req.session.userId]
+    );
+    const myRatings = {};
+    for (const r of ratingsRes.rows) {
+      myRatings[r.submission_id] = { priority: r.priority, callback: r.callback, note: r.note };
+    }
+
+    res.json({ day, dancers: dancersRes.rows, myRatings });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load audition day.' });
+  }
+});
+
+// PUT /api/audition-days/:id/ratings/:submissionId — upsert rating
+app.put('/api/audition-days/:id/ratings/:submissionId', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  const { priority, callback, note } = req.body;
+  try {
+    const dayCheck = await pool.query(
+      `SELECT id FROM audition_days WHERE id = $1 AND season_id = $2 AND org_id = $3`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (dayCheck.rows.length === 0) return res.status(404).json({ error: 'Not found.' });
+
+    await pool.query(
+      `INSERT INTO audition_day_ratings (audition_day_id, submission_id, rater_user_id, priority, callback, note, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       ON CONFLICT (audition_day_id, submission_id, rater_user_id)
+       DO UPDATE SET priority = $4, callback = $5, note = $6, updated_at = NOW()`,
+      [req.params.id, req.params.submissionId, req.session.userId,
+       priority === true, callback === true, (note || '').trim() || null]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to save rating.' });
+  }
+});
+
+// GET /api/audition-days/:id/review — all dancers + all raters' ratings
+app.get('/api/audition-days/:id/review', requireAuth('master'), async (req, res) => {
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
+  try {
+    const dayRes = await pool.query(
+      `SELECT * FROM audition_days WHERE id = $1 AND season_id = $2 AND org_id = $3`,
+      [req.params.id, seasonId, orgId]
+    );
+    if (dayRes.rows.length === 0) return res.status(404).json({ error: 'Not found.' });
+
+    const ratingsRes = await pool.query(
+      `SELECT adr.submission_id, adr.priority, adr.callback, adr.note,
+              u.name AS rater_name, u.email AS rater_email
+       FROM audition_day_ratings adr
+       JOIN users u ON u.id = adr.rater_user_id
+       WHERE adr.audition_day_id = $1`,
+      [req.params.id]
+    );
+    const ratingsBySubmission = {};
+    for (const r of ratingsRes.rows) {
+      if (!ratingsBySubmission[r.submission_id]) ratingsBySubmission[r.submission_id] = [];
+      ratingsBySubmission[r.submission_id].push({
+        priority: r.priority, callback: r.callback, note: r.note,
+        rater: r.rater_name || r.rater_email
+      });
+    }
+
+    const dancersRes = await pool.query(
+      `SELECT sub.id AS submission_id, dp.first_name, dp.last_name, sub.audition_number, u.email
+       FROM submissions sub
+       JOIN users u ON u.id = sub.user_id
+       LEFT JOIN dancer_profiles dp ON dp.user_id = sub.user_id
+       WHERE sub.org_id = $1 AND sub.season_id = $2`,
+      [orgId, seasonId]
+    );
+
+    const dancers = dancersRes.rows.map(d => ({
+      ...d, ratings: ratingsBySubmission[d.submission_id] || []
+    }));
+
+    res.json({ day: dayRes.rows[0], dancers });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load review.' });
   }
 });
 

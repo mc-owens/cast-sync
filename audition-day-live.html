@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audition Day | CastSync</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="app-shell.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <style>
+    .page-back {
+      font-size: 13px;
+      color: #888;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .page-back:hover { color: #555; }
+
+    .page-title-bar {
+      border-left: 3px solid #c9a84c;
+      padding-left: 12px;
+      margin-bottom: 0;
+    }
+
+    .ad-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 2px solid #e8dfc8;
+      margin-bottom: 20px;
+    }
+    .ad-tab {
+      font-size: 13px;
+      font-weight: 600;
+      color: #aaa;
+      padding: 8px 20px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+    }
+    .ad-tab.active {
+      color: #8a6820;
+      border-bottom-color: #c9a84c;
+    }
+
+    /* Group nav */
+    .group-nav {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .group-label {
+      font-size: 15px;
+      font-weight: 600;
+      color: #2d2512;
+      flex: 1;
+      text-align: center;
+    }
+    .btn-group-nav {
+      background: #fff;
+      border: 1px solid #e0d5b8;
+      border-radius: 6px;
+      color: #8a6820;
+      font-size: 18px;
+      line-height: 1;
+      width: 38px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .btn-group-nav:disabled { color: #ccc; border-color: #eee; cursor: default; }
+    .btn-group-nav:not(:disabled):hover { background: #fdf8ee; border-color: #c9a84c; }
+
+    /* Dancer card */
+    .dancer-card {
+      background: #fffdf7;
+      border: 1px solid #e8dfc8;
+      border-radius: 10px;
+      padding: 14px 14px 12px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .dancer-card-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: #b08a3a;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .dancer-card-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #2d2512;
+      line-height: 1.3;
+      flex: 1;
+    }
+    .btn-priority, .btn-callback {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 7px;
+      border: 1.5px solid rgba(201,168,76,.4);
+      background: transparent;
+      color: #8a6820;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      transition: background .12s, border-color .12s, color .12s;
+    }
+    .btn-priority.active {
+      background: #c9a84c;
+      border-color: #c9a84c;
+      color: #fff;
+    }
+    .btn-callback {
+      border-color: rgba(90,127,160,.35);
+      color: #3d6080;
+    }
+    .btn-callback.active {
+      background: #5a7fa0;
+      border-color: #5a7fa0;
+      color: #fff;
+    }
+    .dancer-note-input {
+      width: 100%;
+      font-size: 12px;
+      border: 1px solid #e0d5b8;
+      border-radius: 6px;
+      padding: 6px 10px;
+      background: #fff;
+      color: #444;
+      resize: none;
+      outline: none;
+    }
+    .dancer-note-input:focus { border-color: #c9a84c; }
+    .dancer-note-input::placeholder { color: #bbb; }
+
+    /* Review */
+    .review-filter-bar {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .review-pill {
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 20px;
+      padding: 4px 14px;
+      border: 1px solid rgba(201,168,76,.4);
+      background: transparent;
+      color: #8a6820;
+      cursor: pointer;
+    }
+    .review-pill.active {
+      background: #c9a84c;
+      border-color: #c9a84c;
+      color: #fff;
+    }
+    .review-pill.cb { border-color: rgba(90,127,160,.35); color: #3d6080; }
+    .review-pill.cb.active { background: #5a7fa0; border-color: #5a7fa0; color: #fff; }
+
+    .review-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 14px;
+      border: 1px solid #e8dfc8;
+      border-left: 3px solid #c9a84c;
+      border-radius: 8px;
+      background: #fffdf7;
+      margin-bottom: 8px;
+    }
+    .review-row-num {
+      font-size: 11px;
+      font-weight: 700;
+      color: #b08a3a;
+      min-width: 32px;
+      padding-top: 2px;
+    }
+    .review-row-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #2d2512;
+      flex: 1;
+      min-width: 0;
+    }
+    .review-badge {
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 20px;
+      padding: 2px 10px;
+      white-space: nowrap;
+    }
+    .badge-priority { background: rgba(201,168,76,.15); color: #8a6820; border: 1px solid rgba(201,168,76,.4); }
+    .badge-callback { background: rgba(90,127,160,.12); color: #3d6080; border: 1px solid rgba(90,127,160,.3); }
+    .review-note { font-size: 12px; color: #777; font-style: italic; margin-top: 2px; }
+    .review-rater { font-size: 11px; color: #aaa; }
+
+    .save-indicator {
+      font-size: 11px;
+      color: #b08a3a;
+      opacity: 0;
+      transition: opacity .2s;
+      text-align: right;
+      min-height: 16px;
+    }
+    .save-indicator.show { opacity: 1; }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #aaa;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body style="visibility:hidden">
+
+  <div id="app-shell-root"></div>
+  <script src="app-shell.js"></script>
+
+  <div class="app-main">
+    <div class="container mt-4" style="max-width:700px;">
+
+      <a href="audition-day.html" class="page-back">← Audition Day</a>
+      <h4 class="fw-semibold page-title-bar mb-4" id="page-heading">Loading…</h4>
+
+      <div class="ad-tabs">
+        <button class="ad-tab active" id="tab-live" onclick="switchTab('live')">Live</button>
+        <button class="ad-tab" id="tab-review" onclick="switchTab('review')">Review</button>
+      </div>
+
+      <!-- Live tab -->
+      <div id="panel-live">
+        <div class="group-nav">
+          <button class="btn-group-nav" id="btn-prev" onclick="prevGroup()">‹</button>
+          <div class="group-label" id="group-label">Group 1 of 1</div>
+          <button class="btn-group-nav" id="btn-next" onclick="nextGroup()">›</button>
+        </div>
+        <div class="row g-3" id="dancer-grid"></div>
+        <div class="save-indicator mt-2" id="save-indicator">Saved</div>
+      </div>
+
+      <!-- Review tab -->
+      <div id="panel-review" style="display:none;">
+        <div class="review-filter-bar">
+          <button class="review-pill active" onclick="setReviewFilter('all')">All</button>
+          <button class="review-pill" onclick="setReviewFilter('priority')">★ Priority</button>
+          <button class="review-pill cb" onclick="setReviewFilter('callback')">↩ Callback</button>
+        </div>
+        <div id="review-list"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  const params = new URLSearchParams(location.search);
+  const dayId  = params.get('id');
+  if (!dayId) { window.location.href = 'audition-day.html'; }
+
+  let day, allDancers, groups, myRatings, currentGroup = 0;
+  let reviewFilter = 'all';
+  let reviewData   = null;
+  let saveTimer    = null;
+
+  (async () => {
+    const authRes = await fetch('/api/auth/me');
+    const user    = await authRes.json();
+    if (!authRes.ok || (user.mode !== 'director' && user.role !== 'master')) {
+      window.location.href = 'login.html'; return;
+    }
+
+    document.getElementById('right-nav').innerHTML =
+      `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = 'login.html';
+    });
+
+    const r    = await fetch(`/api/audition-days/${dayId}`);
+    const data = r.ok ? await r.json() : null;
+    if (!data) { window.location.href = 'audition-day.html'; return; }
+
+    day        = data.day;
+    myRatings  = data.myRatings || {};
+    allDancers = sortDancers(data.dancers, day.sort_order);
+    groups     = makeGroups(allDancers, day.group_size);
+
+    document.getElementById('page-heading').textContent = day.name;
+    document.title = `${day.name} | CastSync`;
+    document.body.style.visibility = 'visible';
+
+    renderGroup();
+  })();
+
+  function sortDancers(dancers, order) {
+    return [...dancers].sort((a, b) => {
+      if (order === 'number') {
+        const na = parseInt(a.audition_number) || 99999;
+        const nb = parseInt(b.audition_number) || 99999;
+        return na - nb || (a.last_name || '').localeCompare(b.last_name || '');
+      }
+      if (order === 'first_name') {
+        return (a.first_name || '').localeCompare(b.first_name || '') ||
+               (a.last_name  || '').localeCompare(b.last_name  || '');
+      }
+      return (a.last_name  || '').localeCompare(b.last_name  || '') ||
+             (a.first_name || '').localeCompare(b.first_name || '');
+    });
+  }
+
+  function makeGroups(dancers, size) {
+    const out = [];
+    for (let i = 0; i < dancers.length; i += size) out.push(dancers.slice(i, i + size));
+    return out.length ? out : [[]];
+  }
+
+  function dancerDisplayName(d) {
+    if (d.first_name || d.last_name) {
+      return [d.last_name, d.first_name].filter(Boolean).join(', ');
+    }
+    return d.email || '—';
+  }
+
+  function renderGroup() {
+    const group = groups[currentGroup] || [];
+    const total = groups.length;
+
+    document.getElementById('group-label').textContent =
+      `Group ${currentGroup + 1} of ${total}`;
+    document.getElementById('btn-prev').disabled = currentGroup === 0;
+    document.getElementById('btn-next').disabled = currentGroup >= total - 1;
+
+    if (group.length === 0) {
+      document.getElementById('dancer-grid').innerHTML =
+        `<div class="col-12"><div class="empty-state">No dancers in this group.</div></div>`;
+      return;
+    }
+
+    document.getElementById('dancer-grid').innerHTML = group.map(d => {
+      const r    = myRatings[d.submission_id] || {};
+      const num  = d.audition_number ? `#${d.audition_number}` : '';
+      const name = dancerDisplayName(d);
+      return `
+        <div class="col-6 col-md-4">
+          <div class="dancer-card">
+            <div>
+              ${num ? `<div class="dancer-card-num">${escHtml(num)}</div>` : ''}
+              <div class="dancer-card-name">${escHtml(name)}</div>
+            </div>
+            <button class="btn-priority${r.priority ? ' active' : ''}"
+                    onclick="togglePriority(${d.submission_id}, this)">
+              ★ High Priority
+            </button>
+            <button class="btn-callback${r.callback ? ' active' : ''}"
+                    onclick="toggleCallback(${d.submission_id}, this)">
+              ↩ Callback
+            </button>
+            <input class="dancer-note-input"
+                   type="text"
+                   maxlength="200"
+                   placeholder="Note (optional)"
+                   value="${escAttr(r.note || '')}"
+                   data-sub="${d.submission_id}"
+                   onblur="saveNote(${d.submission_id}, this.value)">
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function prevGroup() { if (currentGroup > 0) { currentGroup--; renderGroup(); } }
+  function nextGroup() { if (currentGroup < groups.length - 1) { currentGroup++; renderGroup(); } }
+
+  async function togglePriority(subId, btn) {
+    const r = myRatings[subId] || {};
+    r.priority = !r.priority;
+    myRatings[subId] = r;
+    btn.classList.toggle('active', r.priority);
+    await saveRating(subId);
+  }
+
+  async function toggleCallback(subId, btn) {
+    const r = myRatings[subId] || {};
+    r.callback = !r.callback;
+    myRatings[subId] = r;
+    btn.classList.toggle('active', r.callback);
+    await saveRating(subId);
+  }
+
+  async function saveNote(subId, value) {
+    const r = myRatings[subId] || {};
+    r.note = value.trim() || null;
+    myRatings[subId] = r;
+    await saveRating(subId);
+  }
+
+  async function saveRating(subId) {
+    const r = myRatings[subId] || {};
+    showSaved();
+    try {
+      await fetch(`/api/audition-days/${dayId}/ratings/${subId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority: r.priority || false, callback: r.callback || false, note: r.note || null })
+      });
+    } catch (e) { /* silent — will be visible in UI since button state already toggled */ }
+  }
+
+  function showSaved() {
+    const el = document.getElementById('save-indicator');
+    el.classList.add('show');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => el.classList.remove('show'), 1400);
+  }
+
+  // ── Review tab ────────────────────────────────────────────────────────────
+
+  function switchTab(tab) {
+    const isLive = tab === 'live';
+    document.getElementById('panel-live').style.display   = isLive ? '' : 'none';
+    document.getElementById('panel-review').style.display = isLive ? 'none' : '';
+    document.getElementById('tab-live').classList.toggle('active', isLive);
+    document.getElementById('tab-review').classList.toggle('active', !isLive);
+    if (!isLive) loadReview();
+  }
+
+  async function loadReview() {
+    const r    = await fetch(`/api/audition-days/${dayId}/review`);
+    const data = r.ok ? await r.json() : null;
+    if (!data) return;
+    reviewData = sortDancers(data.dancers, day.sort_order);
+    renderReview();
+  }
+
+  function setReviewFilter(f) {
+    reviewFilter = f;
+    document.querySelectorAll('.review-pill').forEach(p => {
+      const pf = p.textContent.includes('Priority') ? 'priority'
+               : p.textContent.includes('Callback') ? 'callback' : 'all';
+      p.classList.toggle('active', pf === f);
+    });
+    renderReview();
+  }
+
+  function renderReview() {
+    if (!reviewData) return;
+    const el = document.getElementById('review-list');
+
+    const filtered = reviewData.filter(d => {
+      if (reviewFilter === 'all') return true;
+      const anyPriority = d.ratings.some(r => r.priority);
+      const anyCallback = d.ratings.some(r => r.callback);
+      if (reviewFilter === 'priority') return anyPriority;
+      if (reviewFilter === 'callback') return anyCallback;
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      el.innerHTML = `<div class="empty-state">No dancers match this filter.</div>`;
+      return;
+    }
+
+    el.innerHTML = filtered.map(d => {
+      const num          = d.audition_number ? `#${d.audition_number}` : '';
+      const name         = dancerDisplayName(d);
+      const anyPriority  = d.ratings.some(r => r.priority);
+      const anyCallback  = d.ratings.some(r => r.callback);
+      const notes        = d.ratings.filter(r => r.note).map(r =>
+        `<span class="review-note">"${escHtml(r.note)}"${d.ratings.length > 1 ? ` <span class="review-rater">— ${escHtml(r.rater)}</span>` : ''}</span>`
+      ).join(' ');
+
+      return `
+        <div class="review-row">
+          <div class="review-row-num">${escHtml(num)}</div>
+          <div style="flex:1;min-width:0;">
+            <div class="review-row-name">${escHtml(name)}</div>
+            ${notes ? `<div class="mt-1">${notes}</div>` : ''}
+            ${d.ratings.length > 1 ? `<div class="review-rater mt-1">${d.ratings.map(r => escHtml(r.rater)).join(', ')}</div>` : ''}
+          </div>
+          <div class="d-flex flex-column gap-1 align-items-end flex-shrink-0">
+            ${anyPriority ? `<span class="review-badge badge-priority">★ Priority</span>` : ''}
+            ${anyCallback ? `<span class="review-badge badge-callback">↩ Callback</span>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function escAttr(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+  }
+  </script>
+</body>
+</html>
