@@ -7784,10 +7784,11 @@ app.get('/api/audition-casting/:pieceId', requireAuth('master'), async (req, res
   try {
     const [notesRes, finalRes] = await Promise.all([
       pool.query(`
-        SELECT DISTINCT s.user_id
+        SELECT s.user_id, an.body, COALESCE(u.name, u.email) AS rater_name
         FROM audition_notes an
         JOIN audition_days ad ON ad.id = an.audition_day_id
         JOIN submissions s ON s.id = an.submission_id
+        JOIN users u ON u.id = an.rater_user_id
         WHERE ad.season_id = $1 AND ad.org_id = $2
           AND an.body IS NOT NULL AND an.body != ''
       `, [seasonId, orgId]),
@@ -7807,11 +7808,12 @@ app.get('/api/audition-casting/:pieceId', requireAuth('master'), async (req, res
     ]);
     const result = {};
     for (const r of notesRes.rows) {
-      if (!result[r.user_id]) result[r.user_id] = { hasNote: false, pieceRatings: [] };
+      if (!result[r.user_id]) result[r.user_id] = { hasNote: false, notes: [], pieceRatings: [] };
       result[r.user_id].hasNote = true;
+      result[r.user_id].notes.push({ rater: r.rater_name, body: r.body });
     }
     for (const r of finalRes.rows) {
-      if (!result[r.user_id]) result[r.user_id] = { hasNote: false, pieceRatings: [] };
+      if (!result[r.user_id]) result[r.user_id] = { hasNote: false, notes: [], pieceRatings: [] };
       result[r.user_id].pieceRatings.push({
         level: r.level,
         rater: r.rater_name,

@@ -19,11 +19,16 @@
     }
     .readonly-block { cursor: pointer !important; }
     .readonly-block .resize-handle { display: none; }
+    .avail-dancer-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 12px;
+    }
     .avail-dancer-row {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
+      gap: 6px;
+      min-width: 0;
     }
     .avail-dancer-name {
       cursor: pointer;
@@ -199,7 +204,7 @@
         <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#059669;">
           Fully available <span id="fully-count" style="font-weight:400;color:#6b7280;"></span>
         </h6>
-        <ul id="fully-available-list" class="list-unstyled mb-0"></ul>
+        <ul id="fully-available-list" class="list-unstyled mb-0 avail-dancer-list"></ul>
         <p id="no-full" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
       </div>
 
@@ -208,7 +213,7 @@
         <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#d97706;">
           Partial conflict <span id="partial-count" style="font-weight:400;color:#6b7280;"></span>
         </h6>
-        <ul id="partially-available-list" class="list-unstyled mb-0"></ul>
+        <ul id="partially-available-list" class="list-unstyled mb-0 avail-dancer-list"></ul>
         <p id="no-partial" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
       </div>
 
@@ -217,7 +222,7 @@
         <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#6b7280;">
           Not available <span id="none-count" style="font-weight:400;color:#6b7280;"></span>
         </h6>
-        <ul id="not-available-list" class="list-unstyled mb-0"></ul>
+        <ul id="not-available-list" class="list-unstyled mb-0 avail-dancer-list"></ul>
         <p id="no-none" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
       </div>
 

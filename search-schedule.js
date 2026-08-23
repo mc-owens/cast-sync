@@ -285,8 +285,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (audit.hasNote) {
         const dot = document.createElement('span');
-        dot.title = 'Has audition note';
-        dot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:#bbb;flex-shrink:0;display:inline-block;';
+        const notes = audit.notes || [];
+        dot.title = notes.length > 1
+          ? notes.map(n => `${n.rater}: ${n.body}`).join('\n\n')
+          : notes[0]?.body || 'Has audition note';
+        dot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:#bbb;flex-shrink:0;display:inline-block;cursor:help;';
         auditCol.appendChild(dot);
       }
       if (hasHP) {
@@ -306,7 +309,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const nameDiv  = document.createElement('div');
-    nameDiv.style.cssText = 'flex-shrink:0;max-width:50%;margin-left:6px;';
+    nameDiv.style.cssText = 'flex:1;min-width:0;margin-left:6px;overflow:hidden;';
 
     const nameSpan = document.createElement('span');
     nameSpan.className   = 'avail-dancer-name' + (isAlreadyCast ? ' conflicted' : '');
