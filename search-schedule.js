@@ -286,10 +286,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (audit.hasNote) {
         const dot = document.createElement('span');
         const notes = audit.notes || [];
-        dot.title = notes.length > 1
+        const noteText = notes.length > 1
           ? notes.map(n => `${n.rater}: ${n.body}`).join('\n\n')
           : notes[0]?.body || 'Has audition note';
-        dot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:#bbb;flex-shrink:0;display:inline-block;cursor:help;';
+        dot.setAttribute('data-bs-toggle', 'tooltip');
+        dot.setAttribute('data-bs-placement', 'right');
+        dot.setAttribute('title', noteText);
+        dot.style.cssText = 'width:7px;height:7px;border-radius:50%;background:#bbb;flex-shrink:0;display:inline-block;cursor:pointer;';
+        if (window.bootstrap) new bootstrap.Tooltip(dot);
         auditCol.appendChild(dot);
       }
       if (hasHP) {
@@ -309,7 +313,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const nameDiv  = document.createElement('div');
-    nameDiv.style.cssText = 'flex:1;min-width:0;margin-left:6px;overflow:hidden;';
+    nameDiv.style.cssText = 'flex-shrink:0;max-width:50%;margin-left:6px;';
 
     const nameSpan = document.createElement('span');
     nameSpan.className   = 'avail-dancer-name' + (isAlreadyCast ? ' conflicted' : '');
