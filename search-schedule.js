@@ -23,7 +23,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   let _gridReady          = false;
   let _liveCastMembers    = new Map(); // userId -> display name
   let _liveCastUnderstudies = new Map();
-  let _auditData          = {};  // userId -> { hasNote, pieceRatings: [{level, rater, raterId, isChoreographer}] }
+  let _auditData          = {};  // userId -> { hasNote, notes, pieceRatings }
+  let _comparePieceId        = null;
+  let _compareAvailFull      = [];
+  let _compareAvailPartial   = [];
+  let _compareAvailNone      = [];
+  let _compareAuditData      = {};
+  let _compareLiveCastMbrs   = new Map();
+  let _compareLiveCastUds    = new Map();
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -74,6 +81,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       sel.appendChild(opt);
     });
     sel.addEventListener('change', () => selectPiece(sel.value));
+
+    const selB = document.getElementById('piece-select-b');
+    selB.addEventListener('change', () => {
+      if (selB.value) {
+        document.getElementById('clear-compare-btn').style.display = '';
+        selectComparePiece(selB.value);
+      } else {
+        clearCompare();
+      }
+    });
+    document.getElementById('clear-compare-btn').addEventListener('click', () => {
+      selB.value = '';
+      clearCompare();
+    });
   }
 
   async function selectPiece(pieceId) {
@@ -89,8 +110,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await res.json();
       if (!res.ok) { showErrorToast(data.error || 'Could not load availability.'); return; }
 
-      document.getElementById('piece-color-swatch').style.background = data.piece.color || '#6366f1';
-      document.getElementById('piece-name-display').textContent       = data.piece.name;
+      document.getElementById('piece-color-swatch').style.background    = data.piece.color || '#6366f1';
+      document.getElementById('piece-name-display').textContent          = data.piece.name;
+      document.getElementById('piece-color-swatch-a').style.background   = data.piece.color || '#6366f1';
+      document.getElementById('piece-name-display-a').textContent        = data.piece.name;
+      clearCompare();
+      populateCompareSelector(pieceId);
+      document.getElementById('compare-selector-wrapper').style.display = 'flex';
 
       renderRequirements(data.requirements);
 
@@ -189,6 +215,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       el.style.fontSize = '12px';
     });
     renderDancerSections();
+    if (_comparePieceId) renderCompareSections();
   }
 
   document.getElementById('sort-abc').addEventListener('click', () => setSortMode('abc'));
@@ -262,9 +289,113 @@ document.addEventListener('DOMContentLoaded', async () => {
     unavail.forEach(d => appendDancerItem(noneList,    d, _availPieceId, d.conflicts || []));
   }
 
+  // ── Compare piece functions ─────────────────────────────────────────────────
+
+  function populateCompareSelector(excludePieceId) {
+    const sel = document.getElementById('piece-select-b');
+    sel.innerHTML = '<option value="">Compare with...</option>';
+    _pieces.filter(p => String(p.id) !== String(excludePieceId)).forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = String(p.id);
+      opt.textContent = p.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  async function selectComparePiece(pieceId) {
+    if (!pieceId) { clearCompare(); return; }
+    try {
+      const res  = await fetch(`/api/availability/piece/${pieceId}`);
+      const data = await res.json();
+      if (!res.ok) { showErrorToast(data.error || 'Could not load comparison piece.'); return; }
+
+      _comparePieceId      = pieceId;
+      _compareAvailFull    = data.fully_available    || [];
+      _compareAvailPartial = data.partially_available || [];
+      _compareAvailNone    = data.not_available       || [];
+
+      _compareLiveCastMbrs.clear();
+      _compareLiveCastUds.clear();
+      [..._compareAvailFull, ..._compareAvailPartial, ..._compareAvailNone].forEach(d => {
+        const name = `${d.first_name} ${d.last_name}`;
+        if (d.cast_role === 'member')    _compareLiveCastMbrs.set(d.id, name);
+        if (d.cast_role === 'understudy') _compareLiveCastUds.set(d.id, name);
+      });
+
+      document.getElementById('piece-color-swatch-b').style.background = data.piece.color || '#6366f1';
+      document.getElementById('piece-name-display-b').textContent       = data.piece.name;
+
+      _compareAuditData = {};
+      fetch(`/api/audition-casting/${pieceId}`)
+        .then(r => r.ok ? r.json() : {})
+        .then(d => { _compareAuditData = d || {}; renderCompareSections(); })
+        .catch(() => {});
+
+      enterCompareMode();
+      renderCompareSections();
+    } catch (err) {
+      showErrorToast('Could not load comparison piece.');
+    }
+  }
+
+  function clearCompare() {
+    _comparePieceId = null;
+    _compareAvailFull = []; _compareAvailPartial = []; _compareAvailNone = [];
+    _compareAuditData = {};
+    _compareLiveCastMbrs.clear(); _compareLiveCastUds.clear();
+    document.getElementById('clear-compare-btn').style.display = 'none';
+    exitCompareMode();
+  }
+
+  function enterCompareMode() {
+    document.getElementById('dancer-columns').classList.add('compare-active');
+    document.getElementById('centering-wrapper').style.maxWidth = '1300px';
+    document.getElementById('panel-b').style.display = '';
+  }
+
+  function exitCompareMode() {
+    document.getElementById('dancer-columns').classList.remove('compare-active');
+    document.getElementById('centering-wrapper').style.maxWidth = '760px';
+    document.getElementById('panel-b').style.display = 'none';
+  }
+
+  function renderCompareSections() {
+    const opts = {
+      auditData: _compareAuditData,
+      castMbrs:  _compareLiveCastMbrs,
+      castUds:   _compareLiveCastUds,
+      onCastChange: () => {},
+    };
+    const full    = sortDancers(_compareAvailFull);
+    const partial = sortDancers(_compareAvailPartial);
+    const unavail = sortDancers(_compareAvailNone);
+
+    document.getElementById('fully-count-b').textContent   = `(${full.length})`;
+    document.getElementById('partial-count-b').textContent = `(${partial.length})`;
+    document.getElementById('none-count-b').textContent    = `(${unavail.length})`;
+
+    document.getElementById('no-full-b').style.display    = full.length    === 0 ? '' : 'none';
+    document.getElementById('no-partial-b').style.display = partial.length === 0 ? '' : 'none';
+    document.getElementById('no-none-b').style.display    = unavail.length === 0 ? '' : 'none';
+
+    const fullyListB   = document.getElementById('fully-available-list-b');
+    const partialListB = document.getElementById('partially-available-list-b');
+    const noneListB    = document.getElementById('not-available-list-b');
+    fullyListB.innerHTML = partialListB.innerHTML = noneListB.innerHTML = '';
+
+    full.forEach(d    => appendDancerItem(fullyListB,   d, _comparePieceId, [], opts));
+    partial.forEach(d => appendDancerItem(partialListB, d, _comparePieceId, d.conflicts || [], opts));
+    unavail.forEach(d => appendDancerItem(noneListB,    d, _comparePieceId, d.conflicts || [], opts));
+  }
+
   // ── Dancer row ─────────────────────────────────────────────────────────────
 
-  function appendDancerItem(listEl, dancer, pieceId, scheduleConflicts) {
+  function appendDancerItem(listEl, dancer, pieceId, scheduleConflicts, opts = {}) {
+    const castMbrs     = opts.castMbrs     || _liveCastMembers;
+    const castUds      = opts.castUds      || _liveCastUnderstudies;
+    const auditDataMap = opts.auditData    || _auditData;
+    const onCastChange = opts.onCastChange || renderLiveCast;
+
     const li = document.createElement('li');
     li.className = 'avail-dancer-row';
 
@@ -277,7 +408,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const auditCol = document.createElement('div');
     auditCol.style.cssText = 'width:50px;flex-shrink:0;display:flex;align-items:center;justify-content:flex-end;gap:3px;flex-wrap:wrap;';
 
-    const audit = _auditData[dancer.id];
+    const audit = auditDataMap[dancer.id];
     if (audit) {
       const ratings = audit.pieceRatings || [];
       const hasHP   = ratings.some(r => r.level === 'high_priority');
@@ -401,11 +532,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentRole   = role;
         currentCastId = data.id;
         const dName = `${dancer.first_name} ${dancer.last_name}`;
-        _liveCastMembers.delete(dancer.id);
-        _liveCastUnderstudies.delete(dancer.id);
-        if (role === 'member') _liveCastMembers.set(dancer.id, dName);
-        else _liveCastUnderstudies.set(dancer.id, dName);
-        renderLiveCast();
+        castMbrs.delete(dancer.id);
+        castUds.delete(dancer.id);
+        if (role === 'member') castMbrs.set(dancer.id, dName);
+        else castUds.set(dancer.id, dName);
+        onCastChange();
         renderBtns();
       } catch (err) {
         console.error(err);
@@ -423,9 +554,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!res.ok) { showErrorToast('Could not remove dancer.'); return; }
         currentRole   = null;
         currentCastId = null;
-        _liveCastMembers.delete(dancer.id);
-        _liveCastUnderstudies.delete(dancer.id);
-        renderLiveCast();
+        castMbrs.delete(dancer.id);
+        castUds.delete(dancer.id);
+        onCastChange();
         renderBtns();
       } catch (err) {
         console.error(err);

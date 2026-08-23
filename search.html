@@ -39,6 +39,12 @@
       color: #9ca3af;
       margin-top: 2px;
     }
+    /* ── Side-by-side compare mode ── */
+    #dancer-columns.compare-active { display: flex; gap: 28px; align-items: flex-start; }
+    #dancer-columns.compare-active #panel-a,
+    #dancer-columns.compare-active #panel-b { flex: 1; min-width: 0; }
+    .panel-piece-label { display: none; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; font-weight: 700; color: #374151; }
+    #dancer-columns.compare-active .panel-piece-label { display: flex; }
     .live-cast-panel {
       background: #f9fafb;
       border: 1px solid #f0f0f0;
@@ -149,7 +155,7 @@
 
   <!-- Main content -->
   <div class="container-fluid mt-4 px-4">
-  <div style="max-width:760px;margin:0 auto;">
+  <div id="centering-wrapper" style="max-width:760px;margin:0 auto;">
 
     <!-- Piece selector -->
     <div id="piece-selector-bar" class="d-flex align-items-center gap-3 mb-4 flex-wrap">
@@ -157,6 +163,13 @@
       <select id="piece-select" class="form-select" style="max-width:260px;font-size:14px;">
         <option value="">Select a piece...</option>
       </select>
+      <div id="compare-selector-wrapper" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:13px;color:#9ca3af;font-weight:500;">vs.</span>
+        <select id="piece-select-b" class="form-select" style="max-width:220px;font-size:14px;">
+          <option value="">Compare with...</option>
+        </select>
+        <button id="clear-compare-btn" style="display:none;background:none;border:none;color:#9ca3af;font-size:20px;cursor:pointer;padding:0 4px;line-height:1;" title="Remove comparison">&times;</button>
+      </div>
       <span id="analysis-loading" style="display:none;font-size:13px;color:#9ca3af;">Loading...</span>
     </div>
 
@@ -194,32 +207,71 @@
         <button class="btn btn-sm btn-outline-secondary" id="sort-num" style="font-size:12px;"># Order</button>
       </div>
 
-      <!-- Fully available -->
-      <div class="mb-4">
-        <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#059669;">
-          Fully available <span id="fully-count" style="font-weight:400;color:#6b7280;"></span>
-        </h6>
-        <ul id="fully-available-list" class="list-unstyled mb-0"></ul>
-        <p id="no-full" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
-      </div>
+      <!-- Side-by-side dancer columns -->
+      <div id="dancer-columns">
 
-      <!-- Partial conflict -->
-      <div class="mb-4">
-        <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#d97706;">
-          Partial conflict <span id="partial-count" style="font-weight:400;color:#6b7280;"></span>
-        </h6>
-        <ul id="partially-available-list" class="list-unstyled mb-0"></ul>
-        <p id="no-partial" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
-      </div>
+        <!-- Panel A: primary piece -->
+        <div id="panel-a">
+          <div class="panel-piece-label" id="panel-a-label">
+            <div id="piece-color-swatch-a" style="width:10px;height:10px;border-radius:2px;flex-shrink:0;"></div>
+            <span id="piece-name-display-a"></span>
+          </div>
 
-      <!-- Not available -->
-      <div class="mb-4">
-        <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#6b7280;">
-          Not available <span id="none-count" style="font-weight:400;color:#6b7280;"></span>
-        </h6>
-        <ul id="not-available-list" class="list-unstyled mb-0"></ul>
-        <p id="no-none" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
-      </div>
+          <div class="mb-4">
+            <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#059669;">
+              Fully available <span id="fully-count" style="font-weight:400;color:#6b7280;"></span>
+            </h6>
+            <ul id="fully-available-list" class="list-unstyled mb-0"></ul>
+            <p id="no-full" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
+          </div>
+
+          <div class="mb-4">
+            <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#d97706;">
+              Partial conflict <span id="partial-count" style="font-weight:400;color:#6b7280;"></span>
+            </h6>
+            <ul id="partially-available-list" class="list-unstyled mb-0"></ul>
+            <p id="no-partial" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
+          </div>
+
+          <div class="mb-4">
+            <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#6b7280;">
+              Not available <span id="none-count" style="font-weight:400;color:#6b7280;"></span>
+            </h6>
+            <ul id="not-available-list" class="list-unstyled mb-0"></ul>
+            <p id="no-none" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
+          </div>
+        </div>
+
+        <!-- Panel B: compare piece (hidden until selected) -->
+        <div id="panel-b" style="display:none;border-left:2px solid #e8dfc8;padding-left:24px;">
+          <div class="panel-piece-label" style="display:flex;">
+            <div id="piece-color-swatch-b" style="width:10px;height:10px;border-radius:2px;flex-shrink:0;"></div>
+            <span id="piece-name-display-b"></span>
+          </div>
+          <div class="mb-4">
+            <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#059669;">
+              Fully available <span id="fully-count-b" style="font-weight:400;color:#6b7280;"></span>
+            </h6>
+            <ul id="fully-available-list-b" class="list-unstyled mb-0"></ul>
+            <p id="no-full-b" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
+          </div>
+          <div class="mb-4">
+            <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#d97706;">
+              Partial conflict <span id="partial-count-b" style="font-weight:400;color:#6b7280;"></span>
+            </h6>
+            <ul id="partially-available-list-b" class="list-unstyled mb-0"></ul>
+            <p id="no-partial-b" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
+          </div>
+          <div class="mb-4">
+            <h6 class="mb-2" style="font-size:13px;font-weight:700;color:#6b7280;">
+              Not available <span id="none-count-b" style="font-weight:400;color:#6b7280;"></span>
+            </h6>
+            <ul id="not-available-list-b" class="list-unstyled mb-0"></ul>
+            <p id="no-none-b" style="font-size:13px;color:#9ca3af;font-style:italic;display:none;margin:0;">None</p>
+          </div>
+        </div>
+
+      </div><!-- /dancer-columns -->
 
     </div>
 
