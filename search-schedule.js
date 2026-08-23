@@ -95,12 +95,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       selB.value = '';
       clearCompare();
     });
+
+    // Restore last-viewed piece on page load
+    const saved = localStorage.getItem('search_selected_piece');
+    if (saved && pieces.some(p => String(p.id) === saved)) {
+      sel.value = saved;
+      selectPiece(saved);
+    }
   }
 
   async function selectPiece(pieceId) {
     const contentEl  = document.getElementById('analysis-content');
     const loadingEl  = document.getElementById('analysis-loading');
-    if (!pieceId) { contentEl.style.display = 'none'; return; }
+    if (!pieceId) {
+      contentEl.style.display = 'none';
+      document.getElementById('compare-selector-wrapper').style.display = 'none';
+      localStorage.removeItem('search_selected_piece');
+      return;
+    }
 
     loadingEl.style.display = '';
     contentEl.style.display = 'none';
@@ -110,13 +122,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await res.json();
       if (!res.ok) { showErrorToast(data.error || 'Could not load availability.'); return; }
 
-      document.getElementById('piece-color-swatch').style.background    = data.piece.color || '#6366f1';
-      document.getElementById('piece-name-display').textContent          = data.piece.name;
-      document.getElementById('piece-color-swatch-a').style.background   = data.piece.color || '#6366f1';
-      document.getElementById('piece-name-display-a').textContent        = data.piece.name;
+      document.getElementById('piece-color-swatch').style.background = data.piece.color || '#6366f1';
+      document.getElementById('piece-name-display').textContent      = data.piece.name;
       clearCompare();
       populateCompareSelector(pieceId);
       document.getElementById('compare-selector-wrapper').style.display = 'flex';
+      localStorage.setItem('search_selected_piece', pieceId);
 
       renderRequirements(data.requirements);
 
@@ -324,6 +335,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       document.getElementById('piece-color-swatch-b').style.background = data.piece.color || '#6366f1';
       document.getElementById('piece-name-display-b').textContent       = data.piece.name;
+      renderRequirementsB(data.requirements);
+      renderLiveCastB();
 
       _compareAuditData = {};
       fetch(`/api/audition-casting/${pieceId}`)
@@ -344,6 +357,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     _compareAuditData = {};
     _compareLiveCastMbrs.clear(); _compareLiveCastUds.clear();
     document.getElementById('clear-compare-btn').style.display = 'none';
+    const selB = document.getElementById('piece-select-b');
+    if (selB) selB.value = '';
     exitCompareMode();
   }
 
@@ -364,7 +379,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       auditData: _compareAuditData,
       castMbrs:  _compareLiveCastMbrs,
       castUds:   _compareLiveCastUds,
-      onCastChange: () => {},
+      onCastChange: renderLiveCastB,
     };
     const full    = sortDancers(_compareAvailFull);
     const partial = sortDancers(_compareAvailPartial);
@@ -386,6 +401,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     full.forEach(d    => appendDancerItem(fullyListB,   d, _comparePieceId, [], opts));
     partial.forEach(d => appendDancerItem(partialListB, d, _comparePieceId, d.conflicts || [], opts));
     unavail.forEach(d => appendDancerItem(noneListB,    d, _comparePieceId, d.conflicts || [], opts));
+  }
+
+  function renderRequirementsB(requirements) {
+    const listEl = document.getElementById('requirements-list-b');
+    if (!listEl) return;
+    if (!requirements || requirements.length === 0) {
+      listEl.innerHTML = '<span style="font-size:13px;color:#9ca3af;">No rehearsal blocks scheduled for this piece yet.</span>';
+      return;
+    }
+    listEl.innerHTML = requirements.map(r => {
+      const groups = {};
+      r.blocks.forEach(b => {
+        const key = `${b.start_time}|||${b.end_time}`;
+        if (!groups[key]) groups[key] = { days: [], start: b.start_time, end: b.end_time };
+        groups[key].days.push(b.day);
+      });
+      const blockStr = Object.values(groups).map(g => {
+        g.days.sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b));
+        return `${g.days.join(', ')} ${g.start} – ${g.end}`;
+      }).join(' &nbsp;&middot;&nbsp; ');
+      if (r.date_label) {
+        return `<div style="display:flex;gap:20px;align-items:baseline;padding:2px 0;font-size:13px;">
+          <span style="color:#374151;font-weight:600;min-width:130px;flex-shrink:0;">${escapeHtml(r.date_label)}</span>
+          <span style="color:#6b7280;">${blockStr}</span>
+        </div>`;
+      }
+      return `<div style="font-size:13px;color:#6b7280;">${blockStr}</div>`;
+    }).join('');
+  }
+
+  function renderLiveCastB() {
+    const el = document.getElementById('live-cast-panel-b');
+    if (!el) return;
+    const mCount = _compareLiveCastMbrs.size;
+    const uCount = _compareLiveCastUds.size;
+    if (!mCount && !uCount) {
+      el.innerHTML = '<p style="font-size:12.5px;color:#9ca3af;margin:0;">No one added yet.</p>';
+      return;
+    }
+    let html = '';
+    if (mCount > 0) html += `<div class="live-cast-row">
+      <span class="live-cast-label">Cast (${mCount})</span>
+      ${[..._compareLiveCastMbrs.values()].map(n => `<span class="live-cast-chip member">${escapeHtml(n)}</span>`).join('')}
+    </div>`;
+    if (uCount > 0) html += `<div class="live-cast-row">
+      <span class="live-cast-label">Understudies (${uCount})</span>
+      ${[..._compareLiveCastUds.values()].map(n => `<span class="live-cast-chip understudy">${escapeHtml(n)}</span>`).join('')}
+    </div>`;
+    el.innerHTML = html;
   }
 
   // ── Dancer row ─────────────────────────────────────────────────────────────
