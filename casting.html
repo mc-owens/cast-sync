@@ -92,10 +92,16 @@
   <div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content">
-        <div class="modal-header">
-          <div>
+        <div class="modal-header" style="flex-wrap:wrap;gap:8px;">
+          <div style="flex:1;min-width:0;">
             <h5 class="modal-title mb-0">Preview: Auditionee View</h5>
             <div class="text-muted" style="font-size:12px;">This is what dancers will see when the cast list is published.</div>
+          </div>
+          <div class="form-check form-switch mb-0 d-flex align-items-center gap-2" style="margin-right:8px;">
+            <input class="form-check-input" type="checkbox" id="piece-names-toggle-modal" role="switch"
+              style="width:1.8em;height:.9em;cursor:pointer;">
+            <label class="form-check-label" for="piece-names-toggle-modal"
+              style="font-size:13px;color:#374151;cursor:pointer;white-space:nowrap;">Show piece names</label>
           </div>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
@@ -795,16 +801,9 @@
 
     // ── Preview ───────────────────────────────────────────────────────────────
     // Mirrors exactly what auditionees see in my-casting.html
-    function showPreview() {
-      const body = document.getElementById('preview-modal-body');
+    function buildPreviewHtml() {
+      if (allPieces.length === 0) return '<p class="text-muted">No pieces to preview.</p>';
 
-      if (allPieces.length === 0) {
-        body.innerHTML = '<p class="text-muted">No pieces to preview.</p>';
-        new bootstrap.Modal(document.getElementById('previewModal')).show();
-        return;
-      }
-
-      // Helper: read current DOM order + role names (DnD may have changed them)
       function getDomList(pieceId, role) {
         const list = [];
         document.querySelectorAll(`#${role}-list-${pieceId} .dancer-row`).forEach(row => {
@@ -864,8 +863,14 @@
 
         html += `</div>`;
       }
+      return html;
+    }
 
-      body.innerHTML = html;
+    function showPreview() {
+      const body = document.getElementById('preview-modal-body');
+      const modalToggle = document.getElementById('piece-names-toggle-modal');
+      if (modalToggle) modalToggle.checked = showPieceNames;
+      body.innerHTML = buildPreviewHtml();
       new bootstrap.Modal(document.getElementById('previewModal')).show();
     }
 
@@ -905,6 +910,23 @@
       } catch (e) {
         showPieceNames = !showPieceNames;
         this.checked = showPieceNames;
+      }
+    });
+
+    document.getElementById('piece-names-toggle-modal').addEventListener('change', async function () {
+      showPieceNames = this.checked;
+      pieceNamesToggle.checked = showPieceNames;
+      document.getElementById('preview-modal-body').innerHTML = buildPreviewHtml();
+      try {
+        await fetch('/api/publish/settings', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ show_piece_names: showPieceNames }),
+        });
+      } catch (e) {
+        showPieceNames = !showPieceNames;
+        this.checked = showPieceNames;
+        pieceNamesToggle.checked = showPieceNames;
+        document.getElementById('preview-modal-body').innerHTML = buildPreviewHtml();
       }
     });
 
