@@ -7597,6 +7597,15 @@ async function runMigrations() {
     console.log('Migration step 46 (new audition day schema) complete.');
   } catch (err) { console.error('Migration step 46 error:', err.message); }
 
+  // ── Step 47: group_size on callback rounds ─────────────────────────────────
+  try {
+    await pool.query(`
+      ALTER TABLE audition_callback_rounds
+        ADD COLUMN IF NOT EXISTS group_size INTEGER NOT NULL DEFAULT 8;
+    `);
+    console.log('Migration step 47 (callback round group_size) complete.');
+  } catch (err) { console.error('Migration step 47 error:', err.message); }
+
   console.log('All migrations complete.');
 }
 
@@ -7877,7 +7886,7 @@ app.get('/api/audition-days/:id', requireAuth('master'), async (req, res) => {
         [req.params.id, req.session.userId]
       ),
       pool.query(`
-        SELECT acr.id, acr.name, acr.sort_order, acr.combo_id,
+        SELECT acr.id, acr.name, acr.sort_order, acr.combo_id, acr.group_size,
                COALESCE(json_agg(jsonb_build_object(
                  'submission_id', ac.submission_id,
                  'added_by_user_id', ac.added_by_user_id,
@@ -8030,7 +8039,7 @@ app.get('/api/audition-days/:id/callback-rounds', requireAuth('master'), async (
   const { orgId, seasonId } = req.session;
   try {
     const result = await pool.query(`
-      SELECT acr.id, acr.name, acr.sort_order, acr.combo_id,
+      SELECT acr.id, acr.name, acr.sort_order, acr.combo_id, acr.group_size,
              COALESCE(json_agg(jsonb_build_object(
                'submission_id', ac.submission_id,
                'added_by_user_id', ac.added_by_user_id,
@@ -8052,8 +8061,9 @@ app.get('/api/audition-days/:id/callback-rounds', requireAuth('master'), async (
 // POST /api/audition-days/:id/callback-rounds
 app.post('/api/audition-days/:id/callback-rounds', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.session;
-  const { name, combo_id } = req.body;
+  const { name, combo_id, group_size } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Name required.' });
+  if (!combo_id) return res.status(400).json({ error: 'combo_id required.' });
   try {
     const dayCheck = await pool.query(
       `SELECT id FROM audition_days WHERE id=$1 AND season_id=$2 AND org_id=$3`,
@@ -8064,10 +8074,11 @@ app.post('/api/audition-days/:id/callback-rounds', requireAuth('master'), async 
       `SELECT COALESCE(MAX(sort_order),0)+1 AS next FROM audition_callback_rounds WHERE audition_day_id=$1`,
       [req.params.id]
     );
+    const gs = (Number(group_size) > 0) ? Number(group_size) : 8;
     const result = await pool.query(
-      `INSERT INTO audition_callback_rounds (audition_day_id, name, sort_order, combo_id)
-       VALUES ($1,$2,$3,$4) RETURNING *`,
-      [req.params.id, name.trim(), posRes.rows[0].next, combo_id || null]
+      `INSERT INTO audition_callback_rounds (audition_day_id, name, sort_order, combo_id, group_size)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [req.params.id, name.trim(), posRes.rows[0].next, combo_id, gs]
     );
     res.json({ ...result.rows[0], callbacks: [] });
   } catch (err) {

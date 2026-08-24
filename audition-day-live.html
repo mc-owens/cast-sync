@@ -218,57 +218,18 @@
     }
 
     /* ── Callback panel ── */
-    #round-tabbar {
-      display: flex;
-      gap: 4px;
-      padding: 10px 16px 8px;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-      background: #fff;
-      border-bottom: 1px solid #e8dfc8;
-    }
-    #round-tabbar::-webkit-scrollbar { display: none; }
-    .round-tab {
-      flex-shrink: 0;
-      padding: 5px 14px;
-      border-radius: 20px;
-      border: 1px solid #e8dfc8;
-      background: #f5f0e8;
-      font-size: 12px;
-      font-weight: 600;
-      color: #888;
-      cursor: pointer;
-    }
-    .round-tab.active { background: #2d2512; color: #fff; border-color: #2d2512; }
-    #add-round-btn {
-      flex-shrink: 0;
-      padding: 5px 12px;
-      border-radius: 20px;
-      border: 1px dashed #c9a84c;
-      background: transparent;
-      font-size: 12px;
-      color: #c9a84c;
-      cursor: pointer;
-      align-self: center;
-      margin-bottom: 0;
-    }
-
-    #callback-content { padding: 12px 16px; }
-    .callback-row {
+    #cb-group-nav {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 9px 12px;
+      gap: 8px;
+      padding: 10px 16px 8px;
       background: #fff;
-      border: 1px solid #e8dfc8;
-      border-radius: 7px;
-      margin-bottom: 6px;
+      border-bottom: 1px solid #e8dfc8;
+      flex-wrap: wrap;
     }
-    .callback-row.is-callback { background: rgba(201,168,76,.07); border-color: rgba(201,168,76,.4); }
-    .callback-name { font-size: 14px; color: #2d2512; }
-    .callback-name .cb-num { color: #aaa; font-size: 12px; margin-right: 4px; }
-    .callback-attribution { font-size: 11px; color: #aaa; margin-top: 2px; }
+    #cb-group-label { font-size: 13px; font-weight: 600; color: #2d2512; }
+    #cb-group-info { font-size: 11px; color: #aaa; }
+    #callback-content { padding: 12px 16px; }
     .cb-toggle {
       padding: 4px 12px;
       border-radius: 6px;
@@ -359,17 +320,17 @@
           <span id="group-label" style="font-size:13px;"></span>
           <button class="group-nav-btn" id="next-group">›</button>
         </div>
-        <div id="cb-round-label" style="font-size:11px;color:#aaa;white-space:nowrap;display:none;">
-          Callbacks: <span id="cb-round-name" style="color:#8a6820;font-weight:600;"></span>
-        </div>
       </div>
       <div id="dancer-list"></div>
     </div>
 
     <!-- ── Callbacks panel ── -->
     <div id="panel-callbacks" style="display:none;">
-      <div id="round-tabbar">
-        <!-- filled by renderRoundTabs() -->
+      <div id="cb-group-nav" style="display:none;">
+        <button id="cb-prev-group" class="nav-btn" disabled>&#8592;</button>
+        <span id="cb-group-label">Group 1 of 1</span>
+        <button id="cb-next-group" class="nav-btn">&#8594;</button>
+        <span id="cb-group-info"></span>
       </div>
       <div id="callback-content"></div>
     </div>
@@ -418,25 +379,6 @@
     </div>
   </div>
 
-  <!-- Add Callback Round modal -->
-  <div class="modal fade" id="addRoundModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width:340px;">
-      <div class="modal-content">
-        <div class="modal-header border-0 pb-0">
-          <h5 class="modal-title fw-semibold" style="font-size:15px;">New Callback Round</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body pt-3">
-          <input type="text" id="new-round-name" class="form-control form-control-sm"
-            placeholder="e.g. Ballet Callback, Round 2" maxlength="60" autocomplete="off">
-        </div>
-        <div class="modal-footer border-0 pt-0">
-          <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-          <button class="btn btn-dark btn-sm" id="save-round-btn">Create</button>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="help-content.js"></script>
@@ -477,7 +419,7 @@
     let activePieceId  = (allPieces.find(p => p.is_mine) || allPieces[0])?.id ?? null;
     let activeTab      = 'observe';
     let activeGroupIdx = 0;
-    let activeRoundId  = cbRounds[0]?.id ?? null;
+    let cbGroupIdx     = 0;
     let reviewLoaded   = false;
     let cbPollTimer    = null;
     let noteTimers     = {};
@@ -560,9 +502,12 @@
         btn.addEventListener('click', () => {
           activeComboId  = c.id;
           activeGroupIdx = 0;
+          cbGroupIdx     = 0;
           renderComboTabs();
           renderGroupNav();
           renderDancerList();
+          updateQuickCbButtons();
+          if (activeTab === 'callbacks') renderCallbackTab();
         });
         bar.appendChild(btn);
       });
@@ -642,7 +587,7 @@
       const note     = myNotes[sid] || '';
       const prior    = priorContext(sid, pid);
       const hasNote  = !!note;
-      const activeRound = cbRounds.find(r => r.id === activeRoundId);
+      const activeRound = activeCallbackRound();
       const isCb    = !!(activeRound?.callbacks || []).find(c => String(c.submission_id) === sid);
 
       const card = document.createElement('div');
@@ -677,7 +622,7 @@
           <button class="obs-btn${level === 'high_priority' ? ' active-hp' : ''}" data-level="high_priority">HP</button>
           <button class="note-btn${hasNote ? ' has-note' : ''}" data-note-toggle="${sid}" title="Note">✏</button>
         </div>
-        ${activeRoundId ? `<button class="quick-cb-btn${isCb ? ' active' : ''}" data-sid="${sid}">${cbLabel}</button>` : ''}
+        <button class="quick-cb-btn${isCb ? ' active' : ''}" data-sid="${sid}">${cbLabel}</button>
         ${priorHtml}
         <div id="note-area-${sid}" style="display:${hasNote ? '' : 'none'};">${noteHtml}</div>
       `;
@@ -703,7 +648,7 @@
 
       // Quick callback toggle
       card.querySelector('.quick-cb-btn')?.addEventListener('click', () =>
-        toggleCallback(d.submission_id, activeRoundId)
+        toggleCallbackFromObserve(d.submission_id)
       );
 
       container.appendChild(card);
@@ -761,79 +706,86 @@
     }
 
     // ── Callback rounds ────────────────────────────────────────────────────────
-    function renderRoundTabs() {
-      const bar = document.getElementById('round-tabbar');
-      bar.innerHTML = '';
-      cbRounds.forEach(r => {
-        const btn = document.createElement('button');
-        btn.className = 'round-tab' + (r.id === activeRoundId ? ' active' : '');
-        btn.textContent = r.name;
-        btn.addEventListener('click', () => {
-          activeRoundId = r.id;
-          renderRoundTabs();
-          renderCallbackContent();
-          updateQuickCbButtons();
-          updateCbRoundLabel();
-        });
-        bar.appendChild(btn);
-      });
-      const addBtn = document.createElement('button');
-      addBtn.id = 'add-round-btn';
-      addBtn.textContent = '+ Round';
-      addBtn.addEventListener('click', () =>
-        new bootstrap.Modal(document.getElementById('addRoundModal')).show()
-      );
-      bar.appendChild(addBtn);
+
+    function activeCallbackRound() {
+      return cbRounds.find(r => r.combo_id !== null && String(r.combo_id) === String(activeComboId)) || null;
     }
 
-    function renderCallbackContent() {
-      const round   = cbRounds.find(r => r.id === activeRoundId);
+    function cbDancers() {
+      const round = activeCallbackRound();
+      if (!round || !round.callbacks.length) return [];
+      const cbSet = new Set(round.callbacks.map(c => String(c.submission_id)));
+      return sortedDancers().filter(d => cbSet.has(String(d.submission_id)));
+    }
+
+    function cbTotalGroups() {
+      const round = activeCallbackRound();
+      const gs = round?.group_size || 8;
+      return Math.ceil(cbDancers().length / gs) || 1;
+    }
+
+    function cbGroupDancers() {
+      const round = activeCallbackRound();
+      const gs = round?.group_size || 8;
+      const start = cbGroupIdx * gs;
+      return cbDancers().slice(start, start + gs);
+    }
+
+    function renderCallbackTab() {
+      const round   = activeCallbackRound();
       const content = document.getElementById('callback-content');
-      if (!round) { content.innerHTML = '<p class="empty-msg">No callback rounds yet.</p>'; return; }
+      const nav     = document.getElementById('cb-group-nav');
+      const combo   = currentCombo();
 
-      const calledBackIds = new Set((round.callbacks || []).map(c => String(c.submission_id)));
-      const attrMap = {};
-      (round.callbacks || []).forEach(c => { attrMap[String(c.submission_id)] = c.added_by_name; });
-
-      // Called-back dancers first, then rest
-      const sorted = sortedDancers();
-      const calledBack = sorted.filter(d => calledBackIds.has(String(d.submission_id)));
-      const others     = sorted.filter(d => !calledBackIds.has(String(d.submission_id)));
-
-      content.innerHTML = '';
-
-      if (calledBack.length) {
-        const hdr = document.createElement('div');
-        hdr.style.cssText = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#c9a84c;margin-bottom:6px;';
-        hdr.textContent = `Called Back (${calledBack.length})`;
-        content.appendChild(hdr);
-        calledBack.forEach(d => appendCallbackRow(content, d, true, attrMap[String(d.submission_id)], round.id));
-        const sep = document.createElement('div');
-        sep.style.cssText = 'margin:12px 0 8px;border-top:1px solid #e8dfc8;';
-        content.appendChild(sep);
+      if (!round || !round.callbacks.length) {
+        nav.style.display = 'none';
+        content.innerHTML = `<p class="empty-msg">No one called back yet from ${escHtml(combo?.name || 'this combo')}.<br><span style="font-size:12px;color:#aaa;">Use the + Callback button while observing.</span></p>`;
+        return;
       }
 
-      others.forEach(d => appendCallbackRow(content, d, false, null, round.id));
+      const dancers  = cbDancers();
+      const gs       = round.group_size || 8;
+      const totalG   = cbTotalGroups();
+      if (cbGroupIdx >= totalG) cbGroupIdx = totalG - 1;
+
+      nav.style.display = '';
+      document.getElementById('cb-group-label').textContent = `Group ${cbGroupIdx + 1} of ${totalG}`;
+      document.getElementById('cb-prev-group').disabled = cbGroupIdx === 0;
+      document.getElementById('cb-next-group').disabled = cbGroupIdx >= totalG - 1;
+
+      const lastGs = dancers.length - (totalG - 1) * gs;
+      let info = `${dancers.length} dancer${dancers.length !== 1 ? 's' : ''}`;
+      if (totalG > 1) info += ` · groups of ${gs}${lastGs !== gs ? `, last group ${lastGs}` : ''}`;
+      document.getElementById('cb-group-info').textContent = info;
+
+      content.innerHTML = '';
+      const grid = document.createElement('div');
+      grid.className = 'dancer-grid';
+      cbGroupDancers().forEach(d => renderDancerCard(grid, d));
+      content.appendChild(grid);
     }
 
-    function appendCallbackRow(container, d, isCallback, attr, roundId) {
-      const row = document.createElement('div');
-      row.className = 'callback-row' + (isCallback ? ' is-callback' : '');
-      row.dataset.sid = String(d.submission_id);
+    document.getElementById('cb-prev-group').addEventListener('click', () => {
+      if (cbGroupIdx > 0) { cbGroupIdx--; renderCallbackTab(); }
+    });
+    document.getElementById('cb-next-group').addEventListener('click', () => {
+      if (cbGroupIdx < cbTotalGroups() - 1) { cbGroupIdx++; renderCallbackTab(); }
+    });
 
-      const numStr  = d.audition_number != null ? `<span class="cb-num">#${d.audition_number}</span>` : '';
-      const attrStr = isCallback && attr ? `<div class="callback-attribution">Added by ${escHtml(attr)}</div>` : '';
-
-      row.innerHTML = `
-        <div>
-          <div class="callback-name">${numStr}${escHtml(d.first_name)} ${escHtml(d.last_name)}</div>
-          ${attrStr}
-        </div>
-        <button class="cb-toggle${isCallback ? ' active' : ''}">${isCallback ? '✓ Called Back' : '+ Callback'}</button>
-      `;
-
-      row.querySelector('.cb-toggle').addEventListener('click', () => toggleCallback(d.submission_id, roundId));
-      container.appendChild(row);
+    async function toggleCallbackFromObserve(submissionId) {
+      let round = activeCallbackRound();
+      if (!round) {
+        const combo = currentCombo();
+        const r = await fetch(`/api/audition-days/${dayId}/callback-rounds`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Callbacks', combo_id: activeComboId, group_size: combo?.group_size || 8 }),
+        }).catch(() => null);
+        if (!r?.ok) return;
+        round = await r.json();
+        cbRounds.push(round);
+      }
+      await toggleCallback(submissionId, round.id);
     }
 
     async function toggleCallback(submissionId, roundId) {
@@ -849,45 +801,24 @@
       const r = await fetch(`/api/audition-days/${dayId}/callback-rounds`).catch(() => null);
       if (r?.ok) {
         cbRounds = await r.json();
-        if (!activeRoundId && cbRounds.length) activeRoundId = cbRounds[0].id;
-        if (activeTab === 'callbacks') {
-          renderRoundTabs();
-          renderCallbackContent();
-        }
+        if (activeTab === 'callbacks') renderCallbackTab();
         updateQuickCbButtons();
-        updateCbRoundLabel();
       }
     }
 
     function updateQuickCbButtons() {
-      const round = cbRounds.find(r => r.id === activeRoundId);
-      const calledBackIds = new Set((round?.callbacks || []).map(c => String(c.submission_id)));
+      const round = activeCallbackRound();
+      const cbSet = new Set((round?.callbacks || []).map(c => String(c.submission_id)));
       document.querySelectorAll('.quick-cb-btn').forEach(btn => {
-        const sid  = btn.dataset.sid;
-        const isIn = calledBackIds.has(sid);
+        const isIn = cbSet.has(btn.dataset.sid);
         btn.className = 'quick-cb-btn' + (isIn ? ' active' : '');
         btn.textContent = isIn ? '✓ Called Back' : '+ Callback';
       });
     }
 
-    function updateCbRoundLabel() {
-      const label = document.getElementById('cb-round-label');
-      const name  = document.getElementById('cb-round-name');
-      if (!label || !name) return;
-      const round = cbRounds.find(r => r.id === activeRoundId);
-      if (round && cbRounds.length > 1) {
-        name.textContent = round.name;
-        label.style.display = '';
-      } else {
-        label.style.display = 'none';
-      }
-    }
-
     function startCallbackPoll() {
       if (cbPollTimer) return;
-      cbPollTimer = setInterval(() => {
-        if (activeTab === 'callbacks') refreshCallbackRounds();
-      }, 8000);
+      cbPollTimer = setInterval(refreshCallbackRounds, 8000);
     }
 
     // ── Review & Finalize ──────────────────────────────────────────────────────
@@ -1011,7 +942,7 @@
         document.getElementById('panel-callbacks').style.display  = activeTab === 'callbacks'  ? '' : 'none';
         document.getElementById('panel-review').style.display     = activeTab === 'review'     ? '' : 'none';
 
-        if (activeTab === 'callbacks') { startCallbackPoll(); renderRoundTabs(); renderCallbackContent(); }
+        if (activeTab === 'callbacks') { cbGroupIdx = 0; startCallbackPoll(); renderCallbackTab(); }
         if (activeTab === 'review' && !reviewLoaded) loadReview();
       });
     });
@@ -1063,35 +994,14 @@
       } finally { btn.disabled = false; }
     });
 
-    // ── Add Round modal ───────────────────────────────────────────────────────
-    document.getElementById('save-round-btn').addEventListener('click', async () => {
-      const btn  = document.getElementById('save-round-btn');
-      const name = document.getElementById('new-round-name').value.trim();
-      if (!name) return;
-      btn.disabled = true;
-      try {
-        const r = await fetch(`/api/audition-days/${dayId}/callback-rounds`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name }),
-        });
-        if (!r.ok) { alert('Could not create round.'); return; }
-        const round = await r.json();
-        cbRounds.push(round);
-        activeRoundId = round.id;
-        bootstrap.Modal.getInstance(document.getElementById('addRoundModal')).hide();
-        document.getElementById('new-round-name').value = '';
-        renderRoundTabs();
-        renderCallbackContent();
-      } finally { btn.disabled = false; }
-    });
 
     // ── Initial render ────────────────────────────────────────────────────────
     buildPieceSelector();
     renderComboTabs();
     renderGroupNav();
     renderDancerList();
-    renderRoundTabs();
-    updateCbRoundLabel();
+    updateQuickCbButtons();
+    startCallbackPoll();
 
   })();
   </script>
