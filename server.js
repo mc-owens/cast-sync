@@ -484,6 +484,60 @@ function requireAuth(role) {
   };
 }
 
+// Async middleware for audition day routes: allows directors (not denied) and
+// piece_staff members (not denied). Auto-detects season context for staff users
+// who haven't gone through org-select.
+async function requireAuditionDayAuth(req, res, next) {
+  if (!req.session?.userId) return res.status(401).json({ error: 'Not logged in.' });
+
+  const { userId } = req.session;
+  let { orgId, seasonId } = req.session;
+
+  // If no session context, try to auto-detect for staff
+  if (!orgId || !seasonId) {
+    if (!req.session.isStaff) return res.status(403).json({ error: 'No active production selected.' });
+    try {
+      const seasons = await pool.query(`
+        SELECT DISTINCT s.id AS season_id, s.org_id, s.name AS season_name, o.name AS org_name
+        FROM piece_staff ps
+        JOIN pieces p ON p.id = ps.piece_id
+        JOIN seasons s ON s.id = p.season_id
+        JOIN orgs o ON o.id = s.org_id
+        WHERE ps.user_id = $1 ORDER BY s.id DESC`, [userId]);
+      if (!seasons.rows.length) return res.status(403).json({ error: 'No production access found.' });
+      if (seasons.rows.length > 1) return res.status(400).json({ error: 'SEASON_SELECT_REQUIRED', seasons: seasons.rows });
+      const s = seasons.rows[0];
+      req.session.orgId = orgId = s.org_id;
+      req.session.seasonId = seasonId = s.season_id;
+      req.session.orgName = s.org_name;
+      req.session.seasonName = s.season_name;
+    } catch (e) { return res.status(500).json({ error: 'Failed to detect production context.' }); }
+  }
+
+  // Check deny list
+  try {
+    const denied = await pool.query(
+      `SELECT 1 FROM season_audition_day_denied WHERE season_id=$1 AND user_id=$2 LIMIT 1`,
+      [seasonId, userId]);
+    if (denied.rows.length) return res.status(403).json({ error: 'You do not have access to Audition Day for this production.' });
+  } catch (_) { /* table may not exist yet in dev — fail open */ }
+
+  // Directors pass
+  if (req.session.role === 'master' || req.session.mode === 'director') return next();
+
+  // Staff: verify piece_staff membership for this season
+  if (req.session.isStaff) {
+    try {
+      const staffCheck = await pool.query(
+        `SELECT 1 FROM piece_staff ps JOIN pieces p ON p.id = ps.piece_id WHERE ps.user_id=$1 AND p.season_id=$2 LIMIT 1`,
+        [userId, seasonId]);
+      if (staffCheck.rows.length) return next();
+    } catch (_) { /* fall through */ }
+  }
+
+  return res.status(403).json({ error: 'Access denied.' });
+}
+
 // Middleware that injects org/season context for master routes
 async function requireOrgContext(req, res, next) {
   if (!req.session.userId || req.session.role !== 'master') return res.status(403).json({ error: 'Access denied.' });
@@ -7606,6 +7660,18 @@ async function runMigrations() {
     console.log('Migration step 47 (callback round group_size) complete.');
   } catch (err) { console.error('Migration step 47 error:', err.message); }
 
+  // ── Step 48: audition day access control ──────────────────────────────────
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS season_audition_day_denied (
+        season_id INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+        user_id   INTEGER NOT NULL REFERENCES users(id)   ON DELETE CASCADE,
+        PRIMARY KEY (season_id, user_id)
+      )
+    `);
+    console.log('Migration step 48 (audition day access control) complete.');
+  } catch (err) { console.error('Migration step 48 error:', err.message); }
+
   console.log('All migrations complete.');
 }
 
@@ -7715,10 +7781,82 @@ app.get('/api/admin/email-logs', requireAuth('master'), async (req, res) => {
   }
 });
 
+// ── Audition Day access control ───────────────────────────────────────────────
+
+// GET /api/audition-day/staff-context — staff call this to auto-set session org/season
+app.get('/api/audition-day/staff-context', async (req, res) => {
+  if (!req.session?.userId || !req.session?.isStaff) return res.status(403).json({ error: 'Staff access required.' });
+  try {
+    const seasons = await pool.query(`
+      SELECT DISTINCT s.id AS season_id, s.org_id, s.name AS season_name, o.name AS org_name
+      FROM piece_staff ps
+      JOIN pieces p ON p.id = ps.piece_id
+      JOIN seasons s ON s.id = p.season_id
+      JOIN orgs o ON o.id = s.org_id
+      WHERE ps.user_id = $1 ORDER BY s.id DESC`, [req.session.userId]);
+    if (!seasons.rows.length) return res.status(403).json({ error: 'No production access found.' });
+    if (seasons.rows.length > 1) return res.json({ select_required: true, seasons: seasons.rows });
+    const s = seasons.rows[0];
+    req.session.orgId = s.org_id;
+    req.session.seasonId = s.season_id;
+    req.session.orgName = s.org_name;
+    req.session.seasonName = s.season_name;
+    return res.json({ ok: true, season_id: s.season_id, season_name: s.season_name });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Server error.' }); }
+});
+
+// GET /api/season/audition-day-access — list co-directors and piece staff with access status
+app.get('/api/season/audition-day-access', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  const currentUserId = req.session.userId;
+  try {
+    const [coDirectors, staff, denied] = await Promise.all([
+      pool.query(
+        `SELECT u.id, u.email, COALESCE(u.name, u.email) AS display_name
+         FROM season_members sm JOIN users u ON u.id = sm.user_id WHERE sm.season_id = $1`,
+        [seasonId]),
+      pool.query(
+        `SELECT DISTINCT u.id, u.email, COALESCE(u.name, u.email) AS display_name
+         FROM piece_staff ps JOIN users u ON u.id = ps.user_id
+         JOIN pieces p ON p.id = ps.piece_id WHERE p.season_id = $1`,
+        [seasonId]),
+      pool.query(`SELECT user_id FROM season_audition_day_denied WHERE season_id=$1`, [seasonId]),
+    ]);
+    const deniedSet = new Set(denied.rows.map(r => r.user_id));
+    const coIds = new Set();
+    const members = [];
+    coDirectors.rows.forEach(u => {
+      if (u.id === currentUserId) return;
+      coIds.add(u.id);
+      members.push({ id: u.id, name: u.display_name, email: u.email, type: 'co_director', access: !deniedSet.has(u.id) });
+    });
+    staff.rows.forEach(u => {
+      if (u.id === currentUserId || coIds.has(u.id)) return;
+      members.push({ id: u.id, name: u.display_name, email: u.email, type: 'staff', access: !deniedSet.has(u.id) });
+    });
+    res.json(members);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to load access list.' }); }
+});
+
+// POST /api/season/audition-day-access/:userId — grant or deny
+app.post('/api/season/audition-day-access/:userId', requireAuth('master'), async (req, res) => {
+  const { seasonId } = req.session;
+  const userId = parseInt(req.params.userId);
+  const { access } = req.body;
+  try {
+    if (access) {
+      await pool.query(`DELETE FROM season_audition_day_denied WHERE season_id=$1 AND user_id=$2`, [seasonId, userId]);
+    } else {
+      await pool.query(`INSERT INTO season_audition_day_denied (season_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [seasonId, userId]);
+    }
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to update access.' }); }
+});
+
 // ── Audition Day ──────────────────────────────────────────────────────────────
 
 // GET /api/audition-days
-app.get('/api/audition-days', requireAuth('master'), async (req, res) => {
+app.get('/api/audition-days', requireAuditionDayAuth, async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
@@ -7838,7 +7976,7 @@ app.get('/api/audition-casting/:pieceId', requireAuth('master'), async (req, res
 });
 
 // GET /api/audition-days/:id
-app.get('/api/audition-days/:id', requireAuth('master'), async (req, res) => {
+app.get('/api/audition-days/:id', requireAuditionDayAuth, async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
@@ -7938,7 +8076,7 @@ app.get('/api/audition-days/:id', requireAuth('master'), async (req, res) => {
 });
 
 // PUT /api/audition-days/:id/observations — upsert or delete a combo observation
-app.put('/api/audition-days/:id/observations', requireAuth('master'), async (req, res) => {
+app.put('/api/audition-days/:id/observations', requireAuditionDayAuth, async (req, res) => {
   const { orgId, seasonId } = req.session;
   const { combo_id, submission_id, piece_id, level } = req.body;
   if (!combo_id || !submission_id || !piece_id) return res.status(400).json({ error: 'combo_id, submission_id, piece_id required.' });
@@ -7971,7 +8109,7 @@ app.put('/api/audition-days/:id/observations', requireAuth('master'), async (req
 });
 
 // PUT /api/audition-days/:id/notes/:submissionId — upsert running note
-app.put('/api/audition-days/:id/notes/:submissionId', requireAuth('master'), async (req, res) => {
+app.put('/api/audition-days/:id/notes/:submissionId', requireAuditionDayAuth, async (req, res) => {
   const { orgId, seasonId } = req.session;
   const { body } = req.body;
   try {
@@ -8002,7 +8140,7 @@ app.put('/api/audition-days/:id/notes/:submissionId', requireAuth('master'), asy
 });
 
 // PUT /api/audition-days/:id/final-considerations
-app.put('/api/audition-days/:id/final-considerations', requireAuth('master'), async (req, res) => {
+app.put('/api/audition-days/:id/final-considerations', requireAuditionDayAuth, async (req, res) => {
   const { orgId, seasonId } = req.session;
   const { submission_id, piece_id, level } = req.body;
   if (!submission_id || !piece_id) return res.status(400).json({ error: 'submission_id and piece_id required.' });
@@ -8035,7 +8173,7 @@ app.put('/api/audition-days/:id/final-considerations', requireAuth('master'), as
 });
 
 // GET /api/audition-days/:id/callback-rounds — polled for live sync
-app.get('/api/audition-days/:id/callback-rounds', requireAuth('master'), async (req, res) => {
+app.get('/api/audition-days/:id/callback-rounds', requireAuditionDayAuth, async (req, res) => {
   const { orgId, seasonId } = req.session;
   try {
     const result = await pool.query(`
@@ -8059,7 +8197,7 @@ app.get('/api/audition-days/:id/callback-rounds', requireAuth('master'), async (
 });
 
 // POST /api/audition-days/:id/callback-rounds
-app.post('/api/audition-days/:id/callback-rounds', requireAuth('master'), async (req, res) => {
+app.post('/api/audition-days/:id/callback-rounds', requireAuditionDayAuth, async (req, res) => {
   const { orgId, seasonId } = req.session;
   const { name, combo_id, group_size } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Name required.' });
@@ -8088,7 +8226,7 @@ app.post('/api/audition-days/:id/callback-rounds', requireAuth('master'), async 
 });
 
 // PATCH /api/audition-days/:id/callback-rounds/:roundId
-app.patch('/api/audition-days/:id/callback-rounds/:roundId', requireAuth('master'), async (req, res) => {
+app.patch('/api/audition-days/:id/callback-rounds/:roundId', requireAuditionDayAuth, async (req, res) => {
   const { orgId, seasonId } = req.session;
   const { name, group_size } = req.body;
   if (!name && group_size == null) return res.status(400).json({ error: 'Nothing to update.' });
@@ -8141,7 +8279,7 @@ app.delete('/api/audition-days/:id/callback-rounds/:roundId', requireAuth('maste
 
 // POST /api/audition-days/:id/callback-rounds/:roundId/callbacks/:submissionId
 // Body: { action: 'add' | 'remove' } — explicit intent prevents race-condition flips
-app.post('/api/audition-days/:id/callback-rounds/:roundId/callbacks/:submissionId', requireAuth('master'), async (req, res) => {
+app.post('/api/audition-days/:id/callback-rounds/:roundId/callbacks/:submissionId', requireAuditionDayAuth, async (req, res) => {
   const { orgId, seasonId } = req.session;
   const { action } = req.body;
   if (action !== 'add' && action !== 'remove') return res.status(400).json({ error: 'action must be add or remove.' });
@@ -8176,7 +8314,7 @@ app.post('/api/audition-days/:id/callback-rounds/:roundId/callbacks/:submissionI
 });
 
 // POST /api/audition-days/:id/combos
-app.post('/api/audition-days/:id/combos', requireAuth('master'), async (req, res) => {
+app.post('/api/audition-days/:id/combos', requireAuditionDayAuth, async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
@@ -8206,7 +8344,7 @@ app.post('/api/audition-days/:id/combos', requireAuth('master'), async (req, res
 });
 
 // PATCH /api/audition-days/:id/combos/:comboId
-app.patch('/api/audition-days/:id/combos/:comboId', requireAuth('master'), async (req, res) => {
+app.patch('/api/audition-days/:id/combos/:comboId', requireAuditionDayAuth, async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
@@ -8249,7 +8387,7 @@ app.delete('/api/audition-days/:id/combos/:comboId', requireAuth('master'), asyn
 });
 
 // GET /api/audition-days/:id/review — personal review: all dancers I flagged this audition day
-app.get('/api/audition-days/:id/review', requireAuth('master'), async (req, res) => {
+app.get('/api/audition-days/:id/review', requireAuditionDayAuth, async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {

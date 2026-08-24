@@ -562,8 +562,14 @@
     // ── Auth ──────────────────────────────────────────────────────────────────
     const authRes  = await fetch('/api/auth/me');
     const authUser = await authRes.json();
-    if (!authRes.ok || (authUser.mode !== 'director' && authUser.role !== 'master')) {
+    const isDirector = authUser.mode === 'director' || authUser.role === 'master';
+    const isStaff    = !!authUser.isStaff;
+    if (!authRes.ok || (!isDirector && !isStaff)) {
       window.location.href = 'login.html'; return;
+    }
+    if (isStaff && !authUser.orgId) {
+      const ctx = await fetch('/api/audition-day/staff-context').then(r => r.json()).catch(() => null);
+      if (!ctx || ctx.error || ctx.select_required) { window.location.href = 'audition-day.html'; return; }
     }
     document.getElementById('right-nav').innerHTML =
       `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
