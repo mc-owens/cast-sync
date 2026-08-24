@@ -83,6 +83,7 @@
       .then(r => r.json())
       .then(user => {
         if (user.role === 'master')     window.location.href = 'org-select.html';
+        if (user.isStaff)               window.location.href = 'audition-day.html';
         if (user.role === 'auditionee') window.location.href = 'auditionForm.html';
       })
       .catch(() => {}); // not logged in — stay on this page
@@ -128,6 +129,7 @@
 
         // Redirect based on role
         if (data.role === 'master')     window.location.href = 'org-select.html';
+        if (data.isStaff)               window.location.href = 'audition-day.html';
         if (data.role === 'auditionee') window.location.href = 'auditionForm.html';
 
       } catch (err) {
