@@ -380,6 +380,27 @@
   </div>
 
 
+  <!-- Piece confirmation modal: required, non-dismissible -->
+  <div class="modal fade" id="pieceConfirmModal" tabindex="-1"
+       data-bs-backdrop="static" data-bs-keyboard="false" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:360px;">
+      <div class="modal-content">
+        <div class="modal-header border-0 pb-1">
+          <div>
+            <h5 class="modal-title fw-semibold mb-1" style="font-size:15px;">Which piece are you observing for?</h5>
+            <p style="font-size:12.5px;color:#9ca3af;margin:0;">Your P/HP ratings will be saved under this piece. You can change it anytime from the Observe tab.</p>
+          </div>
+        </div>
+        <div class="modal-body pt-3 pb-2">
+          <div id="piece-confirm-list"></div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button class="btn btn-dark w-100" id="piece-confirm-btn" disabled>Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="help-content.js"></script>
   <script>
@@ -999,9 +1020,71 @@
     buildPieceSelector();
     renderComboTabs();
     renderGroupNav();
-    renderDancerList();
-    updateQuickCbButtons();
-    startCallbackPoll();
+
+    function finishInit() {
+      // Sync piece selector UI to activePieceId
+      const sel = document.getElementById('piece-select');
+      if (sel) sel.value = String(activePieceId ?? '');
+      renderDancerList();
+      updateQuickCbButtons();
+      startCallbackPoll();
+    }
+
+    function showPieceConfirmModal() {
+      const list       = document.getElementById('piece-confirm-list');
+      const confirmBtn = document.getElementById('piece-confirm-btn');
+      let selectedId   = allPieces.find(p => p.is_mine)?.id ?? null;
+
+      list.innerHTML = '';
+      allPieces.forEach(p => {
+        const item = document.createElement('div');
+        item.dataset.pid = String(p.id);
+        item.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1.5px solid #e8dfc8;background:#fff;margin-bottom:8px;cursor:pointer;transition:border-color .12s,background .12s;';
+        item.innerHTML = `
+          <div style="width:12px;height:12px;border-radius:3px;flex-shrink:0;background:${p.color || '#6366f1'};"></div>
+          <span style="font-size:14px;font-weight:600;color:#2d2512;">${escHtml(p.name)}</span>
+          ${p.is_mine ? '<span style="font-size:11px;color:#c9a84c;margin-left:auto;font-weight:600;">yours</span>' : ''}
+        `;
+        item.addEventListener('click', () => {
+          selectedId = p.id;
+          list.querySelectorAll('[data-pid]').forEach(el => {
+            const on = el.dataset.pid === String(p.id);
+            el.style.borderColor = on ? '#c9a84c' : '#e8dfc8';
+            el.style.background  = on ? 'rgba(201,168,76,.08)' : '#fff';
+          });
+          confirmBtn.disabled = false;
+        });
+        list.appendChild(item);
+      });
+
+      // Pre-select "yours" if found
+      if (selectedId) {
+        const pre = list.querySelector(`[data-pid="${selectedId}"]`);
+        if (pre) pre.click();
+      }
+
+      confirmBtn.onclick = () => {
+        if (!selectedId) return;
+        activePieceId = selectedId;
+        sessionStorage.setItem(`piece_confirmed_${dayId}`, String(selectedId));
+        bootstrap.Modal.getInstance(document.getElementById('pieceConfirmModal')).hide();
+        finishInit();
+      };
+
+      new bootstrap.Modal(document.getElementById('pieceConfirmModal')).show();
+    }
+
+    // Show modal if multiple pieces and not yet confirmed this session
+    const sessionKey   = `piece_confirmed_${dayId}`;
+    const savedPieceId = sessionStorage.getItem(sessionKey);
+    const savedPiece   = allPieces.find(p => String(p.id) === savedPieceId);
+
+    if (allPieces.length > 1 && !savedPiece) {
+      showPieceConfirmModal();
+    } else {
+      if (savedPiece) activePieceId = savedPiece.id;
+      finishInit();
+    }
 
   })();
   </script>
