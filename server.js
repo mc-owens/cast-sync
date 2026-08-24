@@ -8090,19 +8090,28 @@ app.post('/api/audition-days/:id/callback-rounds', requireAuth('master'), async 
 // PATCH /api/audition-days/:id/callback-rounds/:roundId
 app.patch('/api/audition-days/:id/callback-rounds/:roundId', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.session;
-  const { name } = req.body;
-  if (!name || !name.trim()) return res.status(400).json({ error: 'Name required.' });
+  const { name, group_size } = req.body;
+  if (!name && group_size == null) return res.status(400).json({ error: 'Nothing to update.' });
   try {
+    const sets = [];
+    const vals = [];
+    if (name && name.trim()) { sets.push(`name=$${vals.length+1}`); vals.push(name.trim()); }
+    if (group_size != null) {
+      const gs = parseInt(group_size);
+      if (!gs || gs < 1) return res.status(400).json({ error: 'Invalid group_size.' });
+      sets.push(`group_size=$${vals.length+1}`); vals.push(gs);
+    }
+    vals.push(req.params.roundId, req.params.id, seasonId, orgId);
     const result = await pool.query(`
-      UPDATE audition_callback_rounds SET name=$1
-      WHERE id=$2 AND audition_day_id=(SELECT id FROM audition_days WHERE id=$3 AND season_id=$4 AND org_id=$5)
-      RETURNING id`,
-      [name.trim(), req.params.roundId, req.params.id, seasonId, orgId]
+      UPDATE audition_callback_rounds SET ${sets.join(', ')}
+      WHERE id=$${vals.length-3} AND audition_day_id=(SELECT id FROM audition_days WHERE id=$${vals.length-2} AND season_id=$${vals.length-1} AND org_id=$${vals.length})
+      RETURNING id, group_size`,
+      vals
     );
     if (!result.rowCount) return res.status(404).json({ error: 'Not found.' });
-    res.json({ ok: true });
+    res.json({ ok: true, group_size: result.rows[0].group_size });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to rename.' });
+    res.status(500).json({ error: 'Failed to update.' });
   }
 });
 

@@ -447,6 +447,11 @@
         <span id="cb-group-label">Group 1 of 1</span>
         <button id="cb-next-group" class="nav-btn">&#8594;</button>
         <span id="cb-group-info"></span>
+        <label style="font-size:11px;color:#aaa;display:flex;align-items:center;gap:4px;margin-left:auto;white-space:nowrap;">
+          per group
+          <input id="cb-gs-input" type="number" min="1" max="500"
+            style="width:48px;font-size:12px;padding:2px 5px;border:1px solid #e8dfc8;border-radius:5px;text-align:center;background:#fffdf7;color:#2d2512;">
+        </label>
       </div>
       <div id="callback-content"></div>
     </div>
@@ -892,8 +897,11 @@
 
       const lastGs = dancers.length - (totalG - 1) * gs;
       let info = `${dancers.length} dancer${dancers.length !== 1 ? 's' : ''}`;
-      if (totalG > 1) info += ` · groups of ${gs}${lastGs !== gs ? `, last group ${lastGs}` : ''}`;
+      if (totalG > 1 && lastGs !== gs) info += `, last group ${lastGs}`;
       document.getElementById('cb-group-info').textContent = info;
+
+      const gsInput = document.getElementById('cb-gs-input');
+      if (gsInput && document.activeElement !== gsInput) gsInput.value = String(gs);
 
       content.innerHTML = '';
       const grid = document.createElement('div');
@@ -908,6 +916,30 @@
     document.getElementById('cb-next-group').addEventListener('click', () => {
       if (cbGroupIdx < cbTotalGroups() - 1) { cbGroupIdx++; renderCallbackTab(); }
     });
+
+    async function saveCallbackGroupSize() {
+      const input = document.getElementById('cb-gs-input');
+      const gs = parseInt(input.value);
+      if (!gs || gs < 1) return;
+      const round = activeCallbackRound();
+      if (!round || round.group_size === gs) return;
+      const r = await fetch(`/api/audition-days/${dayId}/callback-rounds/${round.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group_size: gs }),
+      }).catch(() => null);
+      if (r?.ok) {
+        const data = await r.json();
+        const idx = cbRounds.findIndex(cr => cr.id === round.id);
+        if (idx >= 0) cbRounds[idx].group_size = data.group_size;
+        cbGroupIdx = 0;
+        renderCallbackTab();
+      }
+    }
+
+    const gsInput = document.getElementById('cb-gs-input');
+    gsInput.addEventListener('change', saveCallbackGroupSize);
+    gsInput.addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
 
     async function toggleCallbackFromObserve(submissionId) {
       let round = activeCallbackRound();
