@@ -276,11 +276,127 @@
     .final-btn.active-hp { background: #c9a84c; border-color: #b8973d; color: #fff; }
     .final-btn.active-nc { background: #f3f4f6; border-color: #9ca3af; color: #555; }
 
+    /* ── Callback dancer grid (same as #dancer-list) ── */
+    .dancer-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      padding: 4px 0;
+    }
+
+    /* ── Callback group nav buttons ── */
+    .nav-btn {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      border: 1px solid #e8dfc8;
+      background: #fff;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .nav-btn:disabled { opacity: .35; cursor: default; }
+
     /* ── Add combo modal ── */
     .modal-content { border-radius: 12px; }
 
     /* ── Empty states ── */
     .empty-msg { color: #aaa; font-size: 13px; padding: 20px 0; text-align: center; }
+
+    /* ── Mobile layout ── */
+    @media (max-width: 600px) {
+      /* Single-column dancer grids */
+      #dancer-list {
+        grid-template-columns: 1fr;
+        gap: 6px;
+        padding: 8px 10px;
+      }
+
+      .dancer-grid {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+
+      /* Bigger tap targets for observe buttons */
+      .obs-btn {
+        padding: 8px 16px;
+        font-size: 12px;
+      }
+
+      .note-btn {
+        padding: 6px 8px;
+        font-size: 15px;
+      }
+
+      .quick-cb-btn {
+        padding: 8px 0;
+        font-size: 12px;
+        margin-top: 8px;
+      }
+
+      /* Bigger group nav buttons */
+      .group-nav-btn,
+      .nav-btn {
+        width: 38px;
+        height: 38px;
+        font-size: 18px;
+      }
+
+      /* Final consideration: stack piece name above buttons */
+      .final-piece-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+      }
+
+      .final-piece-name {
+        font-weight: 600;
+      }
+
+      .final-btns {
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+
+      .final-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+      }
+
+      /* Review padding */
+      #panel-review {
+        padding: 8px 10px;
+      }
+
+      /* Callback panel padding */
+      #callback-content {
+        padding: 8px 10px;
+      }
+
+      /* Observe controls: piece selector full width on mobile */
+      #piece-select {
+        max-width: 100%;
+        flex: 1;
+      }
+
+      /* Header: prevent long titles from overflowing */
+      #day-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+      }
+
+      #day-date {
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      /* Day header row: let title shrink */
+      #day-header .d-flex {
+        min-width: 0;
+      }
+    }
   </style>
 </head>
 <body style="visibility:hidden">
