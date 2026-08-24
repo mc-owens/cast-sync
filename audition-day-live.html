@@ -300,6 +300,39 @@
     /* ── Add combo modal ── */
     .modal-content { border-radius: 12px; }
 
+    /* ── Final Review button ── */
+    #final-review-btn {
+      margin-left: auto;
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: 1.5px solid #c9a84c;
+      background: transparent;
+      font-size: 12px;
+      font-weight: 700;
+      color: #8a6820;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    #final-review-btn.active {
+      background: #c9a84c;
+      color: #fff;
+    }
+
+    /* ── Called Back badge ── */
+    .cb-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      color: #8a6820;
+      background: rgba(201,168,76,.15);
+      border: 1px solid #c9a84c;
+      border-radius: 12px;
+      padding: 2px 8px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+
     /* ── Empty states ── */
     .empty-msg { color: #aaa; font-size: 13px; padding: 20px 0; text-align: center; }
 
@@ -409,9 +442,10 @@
     <!-- Day header + combo tabs + main tabs -->
     <div id="day-header">
       <div class="d-flex align-items-center mb-1">
-        <a href="audition-day.html" style="color:#aaa;font-size:13px;margin-right:12px;text-decoration:none;">← Back</a>
+        <a href="audition-day.html" style="color:#aaa;font-size:13px;margin-right:12px;text-decoration:none;flex-shrink:0;">← Back</a>
         <span id="day-title"></span>
         <span id="day-date"></span>
+        <button id="final-review-btn">Final Review</button>
       </div>
       <div id="combo-tabbar">
         <!-- filled by renderComboTabs() -->
@@ -421,7 +455,6 @@
     <div id="main-tabs">
       <button class="main-tab active" data-tab="observe">Observe</button>
       <button class="main-tab" data-tab="callbacks">Callbacks</button>
-      <button class="main-tab" data-tab="review">Review</button>
     </div>
 
     <!-- ── Observe panel ── -->
@@ -562,7 +595,6 @@
     let activeTab      = 'observe';
     let activeGroupIdx = 0;
     let cbGroupIdx     = 0;
-    let reviewLoaded   = false;
     let cbPollTimer    = null;
     let noteTimers     = {};
 
@@ -1000,7 +1032,10 @@
       const r   = await fetch(`/api/audition-days/${dayId}/review`).catch(() => null);
       if (!r?.ok) { el.innerHTML = '<p class="empty-msg">Could not load review.</p>'; return; }
       const rv = await r.json();
-      reviewLoaded = true;
+
+      const allCbSubIds = new Set(
+        cbRounds.flatMap(round => (round.callbacks || []).map(c => String(c.submission_id)))
+      );
 
       if (!rv.dancers.length) {
         el.innerHTML = '<p class="empty-msg">No dancers flagged yet. Rate dancers in the Observe tab first.</p>';
@@ -1015,7 +1050,8 @@
         card.className = 'review-card';
         card.dataset.sid = String(d.submission_id);
 
-        const numStr = d.audition_number != null ? `<span style="color:#aaa;font-weight:400;font-size:13px;">#${d.audition_number} </span>` : '';
+        const numStr  = d.audition_number != null ? `<span style="color:#aaa;font-weight:400;font-size:13px;">#${d.audition_number} </span>` : '';
+        const cbBadge = allCbSubIds.has(String(d.submission_id)) ? '<span class="cb-badge">Called Back</span>' : '';
 
         let obsHtml = '';
         const obsByPiece = d.observations || {};
@@ -1051,7 +1087,7 @@
                 <div class="final-btns">
                   <button class="final-btn${current === 'priority' ? ' active-p' : ''}" data-sub="${d.submission_id}" data-piece="${pid}" data-level="priority">P</button>
                   <button class="final-btn${current === 'high_priority' ? ' active-hp' : ''}" data-sub="${d.submission_id}" data-piece="${pid}" data-level="high_priority">HP</button>
-                  <button class="final-btn${current === 'not_considering' ? ' active-nc' : ''}" data-sub="${d.submission_id}" data-piece="${pid}" data-level="not_considering">Not considering</button>
+                  <button class="final-btn${current === 'not_considering' ? ' active-nc' : ''}" data-sub="${d.submission_id}" data-piece="${pid}" data-level="not_considering">Neutral</button>
                 </div>
               </div>`;
           }).join('');
@@ -1059,7 +1095,7 @@
         }
 
         card.innerHTML = `
-          <div class="review-dancer-name">${numStr}${escHtml(d.first_name)} ${escHtml(d.last_name)}</div>
+          <div class="review-dancer-name">${numStr}${escHtml(d.first_name)} ${escHtml(d.last_name)}${cbBadge}</div>
           ${obsHtml}${noteHtml}${finalHtml}
         `;
 
@@ -1105,18 +1141,40 @@
     }
 
     // ── Tab switching ─────────────────────────────────────────────────────────
+    let inFinalReview = false;
+
     document.querySelectorAll('.main-tab').forEach(btn => {
       btn.addEventListener('click', () => {
         activeTab = btn.dataset.tab;
         document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
         btn.classList.add('active');
-        document.getElementById('panel-observe').style.display    = activeTab === 'observe'    ? '' : 'none';
-        document.getElementById('panel-callbacks').style.display  = activeTab === 'callbacks'  ? '' : 'none';
-        document.getElementById('panel-review').style.display     = activeTab === 'review'     ? '' : 'none';
-
+        document.getElementById('panel-observe').style.display   = activeTab === 'observe'   ? '' : 'none';
+        document.getElementById('panel-callbacks').style.display = activeTab === 'callbacks' ? '' : 'none';
         if (activeTab === 'callbacks') { cbGroupIdx = 0; startCallbackPoll(); renderCallbackTab(); }
-        if (activeTab === 'review' && !reviewLoaded) loadReview();
       });
+    });
+
+    document.getElementById('final-review-btn').addEventListener('click', () => {
+      inFinalReview = !inFinalReview;
+      const btn = document.getElementById('final-review-btn');
+      if (inFinalReview) {
+        btn.textContent = '← Back';
+        btn.classList.add('active');
+        document.getElementById('combo-tabbar').style.display = 'none';
+        document.getElementById('main-tabs').style.display    = 'none';
+        document.getElementById('panel-observe').style.display   = 'none';
+        document.getElementById('panel-callbacks').style.display = 'none';
+        document.getElementById('panel-review').style.display    = '';
+        loadReview();
+      } else {
+        btn.textContent = 'Final Review';
+        btn.classList.remove('active');
+        document.getElementById('combo-tabbar').style.display = '';
+        document.getElementById('main-tabs').style.display    = '';
+        document.getElementById('panel-review').style.display    = 'none';
+        document.getElementById('panel-observe').style.display   = activeTab === 'observe'   ? '' : 'none';
+        document.getElementById('panel-callbacks').style.display = activeTab === 'callbacks' ? '' : 'none';
+      }
     });
 
     // ── Add Combo modal ───────────────────────────────────────────────────────
