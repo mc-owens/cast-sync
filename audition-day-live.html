@@ -810,9 +810,12 @@
     }
 
     async function toggleCallback(submissionId, roundId) {
+      const round = cbRounds.find(r => r.id === roundId);
+      const isIn  = !!(round?.callbacks || []).find(c => String(c.submission_id) === String(submissionId));
       const res = await fetch(
         `/api/audition-days/${dayId}/callback-rounds/${roundId}/callbacks/${submissionId}`,
-        { method: 'POST' }
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: isIn ? 'remove' : 'add' }) }
       ).catch(() => null);
       if (!res?.ok) return;
       await refreshCallbackRounds();

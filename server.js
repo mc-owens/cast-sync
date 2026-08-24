@@ -8130,41 +8130,39 @@ app.delete('/api/audition-days/:id/callback-rounds/:roundId', requireAuth('maste
   }
 });
 
-// POST /api/audition-days/:id/callback-rounds/:roundId/callbacks/:submissionId — toggle
+// POST /api/audition-days/:id/callback-rounds/:roundId/callbacks/:submissionId
+// Body: { action: 'add' | 'remove' } — explicit intent prevents race-condition flips
 app.post('/api/audition-days/:id/callback-rounds/:roundId/callbacks/:submissionId', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.session;
+  const { action } = req.body;
+  if (action !== 'add' && action !== 'remove') return res.status(400).json({ error: 'action must be add or remove.' });
   try {
     const dayCheck = await pool.query(
       `SELECT id FROM audition_days WHERE id=$1 AND season_id=$2 AND org_id=$3`,
       [req.params.id, seasonId, orgId]
     );
     if (!dayCheck.rows.length) return res.status(404).json({ error: 'Not found.' });
-    const existing = await pool.query(
-      `SELECT id FROM audition_callbacks WHERE callback_round_id=$1 AND submission_id=$2`,
-      [req.params.roundId, req.params.submissionId]
-    );
-    let action;
-    if (existing.rows.length) {
+
+    if (action === 'add') {
+      await pool.query(
+        `INSERT INTO audition_callbacks (callback_round_id, submission_id, added_by_user_id)
+         VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+        [req.params.roundId, req.params.submissionId, req.session.userId]
+      );
+    } else {
       await pool.query(
         `DELETE FROM audition_callbacks WHERE callback_round_id=$1 AND submission_id=$2`,
         [req.params.roundId, req.params.submissionId]
       );
-      action = 'removed';
-    } else {
-      await pool.query(
-        `INSERT INTO audition_callbacks (callback_round_id, submission_id, added_by_user_id) VALUES ($1,$2,$3)`,
-        [req.params.roundId, req.params.submissionId, req.session.userId]
-      );
-      action = 'added';
     }
     await pool.query(
       `INSERT INTO audition_callback_log (callback_round_id, submission_id, action, user_id) VALUES ($1,$2,$3,$4)`,
-      [req.params.roundId, req.params.submissionId, action, req.session.userId]
+      [req.params.roundId, req.params.submissionId, action === 'add' ? 'added' : 'removed', req.session.userId]
     );
     res.json({ ok: true, action });
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ error: 'Failed to toggle callback.' });
+    res.status(500).json({ error: 'Failed to update callback.' });
   }
 });
 
