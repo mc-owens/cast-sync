@@ -23,10 +23,18 @@
 
   <div class="container" style="max-width:420px;margin-top:100px;text-align:center;">
 
+    <!-- Confirm state (shown on load) -->
+    <div id="view-confirm">
+      <div style="font-size:48px;margin-bottom:16px;">✉</div>
+      <h4 class="fw-semibold mb-2">Confirm your new email</h4>
+      <p class="text-muted mb-4" style="font-size:14px;">Click the button below to finish updating your CastSync login email.</p>
+      <button id="confirm-btn" class="btn btn-dark px-4">Confirm Email Change</button>
+    </div>
+
     <!-- Loading state -->
-    <div id="view-loading">
+    <div id="view-loading" style="display:none;">
       <div class="spinner-border text-secondary mb-3" role="status"></div>
-      <p class="text-muted">Confirming your new email…</p>
+      <p class="text-muted">Confirming your new email...</p>
     </div>
 
     <!-- Success state -->
@@ -55,28 +63,33 @@
       show('error');
       document.getElementById('error-msg').textContent = 'No confirmation token found in this link.';
     } else {
-      fetch(`/api/auth/confirm-email-change?token=${encodeURIComponent(token)}`)
-        .then(r => r.json().then(d => ({ ok: r.ok, ...d })))
-        .then(data => {
-          if (data.ok) {
-            show('success');
-            document.getElementById('new-email').textContent = data.email;
-          } else {
+      show('confirm');
+      document.getElementById('confirm-btn').addEventListener('click', () => {
+        show('loading');
+        fetch(`/api/auth/confirm-email-change?token=${encodeURIComponent(token)}`)
+          .then(r => r.json().then(d => ({ ok: r.ok, ...d })))
+          .then(data => {
+            if (data.ok) {
+              show('success');
+              document.getElementById('new-email').textContent = data.email;
+            } else {
+              show('error');
+              document.getElementById('error-msg').textContent =
+                data.error || 'This confirmation link is invalid or has already been used.';
+            }
+          })
+          .catch(() => {
             show('error');
-            document.getElementById('error-msg').textContent =
-              data.error || 'This confirmation link is invalid or has already been used.';
-          }
-        })
-        .catch(() => {
-          show('error');
-          document.getElementById('error-msg').textContent = 'Could not connect to the server. Please try again.';
-        });
+            document.getElementById('error-msg').textContent = 'Could not connect to the server. Please try again.';
+          });
+      });
     }
 
     function show(view) {
-      document.getElementById('view-loading').style.display = 'none';
-      document.getElementById('view-success').style.display = view === 'success' ? '' : 'none';
-      document.getElementById('view-error').style.display   = view === 'error'   ? '' : 'none';
+      document.getElementById('view-confirm').style.display  = view === 'confirm'  ? '' : 'none';
+      document.getElementById('view-loading').style.display  = view === 'loading'  ? '' : 'none';
+      document.getElementById('view-success').style.display  = view === 'success'  ? '' : 'none';
+      document.getElementById('view-error').style.display    = view === 'error'    ? '' : 'none';
     }
   </script>
 
