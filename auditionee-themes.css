@@ -1,0 +1,170 @@
+/* ───────────────────────────────────────────────────────
+   Auditionee Portal - Theme Picker
+   ─────────────────────────────────────────────────────── */
+
+/* ── Floating button ──────────────────────────────────── */
+#tp-container {
+  position: fixed;
+  bottom: 22px;
+  right: 18px;
+  z-index: 9999;
+  font-family: inherit;
+}
+
+#tp-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.93);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 14px rgba(0,0,0,.18);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .2s, box-shadow .2s;
+  line-height: 1;
+  padding: 0;
+}
+#tp-btn:hover { transform: scale(1.1); box-shadow: 0 4px 18px rgba(0,0,0,.22); }
+
+/* ── Picker panel ─────────────────────────────────────── */
+#tp-panel {
+  position: absolute;
+  bottom: 54px;
+  right: 0;
+  background: rgba(255,255,255,0.97);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 18px;
+  padding: 16px 15px 13px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.14), 0 1px 4px rgba(0,0,0,.07);
+  width: 216px;
+  display: none;
+  border: 1px solid rgba(0,0,0,.07);
+}
+#tp-panel.tp-open {
+  display: block;
+  animation: tp-pop .18s cubic-bezier(.34,1.56,.64,1) both;
+}
+
+@keyframes tp-pop {
+  from { opacity: 0; transform: scale(.9) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.tp-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: #555;
+  margin-bottom: 12px;
+}
+
+.tp-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #c0c0c0;
+  margin-bottom: 7px;
+  margin-top: 12px;
+}
+.tp-section-label:first-of-type { margin-top: 0; }
+
+.tp-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ── Swatches ─────────────────────────────────────────── */
+.tp-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  outline: 2px solid rgba(0,0,0,.1);
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .15s, box-shadow .15s;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+.tp-swatch:hover { transform: scale(1.22); }
+.tp-swatch.tp-active {
+  outline: 2.5px solid #fff;
+  box-shadow: 0 0 0 4px #222;
+}
+
+/* ── Animated overlay container ───────────────────────── */
+.tp-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+/* Funfetti pieces */
+.tp-confetti {
+  position: absolute;
+  opacity: .72;
+  animation: tp-bob var(--dur, 3s) var(--delay, 0s) infinite ease-in-out alternate;
+  transform: rotate(var(--rot, 0deg));
+}
+@keyframes tp-bob {
+  from { transform: translateY(0)     rotate(var(--rot, 0deg)); }
+  to   { transform: translateY(-14px) rotate(calc(var(--rot, 0deg) + 28deg)); }
+}
+
+/* Sparkle characters */
+.tp-sparkle {
+  position: absolute;
+  opacity: 0;
+  animation: tp-twinkle var(--dur, 2s) var(--delay, 0s) infinite ease-in-out;
+  user-select: none;
+}
+@keyframes tp-twinkle {
+  0%, 100% { opacity: 0;   transform: scale(.4); }
+  40%, 60%  { opacity: 1;   transform: scale(1); }
+}
+
+/* ── Body background themes ───────────────────────────── */
+
+/* flat colors */
+body[data-theme="pink"]   { background: #fce4ec !important; }
+body[data-theme="sky"]    { background: #e3f2fd !important; }
+body[data-theme="sage"]   { background: #e8f5e9 !important; }
+body[data-theme="butter"] { background: #fffde7 !important; }
+body[data-theme="lilac"]  { background: #f3e5f5 !important; }
+
+/* ombre gradients - fixed so gradient spans the viewport regardless of scroll */
+body[data-theme="ombre-rose"]  {
+  background: linear-gradient(150deg, #fce4ec 0%, #e0c8f0 100%) fixed !important;
+}
+body[data-theme="ombre-ocean"] {
+  background: linear-gradient(150deg, #d8eeff 0%, #c0f0e0 100%) fixed !important;
+}
+body[data-theme="ombre-peach"] {
+  background: linear-gradient(150deg, #ffe0c8 0%, #fce4ec 100%) fixed !important;
+}
+
+/* animated themes - base color only (overlay handles the decoration) */
+body[data-theme="funfetti"] { background: #ffffff !important; }
+body[data-theme="glitter"]  { background: #faf7ff !important; }
+
+/* ── Mobile adjustments ───────────────────────────────── */
+@media (max-width: 480px) {
+  #tp-container { bottom: 16px; right: 14px; }
+  #tp-panel { right: -2px; width: 200px; }
+}
