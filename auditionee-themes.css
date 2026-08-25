@@ -112,6 +112,16 @@ body[data-theme="glitter"]  .app-nav {
   z-index: 1;
 }
 
+/* Frosted background on content so text stays readable */
+body[data-theme="funfetti"] .container:not(.container-fluid),
+body[data-theme="glitter"]  .container:not(.container-fluid) {
+  background: rgba(255,255,255,0.84) !important;
+  border-radius: 12px;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  padding-bottom: 24px;
+}
+
 /* Funfetti pieces */
 .tp-confetti {
   position: absolute;
