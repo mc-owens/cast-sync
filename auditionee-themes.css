@@ -119,6 +119,7 @@ body[data-theme="glitter"]  .container:not(.container-fluid) {
   border-radius: 12px;
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
+  padding-top: 20px;
   padding-bottom: 24px;
 }
 
