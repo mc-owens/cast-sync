@@ -176,7 +176,7 @@ body[data-theme="glitter"]  { background: #faf7ff !important; }
 
 /* funfetti nav bar - soft candy gradient */
 body[data-theme="funfetti"] .app-nav {
-  background: linear-gradient(90deg, #ffddf0 0%, #fff3d6 50%, #d6f0ff 100%) !important;
+  background: #fff0f6 !important;
   border-bottom-color: rgba(255,160,200,.35) !important;
 }
 
