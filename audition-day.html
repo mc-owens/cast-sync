@@ -121,9 +121,18 @@
             <label class="form-label" style="font-size:13px;font-weight:600;">Date <span class="text-muted fw-normal">(optional)</span></label>
             <input type="date" id="new-day-date" class="form-control">
           </div>
+          <div class="mb-2">
+            <label class="form-label" style="font-size:13px;font-weight:600;">Grouping</label>
+            <div class="d-flex gap-1">
+              <input type="radio" class="btn-check" name="day-group-mode" id="day-mode-size" value="size" checked autocomplete="off">
+              <label class="btn btn-outline-secondary btn-sm flex-fill" for="day-mode-size" style="font-size:12px;">Dancers per group</label>
+              <input type="radio" class="btn-check" name="day-group-mode" id="day-mode-count" value="count" autocomplete="off">
+              <label class="btn btn-outline-secondary btn-sm flex-fill" for="day-mode-count" style="font-size:12px;">Total groups</label>
+            </div>
+          </div>
           <div class="row g-3 mb-1">
             <div class="col-6">
-              <label class="form-label" style="font-size:13px;font-weight:600;">Group Size</label>
+              <label class="form-label" id="day-group-value-label" style="font-size:13px;font-weight:600;">Group Size</label>
               <input type="number" id="new-day-groupsize" class="form-control" value="8" min="1" max="9999">
             </div>
             <div class="col-6">
@@ -269,25 +278,52 @@
     return seasonDancerCount;
   }
 
+  function dayGroupMode() {
+    return document.querySelector('input[name="day-group-mode"]:checked')?.value || 'size';
+  }
+
   function updateGroupPreview() {
-    const gs = parseInt(document.getElementById('new-day-groupsize').value) || 0;
-    const n  = seasonDancerCount;
-    const el = document.getElementById('group-size-preview');
-    if (n === null || !gs) { el.textContent = ''; return; }
-    if (gs > n && n > 0) {
-      el.textContent = `You have ${n} auditionee${n !== 1 ? 's' : ''}. Group size cannot exceed ${n}.`;
-      el.style.color = '#c0392b';
-      return;
-    }
+    const mode = dayGroupMode();
+    const val  = parseInt(document.getElementById('new-day-groupsize').value) || 0;
+    const n    = seasonDancerCount;
+    const el   = document.getElementById('group-size-preview');
+    if (n === null || !val) { el.textContent = ''; return; }
     el.style.color = '#8a6820';
     if (n === 0) { el.textContent = 'No auditionees yet.'; return; }
-    const g = Math.ceil(n / gs);
-    const rem = n % gs;
-    const lastNote = rem > 0 ? ` Last group has ${rem}.` : '';
-    el.textContent = `You have ${n} auditionee${n !== 1 ? 's' : ''}. ${gs} per group = ${g} group${g !== 1 ? 's' : ''}.${lastNote}`;
+
+    if (mode === 'size') {
+      if (val > n) {
+        el.textContent = `Group size cannot exceed ${n} (your auditionee count).`;
+        el.style.color = '#c0392b'; return;
+      }
+      const g   = Math.ceil(n / val);
+      const rem = n % val;
+      const lastNote = rem > 0 ? ` Last group has ${rem}.` : '';
+      el.textContent = `${n} auditionee${n !== 1 ? 's' : ''} · ${val} per group = ${g} group${g !== 1 ? 's' : ''}.${lastNote}`;
+    } else {
+      if (val > n) {
+        el.textContent = `Can't have more groups than auditionees (${n}).`;
+        el.style.color = '#c0392b'; return;
+      }
+      const base  = Math.floor(n / val);
+      const extra = n % val;
+      if (extra === 0) {
+        el.textContent = `${n} auditionees · ${val} groups of ${base}.`;
+      } else {
+        el.textContent = `${n} auditionees · ${extra} group${extra !== 1 ? 's' : ''} of ${base + 1}, ${val - extra} of ${base}.`;
+      }
+    }
   }
 
   document.getElementById('new-day-groupsize').addEventListener('input', updateGroupPreview);
+  document.querySelectorAll('input[name="day-group-mode"]').forEach(r => {
+    r.addEventListener('change', () => {
+      const isCount = r.value === 'count';
+      document.getElementById('day-group-value-label').textContent = isCount ? 'Number of Groups' : 'Group Size';
+      document.getElementById('new-day-groupsize').value = isCount ? '5' : '8';
+      updateGroupPreview();
+    });
+  });
 
   document.getElementById('new-day-btn').addEventListener('click', async () => {
     document.getElementById('new-day-name').value = '';
@@ -296,6 +332,8 @@
     document.getElementById('new-day-sort').value = 'number';
     document.getElementById('create-error').classList.add('d-none');
     document.getElementById('group-size-preview').textContent = '';
+    document.getElementById('day-mode-size').checked = true;
+    document.getElementById('day-group-value-label').textContent = 'Group Size';
     createModal.show();
     setTimeout(() => document.getElementById('new-day-name').focus(), 300);
     await fetchDancerCount();
@@ -311,11 +349,14 @@
     const errEl      = document.getElementById('create-error');
     errEl.classList.add('d-none');
 
+    const mode = dayGroupMode();
     if (!name) { errEl.textContent = 'Name is required.'; errEl.classList.remove('d-none'); return; }
-    const gs = parseInt(groupSize) || 0;
-    if (gs < 1) { errEl.textContent = 'Group size must be at least 1.'; errEl.classList.remove('d-none'); return; }
-    if (seasonDancerCount && gs > seasonDancerCount) {
-      errEl.textContent = `Group size cannot exceed the number of auditionees (${seasonDancerCount}).`;
+    const val = parseInt(groupSize) || 0;
+    if (val < 1) { errEl.textContent = 'Must be at least 1.'; errEl.classList.remove('d-none'); return; }
+    if (seasonDancerCount && val > seasonDancerCount) {
+      errEl.textContent = mode === 'size'
+        ? `Group size cannot exceed the number of auditionees (${seasonDancerCount}).`
+        : `Can't have more groups than auditionees (${seasonDancerCount}).`;
       errEl.classList.remove('d-none'); return;
     }
 
@@ -325,7 +366,9 @@
       const r = await fetch('/api/audition-days', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, audition_date: date || null, group_size: parseInt(groupSize), sort_order: sortOrder })
+        body: JSON.stringify(mode === 'count'
+          ? { name, audition_date: date || null, group_count: parseInt(groupSize), sort_order: sortOrder }
+          : { name, audition_date: date || null, group_size: parseInt(groupSize), sort_order: sortOrder })
       });
       const data = await r.json();
       if (!r.ok) { errEl.textContent = data.error || 'Could not create.'; errEl.classList.remove('d-none'); return; }

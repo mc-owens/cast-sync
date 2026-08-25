@@ -7672,6 +7672,15 @@ async function runMigrations() {
     console.log('Migration step 48 (audition day access control) complete.');
   } catch (err) { console.error('Migration step 48 error:', err.message); }
 
+  // ── Step 49: group_count on audition days and combos ──────────────────────
+  try {
+    await pool.query(`
+      ALTER TABLE audition_days   ADD COLUMN IF NOT EXISTS group_count INTEGER;
+      ALTER TABLE audition_combos ADD COLUMN IF NOT EXISTS group_count INTEGER;
+    `);
+    console.log('Migration step 49 (group_count) complete.');
+  } catch (err) { console.error('Migration step 49 error:', err.message); }
+
   console.log('All migrations complete.');
 }
 
@@ -7881,21 +7890,22 @@ app.get('/api/audition-days', requireAuditionDayAuth, async (req, res) => {
 app.post('/api/audition-days', requireAuth('master'), async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
-  const { name, audition_date, group_size, sort_order } = req.body;
+  const { name, audition_date, group_size, group_count, sort_order } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required.' });
-  const gs = Math.max(1, Math.min(50, parseInt(group_size) || 8));
+  const gc = (group_count != null && parseInt(group_count) > 0) ? parseInt(group_count) : null;
+  const gs = Math.max(1, Math.min(500, parseInt(group_size) || 8));
   const so = ['number', 'first_name', 'last_name'].includes(sort_order) ? sort_order : 'number';
   try {
     const result = await pool.query(
-      `INSERT INTO audition_days (season_id, org_id, name, audition_date, group_size, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [seasonId, orgId, name.trim(), audition_date || null, gs, so]
+      `INSERT INTO audition_days (season_id, org_id, name, audition_date, group_size, group_count, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [seasonId, orgId, name.trim(), audition_date || null, gs, gc, so]
     );
     const dayId = result.rows[0].id;
     await pool.query(
-      `INSERT INTO audition_combos (audition_day_id, name, group_size, sort_order, position)
-       VALUES ($1, 'Combo 1', $2, $3, 1)`,
-      [dayId, gs, so]
+      `INSERT INTO audition_combos (audition_day_id, name, group_size, group_count, sort_order, position)
+       VALUES ($1, 'Combo 1', $2, $3, $4, 1)`,
+      [dayId, gs, gc, so]
     );
     await pool.query(
       `INSERT INTO audition_callback_rounds (audition_day_id, name, sort_order) VALUES ($1, 'Callbacks', 0)`,
@@ -7988,7 +7998,7 @@ app.get('/api/audition-days/:id', requireAuditionDayAuth, async (req, res) => {
 
     const [combosRes, piecesRes, dancersRes, obsRes, notesRes, finalRes, roundsRes] = await Promise.all([
       pool.query(
-        `SELECT id, name, group_size, sort_order, position FROM audition_combos
+        `SELECT id, name, group_size, group_count, sort_order, position FROM audition_combos
          WHERE audition_day_id=$1 ORDER BY position ASC`, [req.params.id]
       ),
       pool.query(
@@ -8328,13 +8338,14 @@ app.post('/api/audition-days/:id/combos', requireAuditionDayAuth, async (req, re
       [req.params.id]
     );
     const pos = posRes.rows[0].next;
-    const { name, group_size, sort_order } = req.body;
-    const gs = Math.max(1, Math.min(50, parseInt(group_size) || 8));
+    const { name, group_size, group_count, sort_order } = req.body;
+    const gc = (group_count != null && parseInt(group_count) > 0) ? parseInt(group_count) : null;
+    const gs = Math.max(1, Math.min(500, parseInt(group_size) || 8));
     const so = ['number','first_name','last_name'].includes(sort_order) ? sort_order : 'number';
     const result = await pool.query(
-      `INSERT INTO audition_combos (audition_day_id, name, group_size, sort_order, position)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [req.params.id, (name || `Combo ${pos}`).trim(), gs, so, pos]
+      `INSERT INTO audition_combos (audition_day_id, name, group_size, group_count, sort_order, position)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [req.params.id, (name || `Combo ${pos}`).trim(), gs, gc, so, pos]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -8353,10 +8364,11 @@ app.patch('/api/audition-days/:id/combos/:comboId', requireAuditionDayAuth, asyn
       [req.params.id, seasonId, orgId]
     );
     if (!dayCheck.rows.length) return res.status(404).json({ error: 'Not found.' });
-    const { name, group_size, sort_order } = req.body;
+    const { name, group_size, group_count, sort_order } = req.body;
     const updates = []; const vals = [];
     if (name !== undefined) { vals.push(name.trim()); updates.push(`name=$${vals.length}`); }
-    if (group_size !== undefined) { vals.push(Math.max(1,Math.min(50,parseInt(group_size)||8))); updates.push(`group_size=$${vals.length}`); }
+    if (group_size !== undefined) { vals.push(Math.max(1,Math.min(500,parseInt(group_size)||8))); updates.push(`group_size=$${vals.length}`); }
+    if (group_count !== undefined) { vals.push(group_count != null && parseInt(group_count) > 0 ? parseInt(group_count) : null); updates.push(`group_count=$${vals.length}`); }
     if (sort_order && ['number','first_name','last_name'].includes(sort_order)) { vals.push(sort_order); updates.push(`sort_order=$${vals.length}`); }
     if (!updates.length) return res.json({ ok: true });
     vals.push(req.params.comboId, req.params.id);

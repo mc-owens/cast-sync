@@ -505,14 +505,23 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body pt-3">
-          <div class="mb-3">
+          <div class="mb-2">
             <label class="form-label" style="font-size:13px;font-weight:600;">Name</label>
             <input type="text" id="new-combo-name" class="form-control form-control-sm" maxlength="60" autocomplete="off">
           </div>
+          <div class="mb-2">
+            <label class="form-label" style="font-size:13px;font-weight:600;">Grouping</label>
+            <div class="d-flex gap-1">
+              <input type="radio" class="btn-check" name="combo-group-mode" id="combo-mode-size" value="size" checked autocomplete="off">
+              <label class="btn btn-outline-secondary btn-sm flex-fill" for="combo-mode-size" style="font-size:12px;">Dancers per group</label>
+              <input type="radio" class="btn-check" name="combo-group-mode" id="combo-mode-count" value="count" autocomplete="off">
+              <label class="btn btn-outline-secondary btn-sm flex-fill" for="combo-mode-count" style="font-size:12px;">Total groups</label>
+            </div>
+          </div>
           <div class="row g-2">
             <div class="col-6">
-              <label class="form-label" style="font-size:13px;font-weight:600;">Group Size</label>
-              <input type="number" id="new-combo-gs" class="form-control form-control-sm" min="1" max="200">
+              <label class="form-label" id="combo-group-value-label" style="font-size:13px;font-weight:600;">Group Size</label>
+              <input type="number" id="new-combo-gs" class="form-control form-control-sm" min="1" max="9999">
             </div>
             <div class="col-6">
               <label class="form-label" style="font-size:13px;font-weight:600;">Sort By</label>
@@ -641,15 +650,24 @@
 
     function groupDancers() {
       const combo = currentCombo();
-      const gs    = combo?.group_size || 8;
       const all   = sortedDancers();
-      const start = activeGroupIdx * gs;
-      return all.slice(start, start + gs);
+      if (combo?.group_count) {
+        const gc    = combo.group_count;
+        const n     = all.length;
+        const base  = Math.floor(n / gc);
+        const extra = n % gc;
+        const start = Math.min(activeGroupIdx, extra) * (base + 1) + Math.max(0, activeGroupIdx - extra) * base;
+        const size  = activeGroupIdx < extra ? base + 1 : base;
+        return all.slice(start, start + size);
+      }
+      const gs = combo?.group_size || 8;
+      return all.slice(activeGroupIdx * gs, activeGroupIdx * gs + gs);
     }
 
     function totalGroups() {
       const combo = currentCombo();
-      const gs    = combo?.group_size || 8;
+      if (combo?.group_count) return combo.group_count;
+      const gs = combo?.group_size || 8;
       return Math.ceil(allDancers.length / gs) || 1;
     }
 
@@ -1184,39 +1202,74 @@
     });
 
     // ── Add Combo modal ───────────────────────────────────────────────────────
+    function comboGroupMode() {
+      return document.querySelector('input[name="combo-group-mode"]:checked')?.value || 'size';
+    }
+
     function openAddComboModal() {
       const last = allCombos[allCombos.length - 1];
-      document.getElementById('new-combo-name').value  = `Combo ${allCombos.length + 1}`;
-      document.getElementById('new-combo-gs').value    = last ? String(last.group_size) : '8';
-      document.getElementById('new-combo-sort').value  = last ? last.sort_order : 'number';
+      document.getElementById('new-combo-name').value = `Combo ${allCombos.length + 1}`;
+      document.getElementById('new-combo-sort').value = last ? last.sort_order : 'number';
+      if (last?.group_count) {
+        document.getElementById('combo-mode-count').checked = true;
+        document.getElementById('combo-group-value-label').textContent = 'Number of Groups';
+        document.getElementById('new-combo-gs').value = String(last.group_count);
+      } else {
+        document.getElementById('combo-mode-size').checked = true;
+        document.getElementById('combo-group-value-label').textContent = 'Group Size';
+        document.getElementById('new-combo-gs').value = last ? String(last.group_size) : '8';
+      }
       updateComboPreview();
       new bootstrap.Modal(document.getElementById('addComboModal')).show();
     }
 
     function updateComboPreview() {
-      const gs = parseInt(document.getElementById('new-combo-gs').value) || 0;
-      const n  = allDancers.length;
-      const el = document.getElementById('combo-preview');
-      if (!gs || !n) { el.textContent = ''; return; }
-      if (gs > n) { el.textContent = `Max group size is ${n}.`; el.style.color = '#c0392b'; return; }
+      const mode = comboGroupMode();
+      const val  = parseInt(document.getElementById('new-combo-gs').value) || 0;
+      const n    = allDancers.length;
+      const el   = document.getElementById('combo-preview');
+      if (!val || !n) { el.textContent = ''; return; }
       el.style.color = '#8a6820';
-      const g   = Math.ceil(n / gs);
-      const rem = n % gs;
-      const last = rem > 0 ? ` Last group has ${rem} dancer${rem !== 1 ? 's' : ''}.` : '';
-      el.textContent = `${n} dancers · ${gs} per group = ${g} group${g !== 1 ? 's' : ''}.${last}`;
+      if (mode === 'size') {
+        if (val > n) { el.textContent = `Max group size is ${n}.`; el.style.color = '#c0392b'; return; }
+        const g   = Math.ceil(n / val);
+        const rem = n % val;
+        const lastNote = rem > 0 ? ` Last group has ${rem} dancer${rem !== 1 ? 's' : ''}.` : '';
+        el.textContent = `${n} dancers · ${val} per group = ${g} group${g !== 1 ? 's' : ''}.${lastNote}`;
+      } else {
+        if (val > n) { el.textContent = `Can't have more groups than dancers (${n}).`; el.style.color = '#c0392b'; return; }
+        const base  = Math.floor(n / val);
+        const extra = n % val;
+        if (extra === 0) {
+          el.textContent = `${n} dancers · ${val} groups of ${base}.`;
+        } else {
+          el.textContent = `${n} dancers · ${extra} group${extra !== 1 ? 's' : ''} of ${base + 1}, ${val - extra} of ${base}.`;
+        }
+      }
     }
     document.getElementById('new-combo-gs').addEventListener('input', updateComboPreview);
+    document.querySelectorAll('input[name="combo-group-mode"]').forEach(r => {
+      r.addEventListener('change', () => {
+        const isCount = r.value === 'count';
+        document.getElementById('combo-group-value-label').textContent = isCount ? 'Number of Groups' : 'Group Size';
+        document.getElementById('new-combo-gs').value = isCount ? '5' : '8';
+        updateComboPreview();
+      });
+    });
 
     document.getElementById('save-combo-btn').addEventListener('click', async () => {
       const btn  = document.getElementById('save-combo-btn');
       const name = document.getElementById('new-combo-name').value.trim();
-      const gs   = parseInt(document.getElementById('new-combo-gs').value) || 8;
+      const val  = parseInt(document.getElementById('new-combo-gs').value) || 8;
       const so   = document.getElementById('new-combo-sort').value;
+      const mode = comboGroupMode();
       btn.disabled = true;
       try {
         const r   = await fetch(`/api/audition-days/${dayId}/combos`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name || `Combo ${allCombos.length + 1}`, group_size: gs, sort_order: so }),
+          body: JSON.stringify(mode === 'count'
+            ? { name: name || `Combo ${allCombos.length + 1}`, group_count: val, sort_order: so }
+            : { name: name || `Combo ${allCombos.length + 1}`, group_size: val,  sort_order: so }),
         });
         if (!r.ok) { alert('Could not add combo.'); return; }
         const combo = await r.json();
