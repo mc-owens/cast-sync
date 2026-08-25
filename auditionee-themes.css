@@ -185,7 +185,14 @@ body[data-theme="ombre-peach"] { background: linear-gradient(150deg, #ffe0c8 0%,
 body[data-theme="funfetti"] { background: #ffffff !important; }
 body[data-theme="glitter"]  { background: #faf7ff !important; }
 
-/* funfetti nav bar - soft candy gradient */
+/* solid color themes - nav bar is a slightly darker shade of the background */
+body[data-theme="pink"]   .app-nav { background: #f7cad8 !important; border-bottom-color: #f0b8ca !important; }
+body[data-theme="sky"]    .app-nav { background: #cae6fb !important; border-bottom-color: #b6d9f8 !important; }
+body[data-theme="sage"]   .app-nav { background: #cce8cd !important; border-bottom-color: #b8dbb9 !important; }
+body[data-theme="butter"] .app-nav { background: #fff4b8 !important; border-bottom-color: #f5e898 !important; }
+body[data-theme="lilac"]  .app-nav { background: #e7ccee !important; border-bottom-color: #dbbde5 !important; }
+
+/* funfetti nav bar */
 body[data-theme="funfetti"] .app-nav {
   background: #fff0f6 !important;
   border-bottom-color: rgba(255,160,200,.35) !important;
