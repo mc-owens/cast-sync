@@ -376,8 +376,11 @@
           return `<tr><th>${escapeHtml(f.label || f.id)}</th><td style="white-space:pre-wrap;">${display}</td></tr>`;
         }).join('');
 
-        document.getElementById('dancer-full-profile').classList.remove('show');
-        new bootstrap.Modal(document.getElementById('dancerModal')).show();
+        const fpEl = document.getElementById('dancer-full-profile');
+        const fpInstance = bootstrap.Collapse.getInstance(fpEl);
+        if (fpInstance) fpInstance.dispose();
+        fpEl.classList.remove('show');
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('dancerModal')).show();
       } catch (err) {
         console.error(err);
         alert('Could not load dancer profile.');
