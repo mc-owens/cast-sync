@@ -256,6 +256,18 @@
             });
           }
           document.body.style.visibility = 'visible';
+
+          // Mobile best-on-desktop nudge
+          if (localStorage.getItem('mbl_warn') !== 'never' && (window.innerWidth < 960 || navigator.maxTouchPoints > 0)) {
+            const mblModal = new bootstrap.Modal(document.getElementById('mobileWarningModal'));
+            mblModal.show();
+            document.getElementById('mobile-warn-ok').addEventListener('click', () => mblModal.hide());
+            document.getElementById('mobile-warn-never').addEventListener('click', () => {
+              localStorage.setItem('mbl_warn', 'never');
+              mblModal.hide();
+            });
+          }
+
           fetch('/api/my-schedule/status').then(r => r.ok ? r.json() : null).then(d => { if (d?.available) document.getElementById('my-schedule-nav-item')?.classList.remove('d-none'); }).catch(() => {});
 
           // ── Dynamic (director-customized) fields ───────────────────────────
@@ -693,6 +705,43 @@
         }
       })();
     </script>
+
+  <!-- Mobile best-on-desktop warning -->
+  <div class="modal fade" id="mobileWarningModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:360px;">
+      <div class="modal-content" style="border-radius:14px;">
+        <div class="modal-body p-4">
+          <h6 class="fw-semibold mb-2" style="font-size:15px;">Best on desktop</h6>
+          <p style="font-size:13px;color:#555;margin-bottom:16px;">For the best experience — especially filling out your audition form — open CastSync on a laptop or desktop computer.</p>
+
+          <details style="margin-bottom:18px;">
+            <summary style="font-size:13px;font-weight:600;cursor:pointer;color:#111;list-style:none;display:flex;align-items:center;gap:6px;">
+              <span id="mbl-arrow" style="font-size:11px;transition:transform .2s;">▶</span> Using iPhone? Add to your Home Screen
+            </summary>
+            <ol style="font-size:12px;color:#555;margin-top:10px;padding-left:18px;line-height:1.75;margin-bottom:6px;">
+              <li>Open the website in <strong>Safari</strong>.</li>
+              <li>Tap the <strong>Share button</strong> — the square with the ↑ arrow.</li>
+              <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+              <li>You'll see the website name and icon. Rename it if you'd like.</li>
+              <li>Make sure <strong>"Open as Web App"</strong> is toggled <strong>ON</strong>.</li>
+              <li>Tap <strong>Add</strong>.</li>
+            </ol>
+            <p style="font-size:12px;color:#aaa;margin:0;">It will appear on your Home Screen alongside your apps.</p>
+          </details>
+
+          <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-outline-secondary btn-sm" id="mobile-warn-never" style="font-size:12px;">Don't show again</button>
+            <button class="btn btn-dark btn-sm" id="mobile-warn-ok" style="font-size:12px;">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.querySelector('#mobileWarningModal details')?.addEventListener('toggle', function () {
+      document.getElementById('mbl-arrow').style.transform = this.open ? 'rotate(90deg)' : '';
+    });
+  </script>
 
   </body>
 </html>
