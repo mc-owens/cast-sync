@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── State ──────────────────────────────────────────────────────────────────
   let _pieces             = [];
   let _allBlocks          = [];
+  let _availAlready       = [];
   let _availFull          = [];
   let _availPartial       = [];
   let _availNone          = [];
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let _liveCastUnderstudies = new Map();
   let _auditData          = {};  // userId -> { hasNote, notes, pieceRatings }
   let _comparePieceId        = null;
+  let _compareAvailAlready   = [];
   let _compareAvailFull      = [];
   let _compareAvailPartial   = [];
   let _compareAvailNone      = [];
@@ -131,12 +133,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       renderRequirements(data.requirements);
 
+      _availAlready = data.already_cast        || [];
       _availFull    = data.fully_available    || [];
       _availPartial = data.partially_available || [];
       _availNone    = data.not_available       || [];
       _availPieceId = pieceId;
 
-      initLiveCast([..._availFull, ..._availPartial, ..._availNone]);
+      initLiveCast([..._availAlready, ..._availFull, ..._availPartial, ..._availNone]);
 
       // Fetch audition day data (note dots + P/HP ratings) in background — non-blocking
       _auditData = {};
@@ -275,17 +278,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Dancer sections ────────────────────────────────────────────────────────
 
   function renderDancerSections() {
+    const alreadyList = document.getElementById('already-cast-list');
     const fullyList   = document.getElementById('fully-available-list');
     const partialList = document.getElementById('partially-available-list');
     const noneList    = document.getElementById('not-available-list');
 
+    alreadyList.innerHTML = '';
     fullyList.innerHTML   = '';
     partialList.innerHTML = '';
     noneList.innerHTML    = '';
 
+    const already = sortDancers(_availAlready);
     const full    = sortDancers(_availFull);
     const partial = sortDancers(_availPartial);
     const unavail = sortDancers(_availNone);
+
+    const alreadySection = document.getElementById('already-cast-section');
+    alreadySection.style.display = already.length > 0 ? '' : 'none';
+    document.getElementById('already-cast-count').textContent = `(${already.length})`;
 
     document.getElementById('fully-count').textContent   = `(${full.length})`;
     document.getElementById('partial-count').textContent = `(${partial.length})`;
@@ -295,6 +305,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('no-partial').style.display = partial.length === 0 ? '' : 'none';
     document.getElementById('no-none').style.display    = unavail.length === 0 ? '' : 'none';
 
+    already.forEach(d => appendDancerItem(alreadyList, d, _availPieceId, d.conflicts || []));
     full.forEach(d    => appendDancerItem(fullyList,   d, _availPieceId, []));
     partial.forEach(d => appendDancerItem(partialList, d, _availPieceId, d.conflicts || []));
     unavail.forEach(d => appendDancerItem(noneList,    d, _availPieceId, d.conflicts || []));
@@ -320,14 +331,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await res.json();
       if (!res.ok) { showErrorToast(data.error || 'Could not load comparison piece.'); return; }
 
-      _comparePieceId      = pieceId;
-      _compareAvailFull    = data.fully_available    || [];
-      _compareAvailPartial = data.partially_available || [];
-      _compareAvailNone    = data.not_available       || [];
+      _comparePieceId       = pieceId;
+      _compareAvailAlready  = data.already_cast        || [];
+      _compareAvailFull     = data.fully_available    || [];
+      _compareAvailPartial  = data.partially_available || [];
+      _compareAvailNone     = data.not_available       || [];
 
       _compareLiveCastMbrs.clear();
       _compareLiveCastUds.clear();
-      [..._compareAvailFull, ..._compareAvailPartial, ..._compareAvailNone].forEach(d => {
+      [..._compareAvailAlready, ..._compareAvailFull, ..._compareAvailPartial, ..._compareAvailNone].forEach(d => {
         const name = `${d.first_name} ${d.last_name}`;
         if (d.cast_role === 'member')    _compareLiveCastMbrs.set(d.id, name);
         if (d.cast_role === 'understudy') _compareLiveCastUds.set(d.id, name);
@@ -353,7 +365,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function clearCompare() {
     _comparePieceId = null;
-    _compareAvailFull = []; _compareAvailPartial = []; _compareAvailNone = [];
+    _compareAvailAlready = []; _compareAvailFull = []; _compareAvailPartial = []; _compareAvailNone = [];
     _compareAuditData = {};
     _compareLiveCastMbrs.clear(); _compareLiveCastUds.clear();
     document.getElementById('clear-compare-btn').style.display = 'none';
@@ -381,9 +393,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       castUds:   _compareLiveCastUds,
       onCastChange: renderLiveCastB,
     };
+    const already = sortDancers(_compareAvailAlready);
     const full    = sortDancers(_compareAvailFull);
     const partial = sortDancers(_compareAvailPartial);
     const unavail = sortDancers(_compareAvailNone);
+
+    const alreadySectionB = document.getElementById('already-cast-section-b');
+    alreadySectionB.style.display = already.length > 0 ? '' : 'none';
+    document.getElementById('already-cast-count-b').textContent = `(${already.length})`;
 
     document.getElementById('fully-count-b').textContent   = `(${full.length})`;
     document.getElementById('partial-count-b').textContent = `(${partial.length})`;
@@ -393,11 +410,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('no-partial-b').style.display = partial.length === 0 ? '' : 'none';
     document.getElementById('no-none-b').style.display    = unavail.length === 0 ? '' : 'none';
 
+    const alreadyListB = document.getElementById('already-cast-list-b');
     const fullyListB   = document.getElementById('fully-available-list-b');
     const partialListB = document.getElementById('partially-available-list-b');
     const noneListB    = document.getElementById('not-available-list-b');
-    fullyListB.innerHTML = partialListB.innerHTML = noneListB.innerHTML = '';
+    alreadyListB.innerHTML = fullyListB.innerHTML = partialListB.innerHTML = noneListB.innerHTML = '';
 
+    already.forEach(d => appendDancerItem(alreadyListB, d, _comparePieceId, d.conflicts || [], opts));
     full.forEach(d    => appendDancerItem(fullyListB,   d, _comparePieceId, [], opts));
     partial.forEach(d => appendDancerItem(partialListB, d, _comparePieceId, d.conflicts || [], opts));
     unavail.forEach(d => appendDancerItem(noneListB,    d, _comparePieceId, d.conflicts || [], opts));

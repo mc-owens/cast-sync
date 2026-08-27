@@ -6186,7 +6186,7 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
       [orgId, seasonId, req.params.pieceId]
     );
 
-    const fully = [], partially = [], none = [];
+    const already = [], fully = [], partially = [], none = [];
     dancersResult.rows.forEach(dancer => {
       const avail    = (dancer.availability || []).filter(isAvailableBlock);
       const conflicts = [];
@@ -6218,12 +6218,13 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
         conflict_season_name:  (dancer.conflict_piece_name && !dancer.conflict_same_season) ? dancer.conflict_season_name : null,
         conflicts,
       };
-      if (conflicts.length === 0)                      fully.push(entry);
+      if (dancer.conflict_piece_name)                  already.push(entry);
+      else if (conflicts.length === 0)                 fully.push(entry);
       else if (conflicts.length < pieceBlocks.length)  partially.push(entry);
       else                                             none.push(entry);
     });
 
-    res.json({ piece, requirements, fully_available: fully, partially_available: partially, not_available: none });
+    res.json({ piece, requirements, already_cast: already, fully_available: fully, partially_available: partially, not_available: none });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({ error: 'Failed to check availability.' });
