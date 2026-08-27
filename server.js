@@ -669,10 +669,21 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required.' });
   try {
-    const result = await pool.query(
+    const emailNorm = email.toLowerCase().trim();
+    let result = await pool.query(
       'SELECT id, email, password_hash, role, is_director, is_staff, email_verified, google_id FROM users WHERE email = $1',
-      [email.toLowerCase().trim()]
+      [emailNorm]
     );
+    // If not found by primary email, check secondary_email in dancer_profiles
+    if (!result.rows[0]) {
+      result = await pool.query(
+        `SELECT u.id, u.email, u.password_hash, u.role, u.is_director, u.is_staff, u.email_verified, u.google_id
+         FROM users u
+         JOIN dancer_profiles dp ON dp.user_id = u.id
+         WHERE LOWER(dp.secondary_email) = $1`,
+        [emailNorm]
+      );
+    }
     const user = result.rows[0];
     if (!user) return res.status(401).json({ error: 'Incorrect email or password.' });
     if (!user.password_hash) {
@@ -824,8 +835,10 @@ app.get('/api/auth/account-settings', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
   try {
     const result = await pool.query(
-      `SELECT name, google_id IS NOT NULL AS google_linked, pending_email, notification_prefs
-       FROM users WHERE id = $1`,
+      `SELECT u.name, u.google_id IS NOT NULL AS google_linked, u.pending_email, u.notification_prefs, dp.secondary_email
+       FROM users u
+       LEFT JOIN dancer_profiles dp ON dp.user_id = u.id
+       WHERE u.id = $1`,
       [req.session.userId]
     );
     const row = result.rows[0];
@@ -835,6 +848,7 @@ app.get('/api/auth/account-settings', async (req, res) => {
       googleLinked: row.google_linked,
       pendingEmail: row.pending_email,
       notificationPrefs: row.notification_prefs || {},
+      secondaryEmail: row.secondary_email || null,
     });
   } catch (err) {
     console.error('Account settings error:', err.message);

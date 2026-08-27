@@ -121,6 +121,10 @@
         <div class="card-body">
           <h6 class="fw-semibold mb-1">Change Email</h6>
           <p class="text-muted mb-3" style="font-size:13px;">Your current login email is <strong id="current-email-display"></strong>.</p>
+          <div id="secondary-email-hint" class="d-none mb-3 p-2 rounded" style="font-size:13px;background:#f8f9fa;border:1px solid #e9ecef;">
+            Your secondary email is <strong id="secondary-email-display"></strong>.
+            <button type="button" class="btn btn-link btn-sm p-0 ms-1" id="use-secondary-btn" style="font-size:13px;vertical-align:baseline;">Use this as my login email</button>
+          </div>
           <div id="pending-email-banner" class="alert alert-info d-none" style="font-size:13px;"></div>
           <div id="email-error" class="alert alert-danger d-none"></div>
           <div id="email-success" class="alert alert-success d-none"></div>
@@ -221,6 +225,16 @@
           document.getElementById('pending-email-banner').textContent =
             `Confirmation pending for ${settings.pendingEmail}. Check that inbox for a link, or request a new one below.`;
           document.getElementById('pending-email-banner').classList.remove('d-none');
+        }
+
+        if (settings.secondaryEmail && settings.secondaryEmail !== user.email) {
+          document.getElementById('secondary-email-display').textContent = settings.secondaryEmail;
+          document.getElementById('secondary-email-hint').classList.remove('d-none');
+          document.getElementById('use-secondary-btn').addEventListener('click', () => {
+            document.getElementById('new-email-input').value = settings.secondaryEmail;
+            document.getElementById('new-email-input').focus();
+            document.getElementById('email-change-password').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          });
         }
 
         const NOTIF_CATEGORIES = [
