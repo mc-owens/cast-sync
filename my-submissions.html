@@ -67,6 +67,12 @@
                  placeholder="e.g. A3F9C2"
                  style="text-transform:uppercase;letter-spacing:2px;font-weight:bold;max-width:200px;"
                  maxlength="6" autocomplete="off" />
+          <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="carry-avail-checkbox">
+            <label class="form-check-label" for="carry-avail-checkbox" style="font-size:13px;">
+              Also import my availability grid
+            </label>
+          </div>
           <div id="carry-forward-error" class="text-danger mt-2 d-none" style="font-size:13px;"></div>
         </div>
         <div class="modal-footer">
@@ -146,6 +152,7 @@
             document.getElementById('carry-forward-intro').textContent =
               `Good news — we can reuse information from your ${btn.dataset.season} submission. Enter a new production code below, and we'll open the form with your details already filled in.`;
             document.getElementById('carry-forward-code').value = '';
+            document.getElementById('carry-avail-checkbox').checked = false;
             document.getElementById('carry-forward-error').classList.add('d-none');
             bootstrap.Modal.getOrCreateInstance(document.getElementById('carryForwardModal')).show();
           });
@@ -160,7 +167,10 @@
             return;
           }
           if (carryForwardData) {
-            sessionStorage.setItem('castsync_carry_forward', JSON.stringify(carryForwardData));
+            const includeAvail = document.getElementById('carry-avail-checkbox').checked;
+            const payload = { ...carryForwardData };
+            if (!includeAvail) payload.availability = null;
+            sessionStorage.setItem('castsync_carry_forward', JSON.stringify(payload));
           }
           window.location.href = `auditionForm.html?code=${encodeURIComponent(code)}`;
         });
