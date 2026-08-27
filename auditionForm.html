@@ -182,6 +182,9 @@
 
         <div class="mb-4">
           <label class="form-label" id="availability-section-label">Availability: select all times you are free</label>
+          <div id="avail-carry-mismatch" class="alert alert-warning py-2 px-3 mb-2 d-none" style="font-size:13px;">
+            This production uses a different availability format, so we couldn't import your grid. Please fill it in manually.
+          </div>
           <div class="schedule-wrapper">
             <div class="day-header-row" id="day-header-row"></div>
             <div class="schedule-container">
@@ -383,7 +386,11 @@
               const allTagged  = carryForward.availability.every(b => b.category);
               const noneTagged = carryForward.availability.every(b => !b.category);
               const shapeMatches = currentAvailabilityUI === 'detailed' ? allTagged : noneTagged;
-              if (shapeMatches) restoreAvailabilityBlocks(carryForward.availability);
+              if (shapeMatches) {
+                restoreAvailabilityBlocks(carryForward.availability);
+              } else {
+                document.getElementById('avail-carry-mismatch')?.classList.remove('d-none');
+              }
             }
           }
 
