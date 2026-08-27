@@ -374,10 +374,16 @@
               const radioEl = idx !== -1 && document.getElementById(`flexRadioDefault${idx + 1}`);
               if (radioEl) radioEl.checked = true;
             }
-            // Apply injuries from carry-forward (not stored in dancer_profiles)
+            // Apply carry-forward data (injuries + availability) — not stored in dancer_profiles
             if (carryForward?.injuries) {
               const injuriesEl = document.getElementById('injuries');
               if (injuriesEl && !injuriesEl.value) injuriesEl.value = carryForward.injuries;
+            }
+            if (Array.isArray(carryForward?.availability) && carryForward.availability.length) {
+              const allTagged  = carryForward.availability.every(b => b.category);
+              const noneTagged = carryForward.availability.every(b => !b.category);
+              const shapeMatches = currentAvailabilityUI === 'detailed' ? allTagged : noneTagged;
+              if (shapeMatches) restoreAvailabilityBlocks(carryForward.availability);
             }
           }
 
