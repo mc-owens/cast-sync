@@ -6028,8 +6028,8 @@ app.patch('/api/season/absence-requests/:id', requireAuth('master'), async (req,
 // Query params: day, start_time, end_time, user_ids (comma-separated), exclude_piece_id (optional)
 app.get('/api/conflicts/dancers', requireAuth('master'), async (req, res) => {
   const { day, start_time, end_time, user_ids, exclude_piece_id } = req.query;
-  const { seasonId } = req.session;
-  if (!seasonId || !day || !start_time || !end_time)
+  const { orgId, seasonId } = req.session;
+  if (!orgId || !seasonId || !day || !start_time || !end_time)
     return res.status(400).json({ error: 'Missing params.' });
 
   try {
@@ -6038,17 +6038,19 @@ app.get('/api/conflicts/dancers', requireAuth('master'), async (req, res) => {
 
     const excludeId = exclude_piece_id ? parseInt(exclude_piece_id) : null;
 
-    // Get all pieces this season where these dancers are cast, plus their blocks on the given day
+    // Check all pieces across all seasons in this org where these dancers are cast
     const result = await pool.query(
       `SELECT pc.user_id, dp.first_name, dp.last_name, p.id AS piece_id, p.name AS piece_name,
-              mb.start_time AS block_start, mb.end_time AS block_end
+              mb.start_time AS block_start, mb.end_time AS block_end,
+              s.name AS season_name, (s.id = $1) AS same_season
        FROM piece_casts pc
-       JOIN pieces p ON p.id = pc.piece_id AND p.season_id = $1
+       JOIN pieces p ON p.id = pc.piece_id
+       JOIN seasons s ON s.id = p.season_id AND s.org_id = $5
        JOIN master_blocks mb ON mb.piece_id = p.id AND mb.day = $2
        JOIN dancer_profiles dp ON dp.user_id = pc.user_id
        WHERE pc.user_id = ANY($3)
          AND ($4::integer IS NULL OR p.id != $4::integer)`,
-      [seasonId, day, userIdList, excludeId]
+      [seasonId, day, userIdList, excludeId, orgId]
     );
 
     // Parse time string "H:MM AM/PM" → minutes since midnight
@@ -6070,13 +6072,14 @@ app.get('/api/conflicts/dancers', requireAuth('master'), async (req, res) => {
       return newStart < be && newEnd > bs;
     });
 
-    // Deduplicate — keep first conflict per dancer
-    const seen   = new Set();
-    const unique = conflicts.filter(c => {
-      if (seen.has(c.user_id)) return false;
-      seen.add(c.user_id);
-      return true;
+    // Deduplicate — one entry per dancer, preferring same-season conflicts
+    const byDancer = new Map();
+    conflicts.forEach(c => {
+      if (!byDancer.has(c.user_id) || !byDancer.get(c.user_id).same_season) {
+        byDancer.set(c.user_id, c);
+      }
     });
+    const unique = [...byDancer.values()];
 
     res.json(unique);
   } catch (err) {
@@ -6157,7 +6160,7 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
        JOIN users u ON u.id = sub.user_id
        LEFT JOIN piece_casts pc ON pc.piece_id = $3 AND pc.user_id = u.id
        LEFT JOIN LATERAL (
-         SELECT p.name AS piece_name
+         SELECT p.name AS piece_name, s.name AS season_name, (s.id = $2) AS same_season
          FROM piece_casts pc2
          JOIN pieces p ON p.id = pc2.piece_id
          JOIN seasons s ON s.id = p.season_id
@@ -6176,6 +6179,7 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
                    AND time_to_minutes(mb_this.end_time)   > time_to_minutes(mb_other.start_time)
                )
            )
+         ORDER BY (s.id = $2) DESC
          LIMIT 1
        ) conflict ON true
        WHERE sub.org_id = $1 AND sub.season_id = $2 AND sub.availability IS NOT NULL`,
@@ -6210,7 +6214,8 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
         audition_number:     dancer.audition_number || null,
         cast_role:           dancer.existing_cast_role || null,
         cast_id:             dancer.cast_id || null,
-        conflict_piece_name: dancer.conflict_piece_name || null,
+        conflict_piece_name:   dancer.conflict_piece_name || null,
+        conflict_season_name:  (dancer.conflict_piece_name && !dancer.conflict_same_season) ? dancer.conflict_season_name : null,
         conflicts,
       };
       if (conflicts.length === 0)                      fully.push(entry);

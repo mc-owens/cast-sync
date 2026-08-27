@@ -146,7 +146,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res.ok) {
           const doubleBooked = await res.json();
           if (doubleBooked.length > 0) {
-            const names = doubleBooked.map(c => `${c.first_name} ${c.last_name} (in "${c.piece_name}")`).join(', ');
+            const names = doubleBooked.map(c => {
+              const prod = c.same_season ? '' : ` — ${c.season_name}`;
+              return `${c.first_name} ${c.last_name} (in "${c.piece_name}"${prod})`;
+            }).join(', ');
             dancerEl.textContent = `Double-booked: ${names} already has a rehearsal at this time.`;
             dancerEl.classList.remove('d-none');
           }

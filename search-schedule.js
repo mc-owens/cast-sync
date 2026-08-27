@@ -512,11 +512,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const nameSpan = document.createElement('span');
     nameSpan.className   = 'avail-dancer-name' + (isAlreadyCast ? ' conflicted' : '');
+    const conflictLabel = isAlreadyCast
+      ? `"${dancer.conflict_piece_name}"${dancer.conflict_season_name ? ` (${dancer.conflict_season_name})` : ''}`
+      : null;
     nameSpan.textContent = isAlreadyCast
-      ? `${baseName} (already cast in "${dancer.conflict_piece_name}")`
+      ? `${baseName} (already cast in ${conflictLabel})`
       : baseName;
     nameSpan.title = isAlreadyCast
-      ? `Already cast in "${dancer.conflict_piece_name}" at an overlapping time. Click to view schedule.`
+      ? `Already cast in ${conflictLabel} at an overlapping time. Click to view schedule.`
       : 'Click to view schedule';
     nameSpan.addEventListener('click', () => openDancerModal(dancer.id));
     nameDiv.appendChild(nameSpan);
