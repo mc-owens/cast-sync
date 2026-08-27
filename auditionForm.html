@@ -14,6 +14,25 @@
 </head>
   <body style="visibility:hidden">
 
+    <!-- Availability carry-forward reminder modal -->
+    <div class="modal fade" id="availCarryModal" tabindex="-1" aria-hidden="true"
+         data-bs-backdrop="static" data-bs-keyboard="false">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Review Your Availability</h5>
+          </div>
+          <div class="modal-body">
+            <p class="mb-2">Your availability grid was carried over from your <strong id="avail-carry-source"></strong> submission.</p>
+            <p class="mb-0">Before submitting, make sure it still reflects your current schedule — especially if you have been cast in another production since then.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-dark" data-bs-dismiss="modal">Got it!</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Update confirmation modal -->
     <div class="modal fade" id="updateConfirmModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
@@ -388,6 +407,8 @@
               const shapeMatches = currentAvailabilityUI === 'detailed' ? allTagged : noneTagged;
               if (shapeMatches) {
                 restoreAvailabilityBlocks(carryForward.availability);
+                document.getElementById('avail-carry-source').textContent = carryForward.fromLabel;
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('availCarryModal')).show();
               } else {
                 document.getElementById('avail-carry-mismatch')?.classList.remove('d-none');
               }
