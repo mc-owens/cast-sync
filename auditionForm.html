@@ -374,6 +374,11 @@
               const radioEl = idx !== -1 && document.getElementById(`flexRadioDefault${idx + 1}`);
               if (radioEl) radioEl.checked = true;
             }
+            // Apply injuries from carry-forward (not stored in dancer_profiles)
+            if (carryForward?.injuries) {
+              const injuriesEl = document.getElementById('injuries');
+              if (injuriesEl && !injuriesEl.value) injuriesEl.value = carryForward.injuries;
+            }
           }
 
           function renderDynamicFields(schema) {
@@ -454,6 +459,13 @@
             }
           }
 
+          // ── Carry-forward from previous submission (via My Submissions) ──────
+          let carryForward = null;
+          try {
+            const raw = sessionStorage.getItem('castsync_carry_forward');
+            if (raw) { carryForward = JSON.parse(raw); sessionStorage.removeItem('castsync_carry_forward'); }
+          } catch (e) { /* ignore */ }
+
           // ── Profile pre-fill ──────────────────────────────────────────────
           try {
             const profileRes = await fetch('/api/profile');
@@ -464,7 +476,11 @@
               if (p.last_name)  document.getElementById('lname').value      = p.last_name;
               if (p.phone)      document.getElementById('phonenumber').value = p.phone;
               if (p.first_name || p.last_name) {
-                document.getElementById('profile-prefill-notice').classList.remove('d-none');
+                const noticeEl = document.getElementById('profile-prefill-notice');
+                if (carryForward) {
+                  noticeEl.textContent = `Good news — we reused information from your ${carryForward.fromLabel} submission. Review the pre-filled information below and make any changes before submitting.`;
+                }
+                noticeEl.classList.remove('d-none');
               }
             }
           } catch (e) { /* no profile yet, that's fine */ }

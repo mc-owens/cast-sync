@@ -2205,7 +2205,7 @@ app.get('/api/submissions/me', requireAuth('auditionee'), async (req, res) => {
 app.get('/api/my-submissions', requireAuth('auditionee'), async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT sub.created_at, sub.updated_at, o.name AS org_name, s.join_code, s.name AS season_name
+      `SELECT sub.created_at, sub.updated_at, sub.injuries, o.name AS org_name, s.join_code, s.name AS season_name
        FROM submissions sub
        JOIN orgs o ON o.id = sub.org_id
        JOIN seasons s ON s.id = sub.season_id
