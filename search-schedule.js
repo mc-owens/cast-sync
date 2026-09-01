@@ -164,7 +164,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const listEl = document.getElementById('requirements-list');
 
     if (!requirements || requirements.length === 0) {
-      listEl.innerHTML = '<span style="font-size:13px;color:#9ca3af;">No rehearsal blocks scheduled for this piece yet.</span>';
+      listEl.innerHTML = `
+        <div style="font-size:13px;color:#6b7280;line-height:1.6;">
+          <div style="margin-bottom:8px;">This piece doesn't have rehearsal times set yet.</div>
+          <div style="color:#9ca3af;font-size:12px;margin-bottom:10px;">Casting Availability matches dancers against a piece's rehearsal blocks — once you add them in Production Timeline, dancers will appear here.</div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <a href="master.html" style="font-size:12.5px;color:#c9a84c;font-weight:600;">Add rehearsal times in Production Timeline &rarr;</a>
+            <a href="cast.html" style="font-size:12.5px;color:#6b7280;">Don't know the time yet? Try Cast Builder instead &rarr;</a>
+          </div>
+        </div>`;
       return;
     }
 
@@ -426,7 +434,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const listEl = document.getElementById('requirements-list-b');
     if (!listEl) return;
     if (!requirements || requirements.length === 0) {
-      listEl.innerHTML = '<span style="font-size:13px;color:#9ca3af;">No rehearsal blocks scheduled for this piece yet.</span>';
+      listEl.innerHTML = '<span style="font-size:13px;color:#9ca3af;">No rehearsal times set for this piece yet. Add them in <a href="master.html" style="color:#c9a84c;">Production Timeline</a>.</span>';
       return;
     }
     listEl.innerHTML = requirements.map(r => {
