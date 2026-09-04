@@ -295,6 +295,42 @@
     });
   }
 
+  // Called by director pages that production staff can also access.
+  // Swaps the director sidebar for the staff nav before the page becomes visible,
+  // so staff never see director-only tabs like Billing or Production Settings.
+  window.applyStaffNav = function () {
+    const page = location.pathname.split('/').pop();
+    const onAuditionDay = page.startsWith('audition-day');
+    const staffNav = [
+      { section: 'My Productions', items: [
+        { label: 'My Pieces',    href: 'staff-pieces.html' },
+        { label: 'Schedule',     href: 'staff-schedule.html' },
+        { label: 'Audition Day', href: 'audition-day.html' },
+      ]},
+      { section: 'Operations', items: [
+        { label: 'Attendance',       href: 'staff-attendance.html' },
+        { label: 'Production Notes', href: 'staff-notes.html' },
+        { label: 'My Private Notes', href: 'staff-my-notes.html' },
+      ]},
+      { section: 'Settings', items: [
+        { label: 'Account', href: 'staff-account.html' },
+      ]},
+    ];
+    const html = staffNav.map(({ section, items }) => `
+      <div class="app-sidebar-section">
+        <div class="app-sidebar-section-label">${section}</div>
+        ${items.map(i => {
+          const active = (page === i.href || (i.href === 'audition-day.html' && onAuditionDay)) ? ' active' : '';
+          return `<a class="app-sidebar-link${active}" href="${i.href}">${i.label}</a>`;
+        }).join('')}
+      </div>
+    `).join('');
+    const body = document.querySelector('#appSidebar .app-sidebar-body');
+    if (body) body.innerHTML = html;
+    const seam = document.querySelector('.app-shell-context-seam');
+    if (seam) seam.innerHTML = '<li class="nav-item"><span class="nav-link nav-context">Production Staff</span></li>';
+  };
+
   const root = document.getElementById('app-shell-root');
   if (root) {
     root.insertAdjacentHTML('beforebegin', renderHeader());

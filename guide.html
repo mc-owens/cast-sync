@@ -288,6 +288,7 @@
           await fetch('/api/auth/logout', { method: 'POST' });
           window.location.href = 'login.html';
         });
+        if (user.isStaff) window.applyStaffNav();
         document.body.style.visibility = 'visible';
       } catch (err) { window.location.href = 'login.html'; }
     })();

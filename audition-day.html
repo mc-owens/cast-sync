@@ -209,32 +209,7 @@
     });
 
     if (isStaff) {
-      const page = location.pathname.split('/').pop();
-      const staffNav = [
-        { section: 'My Productions', items: [
-          { label: 'My Pieces',    href: 'staff-pieces.html' },
-          { label: 'Schedule',     href: 'staff-schedule.html' },
-          { label: 'Audition Day', href: 'audition-day.html' },
-        ]},
-        { section: 'Operations', items: [
-          { label: 'Attendance',       href: 'staff-attendance.html' },
-          { label: 'Production Notes', href: 'staff-notes.html' },
-          { label: 'My Private Notes', href: 'staff-my-notes.html' },
-        ]},
-        { section: 'Settings', items: [
-          { label: 'Account', href: 'staff-account.html' },
-        ]},
-      ];
-      const sectionsHtml = staffNav.map(({ section, items }) => `
-        <div class="app-sidebar-section">
-          <div class="app-sidebar-section-label">${section}</div>
-          ${items.map(i => `<a class="app-sidebar-link${page === i.href ? ' active' : ''}" href="${i.href}">${i.label}</a>`).join('')}
-        </div>
-      `).join('');
-      const sidebarBody = document.querySelector('#appSidebar .app-sidebar-body');
-      if (sidebarBody) sidebarBody.innerHTML = sectionsHtml;
-      const seam = document.querySelector('.app-shell-context-seam');
-      if (seam) seam.innerHTML = '<li class="nav-item"><span class="nav-link nav-context">Production Staff</span></li>';
+      window.applyStaffNav();
       const newDayBtn = document.getElementById('new-day-btn');
       if (newDayBtn) newDayBtn.style.display = 'none';
     }
