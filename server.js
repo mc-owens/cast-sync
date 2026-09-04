@@ -484,6 +484,16 @@ function requireAuth(role) {
   };
 }
 
+// Allows directors OR production staff (is_staff users). Use on read-oriented
+// endpoints that faculty legitimately need (absence requests, contact info, etc.).
+function requireDirectorOrStaff(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
+  if (req.session.mode !== 'director' && req.session.role !== 'master' && !req.session.isStaff) {
+    return res.status(403).json({ error: 'Access denied.' });
+  }
+  next();
+}
+
 // Async middleware for audition day routes: allows directors (not denied) and
 // piece_staff members (not denied). Auto-detects season context for staff users
 // who haven't gone through org-select.
@@ -2220,7 +2230,7 @@ app.get('/api/my-submissions', requireAuth('auditionee'), async (req, res) => {
 });
 
 // GET /api/publish — all pieces with casts + blocks for the current season (director)
-app.get('/api/publish', requireAuth('master'), async (req, res) => {
+app.get('/api/publish', requireDirectorOrStaff, async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
@@ -2350,7 +2360,7 @@ app.post('/api/publish/toggle', requireAuth('master'), async (req, res) => {
 });
 
 // GET /api/publish/status — director checks current published state + display settings
-app.get('/api/publish/status', requireAuth('master'), async (req, res) => {
+app.get('/api/publish/status', requireDirectorOrStaff, async (req, res) => {
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
@@ -3161,7 +3171,7 @@ app.get('/api/my-absence-requests', requireAuth('auditionee'), async (req, res) 
 // ── Master dancer routes (org/season scoped) ──────────────────────────────────
 
 // GET /api/dancers — all submissions for current org/season
-app.get('/api/dancers', requireAuth('master'), async (req, res) => {
+app.get('/api/dancers', requireDirectorOrStaff, async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
@@ -3460,7 +3470,7 @@ app.delete('/api/orgs/:orgId/seasons/:seasonId/tour-cleanup', requireAuth('maste
 });
 
 // GET /api/dancers/search — search by name or audition number within current org/season
-app.get('/api/dancers/search', requireAuth('master'), async (req, res) => {
+app.get('/api/dancers/search', requireDirectorOrStaff, async (req, res) => {
   const { q } = req.query;
   const { orgId, seasonId } = req.session;
   if (!q || !orgId || !seasonId) return res.json([]);
@@ -3487,7 +3497,7 @@ app.get('/api/dancers/search', requireAuth('master'), async (req, res) => {
 });
 
 // GET /api/dancers/:userId — master views one dancer's full profile
-app.get('/api/dancers/:userId', requireAuth('master'), async (req, res) => {
+app.get('/api/dancers/:userId', requireDirectorOrStaff, async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId || !seasonId) return res.status(400).json({ error: 'No active org/season.' });
   try {
@@ -3528,7 +3538,7 @@ app.patch('/api/dancers/:userId/audition-number', requireAuth('master'), async (
 });
 
 // GET /api/dancers/:userId/pieces — all pieces a dancer is cast in across the org
-app.get('/api/dancers/:userId/pieces', requireAuth('master'), async (req, res) => {
+app.get('/api/dancers/:userId/pieces', requireDirectorOrStaff, async (req, res) => {
   const { orgId, seasonId } = req.session;
   if (!orgId) return res.status(400).json({ error: 'No active org.' });
   try {
@@ -3553,7 +3563,7 @@ app.get('/api/dancers/:userId/pieces', requireAuth('master'), async (req, res) =
 
 // ── Pieces routes (season-scoped) ─────────────────────────────────────────────
 
-app.get('/api/pieces', requireAuth('master'), async (req, res) => {
+app.get('/api/pieces', requireDirectorOrStaff, async (req, res) => {
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
@@ -4231,7 +4241,7 @@ app.post('/api/billing/portal', requireAuth('master'), async (req, res) => {
 // ── Room count routes ─────────────────────────────────────────────────────────
 
 // GET /api/season/room-count — return current season's room count
-app.get('/api/season/room-count', requireAuth('master'), async (req, res) => {
+app.get('/api/season/room-count', requireDirectorOrStaff, async (req, res) => {
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
@@ -4281,7 +4291,7 @@ app.patch('/api/season/room-count', requireAuth('master'), async (req, res) => {
 // detection switch to room-aware mode. See highlightConflicts() in master-schedule.js.
 
 // GET /api/season/rooms: list named rooms for the active season
-app.get('/api/season/rooms', requireAuth('master'), async (req, res) => {
+app.get('/api/season/rooms', requireDirectorOrStaff, async (req, res) => {
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
@@ -5918,7 +5928,7 @@ app.post('/api/season/attendance', requireAuth('master'), async (req, res) => {
 // ── Absence requests (director side) ────────────────────────────────────────────
 
 // GET /api/season/absence-requests: every request for the active season, newest first
-app.get('/api/season/absence-requests', requireAuth('master'), async (req, res) => {
+app.get('/api/season/absence-requests', requireDirectorOrStaff, async (req, res) => {
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
@@ -6234,7 +6244,7 @@ app.get('/api/availability/piece/:pieceId', requireAuth('master'), async (req, r
 // ── Piece casts routes ────────────────────────────────────────────────────────
 
 // GET /api/piece-casts — all casts for pieces in the current season
-app.get('/api/piece-casts', requireAuth('master'), async (req, res) => {
+app.get('/api/piece-casts', requireDirectorOrStaff, async (req, res) => {
   const { seasonId } = req.session;
   if (!seasonId) return res.status(400).json({ error: 'No active season.' });
   try {
