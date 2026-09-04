@@ -4,8 +4,9 @@
   // query by user_id across every assigned piece, not a single active org/season.
   const NAV_SECTIONS = [
     { section: 'My Productions', items: [
-      { label: 'My Pieces', href: 'staff-pieces.html' },
-      { label: 'Schedule',  href: 'staff-schedule.html' },
+      { label: 'My Pieces',    href: 'staff-pieces.html' },
+      { label: 'Schedule',     href: 'staff-schedule.html' },
+      { label: 'Audition Day', href: 'audition-day.html' },
     ]},
     { section: 'Operations', items: [
       { label: 'Attendance',       href: 'staff-attendance.html' },
