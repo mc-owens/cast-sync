@@ -2560,6 +2560,30 @@ async function verifyStaffPiece(userId, pieceId) {
 }
 
 // GET /api/staff/pieces -- dashboard: every piece this user is staff on, across all productions
+// GET /api/my-staff-roles -- productions where the current user is assigned as staff,
+// usable in any mode (e.g. director on org hub). Returns pieces grouped by production.
+app.get('/api/my-staff-roles', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
+  try {
+    const result = await pool.query(
+      `SELECT p.id AS piece_id, p.name AS piece_name,
+              s.id AS season_id, s.name AS season_name,
+              o.id AS org_id, o.name AS org_name
+       FROM piece_staff ps
+       JOIN pieces p ON p.id = ps.piece_id
+       JOIN seasons s ON s.id = p.season_id
+       JOIN orgs o ON o.id = s.org_id
+       WHERE ps.user_id = $1
+       ORDER BY o.name, s.name, p.name`,
+      [req.session.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load staff roles.' });
+  }
+});
+
 app.get('/api/staff/pieces', requireAuth('staff'), async (req, res) => {
   try {
     const result = await pool.query(

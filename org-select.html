@@ -581,7 +581,7 @@
         }
         if (user.isStaff) {
           try {
-            const staffRes = await fetch('/api/staff/pieces');
+            const staffRes = await fetch('/api/my-staff-roles');
             if (staffRes.ok) {
               const pieces = await staffRes.json();
               const byProduction = {};
