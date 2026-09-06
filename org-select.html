@@ -141,7 +141,6 @@
     <div class="container-fluid">
       <a class="navbar-brand" href="#"><img src="logo-nav.png" width="22" height="22" alt="" style="vertical-align:middle;margin-right:6px;margin-bottom:2px;">CastSync</a>
       <button class="btn btn-outline-secondary btn-sm ms-2" id="switch-auditionee-btn" style="display:none;font-size:12px;">Switch to Auditionee</button>
-      <button class="btn btn-outline-secondary btn-sm ms-2" id="switch-staff-btn" style="display:none;font-size:12px;">Switch to Staff</button>
       <div class="ms-auto d-flex align-items-center gap-3" id="right-nav"></div>
     </div>
   </nav>
@@ -171,6 +170,12 @@
       You don't have any organizations yet. Create one to get started.
     </div>
     <div id="orgs-list"></div>
+
+    <div id="staff-roles-section" style="display:none;">
+      <h5 style="margin-top:32px;margin-bottom:4px;font-weight:600;">Production Staff Roles</h5>
+      <p class="text-muted mb-3" style="font-size:13px;">Productions where you're assigned as faculty or choreographer.</p>
+      <div id="staff-roles-list"></div>
+    </div>
 
     <div class="mt-5 pt-3 border-top text-center">
       <button id="restart-tour-btn" style="font-size:12px;color:#9ca3af;background:none;border:none;cursor:pointer;text-decoration:underline;text-underline-offset:3px;">
@@ -566,8 +571,7 @@
           await fetch('/api/auth/logout', { method: 'POST' });
           window.location.href = 'login.html';
         });
-        // Show Switch to Auditionee for everyone — any director may also be auditioning
-        {
+        if (user.hasSubmissions) {
           const btn = document.getElementById('switch-auditionee-btn');
           btn.style.display = '';
           btn.addEventListener('click', async () => {
@@ -576,12 +580,43 @@
           });
         }
         if (user.isStaff) {
-          const btn = document.getElementById('switch-staff-btn');
-          btn.style.display = '';
-          btn.addEventListener('click', async () => {
-            await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'staff' }) });
-            window.location.href = 'staff-pieces.html';
-          });
+          try {
+            const staffRes = await fetch('/api/staff/pieces');
+            if (staffRes.ok) {
+              const pieces = await staffRes.json();
+              const byProduction = {};
+              for (const p of pieces) {
+                const key = `${p.org_name}|||${p.season_name}`;
+                if (!byProduction[key]) byProduction[key] = { org_name: p.org_name, season_name: p.season_name, pieces: [] };
+                byProduction[key].pieces.push(p.piece_name);
+              }
+              const list = document.getElementById('staff-roles-list');
+              for (const { org_name, season_name, pieces: ps } of Object.values(byProduction)) {
+                const card = document.createElement('div');
+                card.className = 'card mb-3';
+                card.style.cursor = 'pointer';
+                card.innerHTML = `
+                  <div class="card-body py-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                      <div>
+                        <div style="font-size:14px;font-weight:500;">${season_name}</div>
+                        <div style="font-size:12px;color:#999;">${org_name} &middot; Production Staff</div>
+                        <div style="font-size:12px;color:#555;margin-top:4px;">${ps.join(', ')}</div>
+                      </div>
+                      <div style="font-size:12px;color:#c9a84c;font-weight:600;">Enter &rsaquo;</div>
+                    </div>
+                  </div>`;
+                card.addEventListener('click', async () => {
+                  await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'staff' }) });
+                  window.location.href = 'staff-pieces.html';
+                });
+                list.appendChild(card);
+              }
+              if (Object.keys(byProduction).length > 0) {
+                document.getElementById('staff-roles-section').style.display = '';
+              }
+            }
+          } catch (_) {}
         }
       } catch (err) { window.location.href = 'login.html'; }
     })();

@@ -52,7 +52,7 @@
 
     function formatDate(d) {
       if (!d) return '';
-      const dt = new Date(d + 'T12:00:00');
+      const dt = new Date(d.slice(0, 10) + 'T12:00:00');
       return dt.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
     }
 
@@ -100,8 +100,8 @@
 
     function render(requests) {
       const today = new Date().toISOString().slice(0, 10);
-      const upcoming = requests.filter(r => r.absence_date >= today).sort((a, b) => a.absence_date.localeCompare(b.absence_date));
-      const past     = requests.filter(r => r.absence_date < today).sort((a, b) => b.absence_date.localeCompare(a.absence_date));
+      const upcoming = requests.filter(r => (r.absence_date || '').slice(0, 10) >= today).sort((a, b) => a.absence_date.slice(0,10).localeCompare(b.absence_date.slice(0,10)));
+      const past     = requests.filter(r => (r.absence_date || '').slice(0, 10) < today).sort((a, b) => b.absence_date.slice(0,10).localeCompare(a.absence_date.slice(0,10)));
 
       const container = document.getElementById('requests-container');
       if (requests.length === 0) {
