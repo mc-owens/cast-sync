@@ -2749,6 +2749,38 @@ app.get('/api/staff/pieces/:pieceId/attendance/history', requireAuth('staff'), a
   }
 });
 
+// GET /api/staff/absence-requests -- read-only absence requests for dancers cast in this staff member's pieces
+app.get('/api/staff/absence-requests', requireAuth('staff'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT DISTINCT ON (ar.id)
+              ar.id, ar.absence_date, ar.start_time, ar.end_time,
+              ar.reason, ar.status, ar.created_at, ar.documentation_link,
+              dp.first_name, dp.last_name,
+              p.name AS piece_name, s.name AS season_name
+       FROM absence_requests ar
+       JOIN dancer_profiles dp ON dp.user_id = ar.user_id
+       JOIN piece_casts pc ON pc.user_id = ar.user_id
+       JOIN pieces p ON p.id = pc.piece_id
+       JOIN piece_staff ps ON ps.piece_id = p.id AND ps.user_id = $1
+       JOIN seasons s ON s.id = p.season_id
+       WHERE (
+         ar.piece_id = p.id
+         OR (ar.piece_ids IS NOT NULL AND ar.piece_ids @> ARRAY[p.id])
+         OR (ar.piece_id IS NULL
+             AND (ar.piece_ids IS NULL OR array_length(ar.piece_ids, 1) = 0)
+             AND ar.season_id = s.id)
+       )
+       ORDER BY ar.id, ar.absence_date DESC`,
+      [req.session.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load absence requests.' });
+  }
+});
+
 app.post('/api/staff/pieces/:pieceId/attendance', requireAuth('staff'), async (req, res) => {
   const { date, user_id, present, status, status_note } = req.body;
   if (!date || !user_id) return res.status(400).json({ error: 'date and user_id are required.' });

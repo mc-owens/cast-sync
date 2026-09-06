@@ -9,9 +9,10 @@
       { label: 'Audition Day', href: 'audition-day.html' },
     ]},
     { section: 'Operations', items: [
-      { label: 'Attendance',       href: 'staff-attendance.html' },
-      { label: 'Production Notes', href: 'staff-notes.html' },
-      { label: 'My Private Notes', href: 'staff-my-notes.html' },
+      { label: 'Attendance',        href: 'staff-attendance.html' },
+      { label: 'Absence Requests',  href: 'staff-absence-requests.html' },
+      { label: 'Production Notes',  href: 'staff-notes.html' },
+      { label: 'My Private Notes',  href: 'staff-my-notes.html' },
     ]},
     { section: 'Settings', items: [
       { label: 'Account', href: 'staff-account.html' },
