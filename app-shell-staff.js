@@ -78,6 +78,73 @@
     });
   }
 
+  // Builds and wires the right-nav for staff pages. Call after auth resolves.
+  // Replaces the old per-page right-nav setup pattern.
+  window.buildStaffRightNav = async function (user, el) {
+    function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    let dropdownHtml = '';
+    if (user.isDirector) {
+      let seasons = [];
+      try {
+        const r = await fetch('/api/my-director-seasons');
+        if (r.ok) seasons = await r.json();
+      } catch (_) {}
+      const items = seasons.map(s =>
+        `<li><a class="dropdown-item staff-nav-prod-link" href="#"
+            data-org-id="${s.org_id}" data-season-id="${s.season_id}"
+            style="font-size:13px;padding:6px 14px;line-height:1.3;">
+           <div style="font-weight:500;">${esc(s.season_name)}</div>
+           <div style="font-size:11px;color:#6b7280;">${esc(s.org_name)} &middot; ${s.role === 'owner' ? 'Director' : 'Co-Director'}</div>
+         </a></li>`
+      ).join('');
+      dropdownHtml = `
+        <div class="dropdown" style="display:inline-block;">
+          <button class="btn btn-outline-secondary btn-sm dropdown-toggle" style="font-size:12px;" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            My Productions
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" style="min-width:220px;">
+            ${items}
+            ${items ? '<li><hr class="dropdown-divider my-1"></li>' : ''}
+            <li><a class="dropdown-item" href="#" id="all-orgs-link" style="font-size:13px;padding:6px 14px;font-weight:500;">All Organizations</a></li>
+          </ul>
+        </div>`;
+    }
+
+    el.innerHTML =
+      `<a href="account.html" style="font-size:13px;">Account</a>` +
+      dropdownHtml +
+      (user.hasSubmissions ? `<button id="switch-auditionee-btn" class="btn btn-outline-secondary btn-sm" style="font-size:12px;">Switch to Auditionee</button>` : '') +
+      `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+
+    el.querySelectorAll('.staff-nav-prod-link').forEach(a => {
+      a.addEventListener('click', async e => {
+        e.preventDefault();
+        await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'director' }) });
+        await fetch('/api/auth/select', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ orgId: +a.dataset.orgId, seasonId: +a.dataset.seasonId }) });
+        window.location.href = 'dashboard.html';
+      });
+    });
+
+    const allOrgs = el.querySelector('#all-orgs-link');
+    if (allOrgs) allOrgs.addEventListener('click', async e => {
+      e.preventDefault();
+      await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'director' }) });
+      window.location.href = 'org-select.html';
+    });
+
+    const switchAud = el.querySelector('#switch-auditionee-btn');
+    if (switchAud) switchAud.addEventListener('click', async () => {
+      await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'auditionee' }) });
+      window.location.href = 'auditionForm.html';
+    });
+
+    el.querySelector('#logout-btn').addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = 'login.html';
+    });
+  };
+
   const root = document.getElementById('app-shell-root');
   if (root) {
     root.insertAdjacentHTML('beforebegin', renderHeader());

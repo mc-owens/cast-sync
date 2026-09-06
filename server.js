@@ -2560,6 +2560,34 @@ async function verifyStaffPiece(userId, pieceId) {
 }
 
 // GET /api/staff/pieces -- dashboard: every piece this user is staff on, across all productions
+// GET /api/my-director-seasons -- productions where the current user is director or co-director,
+// usable in any mode (e.g. staff portal nav dropdown).
+app.get('/api/my-director-seasons', async (req, res) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
+  try {
+    const result = await pool.query(
+      `SELECT o.id AS org_id, o.name AS org_name,
+              s.id AS season_id, s.name AS season_name, 'owner' AS role
+       FROM orgs o
+       JOIN seasons s ON s.org_id = o.id
+       WHERE o.owner_id = $1 AND s.status != 'archived'
+       UNION
+       SELECT o.id AS org_id, o.name AS org_name,
+              s.id AS season_id, s.name AS season_name, 'co-director' AS role
+       FROM season_members sm
+       JOIN seasons s ON s.id = sm.season_id
+       JOIN orgs o ON o.id = s.org_id
+       WHERE sm.user_id = $1 AND s.status != 'archived'
+       ORDER BY org_name, season_name`,
+      [req.session.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Failed to load director seasons.' });
+  }
+});
+
 // GET /api/my-staff-roles -- productions where the current user is assigned as staff,
 // usable in any mode (e.g. director on org hub). Returns pieces grouped by production.
 app.get('/api/my-staff-roles', async (req, res) => {

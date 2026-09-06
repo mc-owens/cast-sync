@@ -168,25 +168,7 @@
         const res  = await fetch('/api/auth/me');
         const user = await res.json();
         if (!res.ok || (!user.isStaff && user.role !== 'staff')) { window.location.href = 'login.html'; return; }
-        document.getElementById('right-nav').innerHTML =
-          `<a href="account.html">Account</a>` +
-          (user.isDirector ? `<button id="switch-director-btn">Switch to Director</button>` : '') +
-          (user.hasSubmissions ? `<button id="switch-auditionee-btn">Switch to Auditionee</button>` : '') +
-          `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
-        if (user.isDirector) {
-          document.getElementById('switch-director-btn').addEventListener('click', async () => {
-            await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'director' }) });
-            window.location.href = 'org-select.html';
-          });
-        }
-        if (user.hasSubmissions) document.getElementById('switch-auditionee-btn').addEventListener('click', async () => {
-          await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'auditionee' }) });
-          window.location.href = 'auditionForm.html';
-        });
-        document.getElementById('logout-btn').addEventListener('click', async () => {
-          await fetch('/api/auth/logout', { method: 'POST' });
-          window.location.href = 'login.html';
-        });
+        await window.buildStaffRightNav(user, document.getElementById('right-nav'));
         document.body.style.visibility = 'visible';
         loadNotes();
       } catch (_) {
