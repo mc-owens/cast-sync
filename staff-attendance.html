@@ -308,15 +308,15 @@
         document.getElementById('right-nav').innerHTML =
           `<a href="account.html">Account</a>` +
           (user.isDirector ? `<button id="switch-director-btn">Switch to Director</button>` : '') +
-          `<button id="switch-auditionee-btn">Switch to Auditionee</button>
-           <button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
+          (user.hasSubmissions ? `<button id="switch-auditionee-btn">Switch to Auditionee</button>` : '') +
+          `<button class="btn-nav-logout" id="logout-btn">Log Out</button>`;
         if (user.isDirector) {
           document.getElementById('switch-director-btn').addEventListener('click', async () => {
             await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'director' }) });
             window.location.href = 'org-select.html';
           });
         }
-        document.getElementById('switch-auditionee-btn').addEventListener('click', async () => {
+        if (user.hasSubmissions) document.getElementById('switch-auditionee-btn').addEventListener('click', async () => {
           await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'auditionee' }) });
           window.location.href = 'auditionForm.html';
         });

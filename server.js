@@ -1052,20 +1052,22 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 });
 
-app.get('/api/auth/me', (req, res) => {
+app.get('/api/auth/me', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
+  const subCheck = await pool.query('SELECT 1 FROM submissions WHERE user_id = $1 LIMIT 1', [req.session.userId]).catch(() => ({ rows: [] }));
   res.json({
-    id:         req.session.userId,
-    email:      req.session.email,
-    role:       req.session.role,
-    isDirector: req.session.isDirector || req.session.role === 'master',
-    isStaff:    req.session.isStaff || req.session.role === 'staff',
-    mode:       req.session.mode || (req.session.role === 'master' ? 'director' : req.session.role === 'staff' ? 'staff' : 'auditionee'),
-    orgId:      req.session.orgId    || null,
-    seasonId:   req.session.seasonId || null,
-    orgName:    req.session.orgName  || null,
-    seasonName: req.session.seasonName || null,
-    roomCount:  req.session.roomCount || 1,
+    id:             req.session.userId,
+    email:          req.session.email,
+    role:           req.session.role,
+    isDirector:     req.session.isDirector || req.session.role === 'master',
+    isStaff:        req.session.isStaff || req.session.role === 'staff',
+    mode:           req.session.mode || (req.session.role === 'master' ? 'director' : req.session.role === 'staff' ? 'staff' : 'auditionee'),
+    orgId:          req.session.orgId    || null,
+    seasonId:       req.session.seasonId || null,
+    orgName:        req.session.orgName  || null,
+    seasonName:     req.session.seasonName || null,
+    roomCount:      req.session.roomCount || 1,
+    hasSubmissions: subCheck.rows.length > 0,
   });
 });
 
