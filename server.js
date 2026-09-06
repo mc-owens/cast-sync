@@ -2682,11 +2682,20 @@ app.get('/api/staff/pieces/:pieceId/attendance', requireAuth('staff'), async (re
         `SELECT u.id AS user_id, dp.first_name, dp.last_name, pc.cast_role,
                 COALESCE(ar.present, TRUE) AS present,
                 COALESCE(ar.status, 'none') AS status,
-                ar.status_note
+                ar.status_note,
+                abr.status AS absence_status,
+                abr.reason AS absence_reason
          FROM piece_casts pc
          JOIN users u ON u.id = pc.user_id
          JOIN dancer_profiles dp ON dp.user_id = u.id
          LEFT JOIN attendance_records ar ON ar.user_id = u.id AND ar.piece_id = $1 AND ar.rehearsal_date = $2
+         LEFT JOIN LATERAL (
+           SELECT status, reason FROM absence_requests
+           WHERE user_id = u.id AND absence_date = $2
+             AND (piece_id = $1 OR piece_id IS NULL OR $1 = ANY(COALESCE(piece_ids, '{}'::INTEGER[])))
+           ORDER BY CASE status WHEN 'approved' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, created_at DESC
+           LIMIT 1
+         ) abr ON TRUE
          WHERE pc.piece_id = $1
          ORDER BY dp.last_name, dp.first_name`,
         [req.params.pieceId, date]
