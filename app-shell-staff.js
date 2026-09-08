@@ -121,7 +121,7 @@
       a.addEventListener('click', async e => {
         e.preventDefault();
         await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'director' }) });
-        await fetch('/api/auth/select', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ orgId: +a.dataset.orgId, seasonId: +a.dataset.seasonId }) });
+        await fetch('/api/session/org', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ orgId: +a.dataset.orgId, seasonId: +a.dataset.seasonId }) });
         window.location.href = 'dashboard.html';
       });
     });
