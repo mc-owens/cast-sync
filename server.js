@@ -577,13 +577,19 @@ app.get('/auth/google/callback',
         [req.user.id]
       );
       const user = result.rows[0];
+      const coDirCheck = await pool.query(
+        `SELECT 1 FROM season_members sm JOIN seasons s ON s.id = sm.season_id WHERE sm.user_id = $1 AND s.status != 'archived' LIMIT 1`,
+        [user.id]
+      );
+      const isCoDir = coDirCheck.rows.length > 0;
       req.session.userId     = user.id;
       req.session.role       = user.role;
       req.session.email      = user.email;
-      req.session.isDirector = user.is_director || user.role === 'master';
+      req.session.isDirector = user.is_director || user.role === 'master' || isCoDir;
       req.session.isStaff    = user.is_staff || user.role === 'staff';
       req.session.mode       = (user.role === 'master' || user.is_director) ? 'director'
                               : (user.role === 'staff'  || user.is_staff)   ? 'staff'
+                              : isCoDir                                      ? 'director'
                               : 'auditionee';
     } catch (e) {
       console.error('Google callback session error:', e.message);
@@ -709,13 +715,19 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
         email: user.email,
       });
     }
+    const coDirCheck2 = await pool.query(
+      `SELECT 1 FROM season_members sm JOIN seasons s ON s.id = sm.season_id WHERE sm.user_id = $1 AND s.status != 'archived' LIMIT 1`,
+      [user.id]
+    );
+    const isCoDir2 = coDirCheck2.rows.length > 0;
     req.session.userId     = user.id;
     req.session.role       = user.role;
     req.session.email      = user.email;
-    req.session.isDirector = user.is_director || user.role === 'master';
+    req.session.isDirector = user.is_director || user.role === 'master' || isCoDir2;
     req.session.isStaff    = user.is_staff || user.role === 'staff';
     req.session.mode       = (user.role === 'master' || user.is_director) ? 'director'
                             : (user.role === 'staff' || user.is_staff)    ? 'staff'
+                            : isCoDir2                                     ? 'director'
                             : 'auditionee';
     res.json({ id: user.id, email: user.email, role: user.role, isDirector: req.session.isDirector, isStaff: req.session.isStaff });
   } catch (err) {
@@ -743,13 +755,19 @@ app.get('/api/auth/verify-email', async (req, res) => {
       return res.status(400).json({ error: 'This verification link is invalid or has already been used.' });
     }
     const user = result.rows[0];
+    const coDirCheck3 = await pool.query(
+      `SELECT 1 FROM season_members sm JOIN seasons s ON s.id = sm.season_id WHERE sm.user_id = $1 AND s.status != 'archived' LIMIT 1`,
+      [user.id]
+    );
+    const isCoDir3 = coDirCheck3.rows.length > 0;
     req.session.userId     = user.id;
     req.session.role       = user.role;
     req.session.email      = user.email;
-    req.session.isDirector = user.is_director || user.role === 'master';
+    req.session.isDirector = user.is_director || user.role === 'master' || isCoDir3;
     req.session.isStaff    = user.is_staff || user.role === 'staff';
     req.session.mode       = (user.role === 'master' || user.is_director) ? 'director'
                             : (user.role === 'staff' || user.is_staff)    ? 'staff'
+                            : isCoDir3                                     ? 'director'
                             : 'auditionee';
     res.json({ ok: true, role: user.role, isDirector: req.session.isDirector, isStaff: req.session.isStaff });
   } catch (err) {
@@ -1054,12 +1072,18 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
 app.get('/api/auth/me', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not logged in.' });
-  const subCheck = await pool.query('SELECT 1 FROM submissions WHERE user_id = $1 LIMIT 1', [req.session.userId]).catch(() => ({ rows: [] }));
+  const [subCheck, coDirMe] = await Promise.all([
+    pool.query('SELECT 1 FROM submissions WHERE user_id = $1 LIMIT 1', [req.session.userId]).catch(() => ({ rows: [] })),
+    pool.query(
+      `SELECT 1 FROM season_members sm JOIN seasons s ON s.id = sm.season_id WHERE sm.user_id = $1 AND s.status != 'archived' LIMIT 1`,
+      [req.session.userId]
+    ).catch(() => ({ rows: [] })),
+  ]);
   res.json({
     id:             req.session.userId,
     email:          req.session.email,
     role:           req.session.role,
-    isDirector:     req.session.isDirector || req.session.role === 'master',
+    isDirector:     req.session.isDirector || req.session.role === 'master' || coDirMe.rows.length > 0,
     isStaff:        req.session.isStaff || req.session.role === 'staff',
     mode:           req.session.mode || (req.session.role === 'master' ? 'director' : req.session.role === 'staff' ? 'staff' : 'auditionee'),
     orgId:          req.session.orgId    || null,
