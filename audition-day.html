@@ -209,7 +209,7 @@
     });
 
     if (isStaff) {
-      window.applyStaffNav();
+      await window.applyStaffNav(user);
       const newDayBtn = document.getElementById('new-day-btn');
       if (newDayBtn) newDayBtn.style.display = 'none';
     }

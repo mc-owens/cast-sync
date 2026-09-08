@@ -587,7 +587,7 @@
       window.location.href = 'login.html';
     });
 
-    if (isStaff) window.applyStaffNav();
+    if (isStaff) await window.applyStaffNav(user);
 
     // ── Load ─────────────────────────────────────────────────────────────────
     const params = new URLSearchParams(location.search);

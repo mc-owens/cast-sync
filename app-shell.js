@@ -298,7 +298,7 @@
   // Called by director pages that production staff can also access.
   // Swaps the director sidebar for the staff nav before the page becomes visible,
   // so staff never see director-only tabs like Billing or Production Settings.
-  window.applyStaffNav = function () {
+  window.applyStaffNav = async function (user) {
     const page = location.pathname.split('/').pop();
     const onAuditionDay = page.startsWith('audition-day');
     const staffNav = [
@@ -330,6 +330,66 @@
     if (body) body.innerHTML = html;
     const seam = document.querySelector('.app-shell-context-seam');
     if (seam) seam.innerHTML = '<li class="nav-item"><span class="nav-link nav-context">Production Staff</span></li>';
+
+    // Rebuild the right-nav with the staff version (My Productions dropdown, etc.)
+    const rightNav = document.getElementById('right-nav');
+    if (rightNav && user) {
+      if (typeof window.buildStaffRightNav === 'function') {
+        await window.buildStaffRightNav(user, rightNav);
+      } else {
+        function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+        let dropdownHtml = '';
+        if (user.isDirector) {
+          let seasons = [];
+          try { const r = await fetch('/api/my-director-seasons'); if (r.ok) seasons = await r.json(); } catch (_) {}
+          const items = seasons.map(s =>
+            `<li><a class="dropdown-item asn-prod-link" href="#"
+                data-org-id="${s.org_id}" data-season-id="${s.season_id}"
+                style="font-size:13px;padding:6px 14px;line-height:1.3;">
+               <div style="font-weight:500;">${esc(s.season_name)}</div>
+               <div style="font-size:11px;color:#6b7280;">${esc(s.org_name)} &middot; ${s.role === 'owner' ? 'Director' : 'Co-Director'}</div>
+             </a></li>`
+          ).join('');
+          dropdownHtml = `
+            <div class="dropdown" style="display:inline-block;">
+              <button class="btn btn-outline-secondary btn-sm dropdown-toggle" style="font-size:12px;" type="button" data-bs-toggle="dropdown" aria-expanded="false">My Productions</button>
+              <ul class="dropdown-menu dropdown-menu-end" style="min-width:220px;">
+                ${items}
+                ${items ? '<li><hr class="dropdown-divider my-1"></li>' : ''}
+                <li><a class="dropdown-item" href="#" id="asn-all-orgs" style="font-size:13px;padding:6px 14px;font-weight:500;">All Organizations</a></li>
+              </ul>
+            </div>`;
+        }
+        rightNav.innerHTML =
+          `<a href="account.html" style="font-size:13px;">Account</a>` +
+          dropdownHtml +
+          (user.hasSubmissions ? `<button id="asn-aud-btn" class="btn btn-outline-secondary btn-sm" style="font-size:12px;">Switch to Auditionee</button>` : '') +
+          `<button class="btn-nav-logout" id="asn-logout-btn">Log Out</button>`;
+        rightNav.querySelectorAll('.asn-prod-link').forEach(a => {
+          a.addEventListener('click', async e => {
+            e.preventDefault();
+            await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'director' }) });
+            await fetch('/api/session/org', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ orgId: +a.dataset.orgId, seasonId: +a.dataset.seasonId }) });
+            window.location.href = 'dashboard.html';
+          });
+        });
+        const allOrgs = rightNav.querySelector('#asn-all-orgs');
+        if (allOrgs) allOrgs.addEventListener('click', async e => {
+          e.preventDefault();
+          await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'director' }) });
+          window.location.href = 'org-select.html';
+        });
+        const audBtn = rightNav.querySelector('#asn-aud-btn');
+        if (audBtn) audBtn.addEventListener('click', async () => {
+          await fetch('/api/auth/switch-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode:'auditionee' }) });
+          window.location.href = 'auditionForm.html';
+        });
+        rightNav.querySelector('#asn-logout-btn').addEventListener('click', async () => {
+          await fetch('/api/auth/logout', { method: 'POST' });
+          window.location.href = 'login.html';
+        });
+      }
+    }
   };
 
   const root = document.getElementById('app-shell-root');
